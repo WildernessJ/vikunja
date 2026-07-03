@@ -132,6 +132,16 @@ func getOrderByDBStatement(opts *taskSearchOptions) (orderby string, err error) 
 			return "", err
 		}
 
+		if param.sortBy == taskPropertyRelevance {
+			// Most-relevant-first is the only useful direction, the requested order
+			// is ignored. Search strips this param when the query cannot be scored.
+			orderby += "pdb.score(tasks.id) DESC"
+			if (i + 1) < len(opts.sortby) {
+				orderby += ", "
+			}
+			continue
+		}
+
 		var prefix string
 		switch param.sortBy {
 		case taskPropertyPosition:
@@ -414,11 +424,6 @@ func (d *dbTaskSearcher) buildSubtaskRootCondition(opts *taskSearchOptions) (bui
 //nolint:gocyclo
 func (d *dbTaskSearcher) Search(opts *taskSearchOptions) (tasks []*Task, totalCount int64, err error) {
 
-	orderby, err := getOrderByDBStatement(opts)
-	if err != nil {
-		return nil, 0, err
-	}
-
 	joinTaskBuckets := hasBucketIDInParsedFilter(opts.parsedFilters)
 
 	var expandSubtasks = false
@@ -457,18 +462,27 @@ func (d *dbTaskSearcher) Search(opts *taskSearchOptions) (tasks []*Task, totalCo
 		}
 	}
 
+	relevanceSortRequested := false
+	for _, param := range opts.sortby {
+		if param.sortBy == taskPropertyRelevance {
+			relevanceSortRequested = true
+			break
+		}
+	}
+
 	// ParadeDB exposes the BM25 relevance score via pdb.score(tasks.id) for a query
 	// containing a ParadeDB operator (the ||| from MultiFieldSearch qualifies). When
-	// searching without an explicit user sort, order by relevance so tasks matching
-	// all query words rank above tasks matching only some.
+	// searching without an explicit user sort — or when the client explicitly sorts
+	// by relevance — order by the score so tasks matching all query words rank
+	// above tasks matching only some.
 	//
 	// Limited to pure-text searches: numeric searches add an `OR index = N` branch,
 	// which pdb.score rejects as an unsupported query shape. pdb.score is also
 	// invalid SQL on sqlite/mysql/plain postgres, hence the ParadeDBAvailable() gate.
 	wantsRelevanceRanking := db.ParadeDBAvailable() &&
 		opts.search != "" &&
-		!opts.userProvidedSort &&
-		searchIndex == 0
+		searchIndex == 0 &&
+		(!opts.userProvidedSort || relevanceSortRequested)
 
 	var projectIDCond builder.Cond
 	var favoritesCond builder.Cond
@@ -518,6 +532,28 @@ func (d *dbTaskSearcher) Search(opts *taskSearchOptions) (tasks []*Task, totalCo
 	limit, start := getLimitFromPageIndex(opts.page, opts.perPage)
 	cond := builder.And(builder.Or(projectIDCond, favoritesCond), where, filterCond)
 
+	// When the favorites arm is still part of the query (Favorites view, or
+	// out-of-scope favorites exist), its shape is unsupported — stay unranked.
+	rankByRelevance := wantsRelevanceRanking && favoritesCond == nil
+
+	if rankByRelevance && !relevanceSortRequested {
+		opts.sortby = append([]*sortParam{{sortBy: taskPropertyRelevance, orderBy: orderDescending}}, opts.sortby...)
+	}
+	if !rankByRelevance && relevanceSortRequested {
+		kept := make([]*sortParam, 0, len(opts.sortby))
+		for _, param := range opts.sortby {
+			if param.sortBy != taskPropertyRelevance {
+				kept = append(kept, param)
+			}
+		}
+		opts.sortby = kept
+	}
+
+	orderby, err := getOrderByDBStatement(opts)
+	if err != nil {
+		return nil, 0, err
+	}
+
 	var distinct = "tasks.*"
 	if strings.Contains(orderby, "task_positions.") {
 		distinct += ", task_positions.position"
@@ -527,17 +563,12 @@ func (d *dbTaskSearcher) Search(opts *taskSearchOptions) (tasks []*Task, totalCo
 		cond = builder.And(cond, subtaskRootCond)
 	}
 
-	// When the favorites arm is still part of the query (Favorites view, or
-	// out-of-scope favorites exist), its shape is unsupported — stay unranked.
-	rankByRelevance := wantsRelevanceRanking && favoritesCond == nil
-
 	query := d.s.Where(cond)
 	if rankByRelevance {
 		// Select() passes the raw column list through untouched while Distinct()
 		// (no args) still emits DISTINCT. Distinct("tasks.*, pdb.score(tasks.id)")
 		// would quote-corrupt the function call into "pdb"."score(tasks"."id)".
 		query = query.Select(distinct + ", pdb.score(tasks.id)").Distinct()
-		orderby = "pdb.score(tasks.id) DESC, " + orderby
 	} else {
 		query = query.Distinct(distinct)
 	}

@@ -452,7 +452,9 @@ function searchTasks() {
 
 	const params = {
 		s: text,
-		sort_by: 'done',
+		// undone tasks first, most relevant first within each group (relevance is
+		// only honored on backends that can score the search, see the API docs)
+		sort_by: ['done', 'relevance'],
 		filter,
 	}
 
