@@ -73,6 +73,11 @@ func TestTaskSearchRelevanceRanking(t *testing.T) {
 	require.NoError(t, oneWordA.Create(s, usr))
 	oneWordB := &Task{Title: "server room booking", ProjectID: 1}
 	require.NoError(t, oneWordB.Create(s, usr))
+	// Created last on purpose: it has the highest id, so the default id-asc order
+	// would place it after the one-word matches. It ranking above them can only
+	// come from BM25 relevance, not from the fallback ordering.
+	lateAllWords := &Task{Title: "server backup checklist", ProjectID: 1}
+	require.NoError(t, lateAllWords.Create(s, usr))
 
 	assertRelevanceRanked := func(t *testing.T, tc *TaskCollection) {
 		got, _, _, err := tc.ReadAll(s, usr, "backup server", 0, 50)
@@ -89,8 +94,22 @@ func TestTaskSearchRelevanceRanking(t *testing.T) {
 		require.Contains(t, gotIDs, allWords.ID, "the task matching all words should be returned")
 
 		if db.ParadeDBAvailable() {
-			require.NotEmpty(t, gotTasks)
-			assert.Equal(t, allWords.ID, gotTasks[0].ID, "task matching all query words should rank first by BM25 relevance")
+			// Compare only the tasks created by this test so fixture tasks (present
+			// or future) matching the search cannot break the order assertions.
+			created := map[int64]bool{allWords.ID: true, oneWordA.ID: true, oneWordB.ID: true, lateAllWords.ID: true}
+			pos := map[int64]int{}
+			for _, id := range gotIDs {
+				if created[id] {
+					pos[id] = len(pos)
+				}
+			}
+			require.Len(t, pos, len(created), "all created tasks should match the search")
+
+			for _, allw := range []int64{allWords.ID, lateAllWords.ID} {
+				for _, onew := range []int64{oneWordA.ID, oneWordB.ID} {
+					assert.Less(t, pos[allw], pos[onew], "tasks matching all query words should rank above one-word matches by BM25 relevance")
+				}
+			}
 		}
 	}
 
