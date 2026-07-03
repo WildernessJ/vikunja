@@ -96,6 +96,28 @@ func TestMultiFieldSearchWithTableAlias(t *testing.T) {
 	}
 }
 
+func TestMultiFieldSearchWithBoosts(t *testing.T) {
+	if x == nil {
+		t.Skip("requires initialized database engine")
+	}
+
+	cond := MultiFieldSearchWithBoosts([]string{"title", "description"}, []float64{1.5, 1}, "test", "tasks")
+
+	w := builder.NewWriter()
+	err := cond.WriteTo(w)
+	require.NoError(t, err)
+
+	if isParadeDB() {
+		assert.Equal(t, "(tasks.title ||| ?::pdb.fuzzy(1, t)::pdb.boost(1.5)) OR (tasks.description ||| ?::pdb.fuzzy(1, t))", w.String())
+		assert.Equal(t, []interface{}{"test", "test"}, w.Args())
+	} else {
+		assert.Contains(t, w.String(), "tasks.title")
+		assert.Contains(t, w.String(), "tasks.description")
+		assert.Contains(t, w.String(), "LIKE")
+		assert.Equal(t, []interface{}{"%test%", "%test%"}, w.Args())
+	}
+}
+
 func TestMultiFieldSearchMultiFieldWithTableAlias(t *testing.T) {
 	if x == nil {
 		t.Skip("requires initialized database engine")
