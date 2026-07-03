@@ -141,4 +141,38 @@ func TestTaskSearchRelevanceRanking(t *testing.T) {
 		}
 		assert.Equal(t, allWords.ID, orderedIDs[len(orderedIDs)-1], "the all-words match (lowest id) ranks last under id-desc, proving relevance was not applied")
 	})
+
+	// The all-projects scope appends the Favorites pseudo-project whenever the user
+	// has any favorited task (fixtures give user 1 tasks 1 and 15). Both live in
+	// projects the user can access, so the favorites arm is redundant, gets dropped
+	// and the global search stays relevance-ranked.
+	t.Run("global search with in-scope favorites", func(t *testing.T) {
+		assertRelevanceRanked(t, &TaskCollection{})
+	})
+
+	// Task 13 lives in project 2, which user 1 cannot access: the favorites arm is
+	// load-bearing, so the query keeps it and falls back to unranked ordering
+	// instead of failing with an unsupported-query-shape error on ParadeDB.
+	t.Run("global search with out-of-scope favorite stays unranked", func(t *testing.T) {
+		outOfScopeFavorite := &Favorite{EntityID: 13, UserID: usr.ID, Kind: FavoriteKindTask}
+		_, err := s.Insert(outOfScopeFavorite)
+		require.NoError(t, err)
+		defer func() {
+			_, err := s.Delete(outOfScopeFavorite)
+			require.NoError(t, err)
+		}()
+
+		tc := &TaskCollection{}
+		got, _, _, err := tc.ReadAll(s, usr, "backup server", 1, 50)
+		require.NoError(t, err)
+
+		gotTasks, is := got.([]*Task)
+		require.True(t, is)
+
+		gotIDs := make([]int64, 0, len(gotTasks))
+		for _, tsk := range gotTasks {
+			gotIDs = append(gotIDs, tsk.ID)
+		}
+		require.Contains(t, gotIDs, allWords.ID)
+	})
 }
