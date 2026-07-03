@@ -80,7 +80,7 @@ func TestTaskSearchRelevanceRanking(t *testing.T) {
 	require.NoError(t, lateAllWords.Create(s, usr))
 
 	assertRelevanceRanked := func(t *testing.T, tc *TaskCollection) {
-		got, _, _, err := tc.ReadAll(s, usr, "backup server", 0, 50)
+		got, _, _, err := tc.ReadAll(s, usr, "backup server", 1, 50)
 		require.NoError(t, err)
 
 		gotTasks, is := got.([]*Task)
@@ -140,7 +140,7 @@ func TestTaskSearchRelevanceRanking(t *testing.T) {
 			SortBy:    []string{"id"},
 			OrderBy:   []string{"desc"},
 		}
-		got, _, _, err := tc.ReadAll(s, usr, "backup server", 0, 50)
+		got, _, _, err := tc.ReadAll(s, usr, "backup server", 1, 50)
 		require.NoError(t, err)
 
 		gotTasks, is := got.([]*Task)
