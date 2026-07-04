@@ -42,9 +42,7 @@
 					<span
 						v-if="canEditOrder && project.id > 0 && project.maxPermission !== null && project.maxPermission > PERMISSIONS.READ"
 						class="icon menu-item-icon handle drag-handle"
-						@mousedown.stop
 						@click.stop.prevent
-						@touchstart.stop
 					>
 						<Icon icon="grip-lines" />
 					</span>

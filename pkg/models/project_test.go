@@ -420,6 +420,49 @@ func TestProject_CreateOrUpdate(t *testing.T) {
 				"is_archived": true,
 			}, false)
 		})
+		t.Run("drop into position-exhausted list keeps drop location", func(t *testing.T) {
+			db.LoadAndAssertFixtures(t)
+			s := db.NewSession()
+			defer s.Close()
+
+			// A list reordered many times ends up with sibling positions
+			// crammed below the recalculation threshold.
+			parent := Project{Title: "exhausted-parent"}
+			require.NoError(t, parent.Create(s, usr))
+
+			cA := Project{Title: "a", ParentProjectID: parent.ID}
+			cB := Project{Title: "b", ParentProjectID: parent.ID}
+			cC := Project{Title: "c", ParentProjectID: parent.ID}
+			require.NoError(t, cA.Create(s, usr))
+			require.NoError(t, cB.Create(s, usr))
+			require.NoError(t, cC.Create(s, usr))
+			for id, pos := range map[int64]float64{cA.ID: 0.02, cB.ID: 0.04, cC.ID: 0.06} {
+				_, err := s.ID(id).Cols("position").Update(&Project{Position: pos})
+				require.NoError(t, err)
+			}
+
+			// Drop cC between cA (0.02) and cB (0.04): the client sends the full
+			// project with the midpoint position 0.03, below the recalc threshold.
+			toMove, err := GetProjectSimpleByID(s, cC.ID)
+			require.NoError(t, err)
+			toMove.Position = 0.03
+			can, err := toMove.CanUpdate(s, usr)
+			require.NoError(t, err)
+			require.True(t, can)
+			require.NoError(t, toMove.Update(s, usr))
+			require.NoError(t, s.Commit())
+
+			get := func(id int64) float64 {
+				loaded := Project{}
+				_, err := s.ID(id).Get(&loaded)
+				require.NoError(t, err)
+				return loaded.Position
+			}
+			// Final order must be cA < cC < cB — cC stays where it was dropped
+			// instead of jumping to the top of the list.
+			assert.Less(t, get(cA.ID), get(cC.ID), "cC must not jump above cA")
+			assert.Less(t, get(cC.ID), get(cB.ID), "cC must stay before cB")
+		})
 	})
 }
 

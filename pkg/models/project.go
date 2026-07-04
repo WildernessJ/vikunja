@@ -1218,13 +1218,6 @@ func UpdateProject(s *xorm.Session, project *Project, auth web.Auth, updateProje
 		colsToUpdate = append(colsToUpdate, "background_file_id", "background_blur_hash")
 	}
 
-	if project.Position < 0.1 {
-		err = recalculateProjectPositions(s, project.ParentProjectID)
-		if err != nil {
-			return err
-		}
-	}
-
 	wasFavorite, err := isFavorite(s, project.ID, auth, FavoriteKindProject)
 	if err != nil {
 		return err
@@ -1249,6 +1242,16 @@ func UpdateProject(s *xorm.Session, project *Project, auth web.Auth, updateProje
 		Update(project)
 	if err != nil {
 		return err
+	}
+
+	// Respread sibling positions only after the moved row is persisted, so the
+	// recalculation orders by the new position/parent instead of stamping the
+	// sub-0.1 value back on top (which sent the project to the top of the list).
+	if project.Position < 0.1 {
+		err = recalculateProjectPositions(s, project.ParentProjectID)
+		if err != nil {
+			return err
+		}
 	}
 
 	events.DispatchOnCommit(s, &ProjectUpdatedEvent{

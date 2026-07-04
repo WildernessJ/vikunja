@@ -30,6 +30,13 @@ vi.mock('@/stores/base', () => ({
 	}),
 }))
 
+const projectUpdateMock = vi.fn()
+vi.mock('@/services/project', () => ({
+	default: vi.fn().mockImplementation(() => ({
+		update: projectUpdateMock,
+	})),
+}))
+
 function createMockProject(overrides: Partial<IProject>): IProject {
 	return {
 		id: 1,
@@ -128,6 +135,23 @@ describe('project store', () => {
 			expect(titles).toContain('Root')
 			expect(titles).toContain('Orphaned')
 			expect(titles).not.toContain('Child')
+		})
+	})
+
+	describe('updateProject', () => {
+		it('does not flip isFavorite when the update fails', async () => {
+			const store = useProjectStore()
+			const project = createMockProject({id: 1, isFavorite: true, title: 'Original'})
+			store.setProject(project)
+
+			projectUpdateMock.mockRejectedValueOnce(new Error('network down'))
+
+			await expect(store.updateProject({...project, title: 'Renamed'})).rejects.toThrow()
+
+			// A failed non-favorite update must restore the last-known-good state,
+			// not corrupt the favorite star.
+			expect(store.projects[1].isFavorite).toBe(true)
+			expect(store.projects[1].title).toBe('Original')
 		})
 	})
 

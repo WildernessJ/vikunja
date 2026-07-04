@@ -219,7 +219,8 @@ export const useProjectStore = defineStore('project', () => {
 	async function updateProject(project: IProject) {
 		const cancel = setModuleLoading(setIsLoading)
 		const projectService = new ProjectService()
-		
+		const previous = projects.value[project.id]
+
 		try {
 			const updatedProject = await projectService.update(project)
 			setProject(project)
@@ -228,11 +229,12 @@ export const useProjectStore = defineStore('project', () => {
 			// in order to not create a manipulation in pinia store we have to create a new copy
 			return updatedProject
 		} catch (e) {
-			// Reset the project state to the initial one to avoid confusion for the user
-			setProject({
-				...project,
-				isFavorite: !project.isFavorite,
-			})
+			// Restore the last-known-good state. This previously flipped isFavorite
+			// unconditionally, corrupting the star on any non-favorite update that
+			// failed (e.g. a failed drag reorder).
+			if (previous) {
+				setProject(previous)
+			}
 			throw e
 		} finally {
 			cancel()
