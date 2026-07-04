@@ -53,5 +53,6 @@ devenv.local.nix
 /.claude/settings.local.json
 PLAN.md
 plans/
+docs/context/
 /.crush/
 /.playwright-mcp
