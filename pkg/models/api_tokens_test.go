@@ -176,4 +176,16 @@ func TestAPIToken_GetTokenFromTokenString(t *testing.T) {
 		require.Error(t, err)
 		assert.True(t, IsErrAPITokenInvalid(err))
 	})
+	t.Run("short token does not panic", func(t *testing.T) {
+		s := db.NewSession()
+		defer s.Close()
+		db.LoadAndAssertFixtures(t)
+
+		for _, short := range []string{"", "tk_", "tk"} {
+			_, err := GetTokenFromTokenString(s, short)
+
+			require.Error(t, err)
+			assert.True(t, IsErrAPITokenInvalid(err))
+		}
+	})
 }

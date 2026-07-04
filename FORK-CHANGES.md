@@ -19,6 +19,8 @@ Types: `fix`, `feat`, `chore`, `docs`.
 
 ## Changes
 
+- 2026-07-04 — **fix** — guard `GetTokenFromTokenString` against a panic on short/prefix-only API tokens (unauth DoS); covers the main token middleware, CalDAV, and feeds. Reported upstream.
+
 <!-- Add entries here, newest first. Example:
 - 2026-07-04 — **feat** — add per-project default reminder time ([abc1234](https://github.com/WildernessJ/vikunja/commit/abc1234))
 -->
