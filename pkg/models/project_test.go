@@ -463,6 +463,66 @@ func TestProject_CreateOrUpdate(t *testing.T) {
 			assert.Less(t, get(cA.ID), get(cC.ID), "cC must not jump above cA")
 			assert.Less(t, get(cC.ID), get(cB.ID), "cC must stay before cB")
 		})
+		t.Run("cross-parent drop into position-exhausted list keeps drop location", func(t *testing.T) {
+			db.LoadAndAssertFixtures(t)
+			s := db.NewSession()
+			defer s.Close()
+
+			parentA := Project{Title: "exhausted-parent-a"}
+			parentB := Project{Title: "exhausted-parent-b"}
+			require.NoError(t, parentA.Create(s, usr))
+			require.NoError(t, parentB.Create(s, usr))
+
+			// A holds the project being moved out plus one that must stay put.
+			moved := Project{Title: "moved", ParentProjectID: parentA.ID}
+			aKeep := Project{Title: "a-keep", ParentProjectID: parentA.ID}
+			require.NoError(t, moved.Create(s, usr))
+			require.NoError(t, aKeep.Create(s, usr))
+
+			// B's children have crammed positions near the top.
+			b1 := Project{Title: "b1", ParentProjectID: parentB.ID}
+			b2 := Project{Title: "b2", ParentProjectID: parentB.ID}
+			b3 := Project{Title: "b3", ParentProjectID: parentB.ID}
+			require.NoError(t, b1.Create(s, usr))
+			require.NoError(t, b2.Create(s, usr))
+			require.NoError(t, b3.Create(s, usr))
+			for id, pos := range map[int64]float64{
+				aKeep.ID: 0.04,
+				b1.ID:    0.02, b2.ID: 0.04, b3.ID: 0.06,
+			} {
+				_, err := s.ID(id).Cols("position").Update(&Project{Position: pos})
+				require.NoError(t, err)
+			}
+
+			// Move `moved` from A into B, dropped between b1 (0.02) and b2 (0.04):
+			// midpoint 0.03, below the recalc threshold, under a new parent.
+			toMove, err := GetProjectSimpleByID(s, moved.ID)
+			require.NoError(t, err)
+			toMove.ParentProjectID = parentB.ID
+			toMove.Position = 0.03
+			can, err := toMove.CanUpdate(s, usr)
+			require.NoError(t, err)
+			require.True(t, can)
+			require.NoError(t, toMove.Update(s, usr))
+			require.NoError(t, s.Commit())
+
+			load := func(id int64) *Project {
+				p := &Project{}
+				_, err := s.ID(id).Get(p)
+				require.NoError(t, err)
+				return p
+			}
+			movedRow := load(moved.ID)
+			assert.Equal(t, parentB.ID, movedRow.ParentProjectID, "moved project should be reparented to B")
+			// In B: b1 < moved < b2 < b3 — dropped between b1 and b2, not at the top.
+			assert.Less(t, load(b1.ID).Position, movedRow.Position, "moved must not jump above b1")
+			assert.Less(t, movedRow.Position, load(b2.ID).Position, "moved must stay before b2")
+			assert.Less(t, load(b2.ID).Position, load(b3.ID).Position, "b2 before b3 preserved")
+			// A's untouched child keeps its parent and position (A is not recalculated).
+			aKeepRow := load(aKeep.ID)
+			assert.Equal(t, parentA.ID, aKeepRow.ParentProjectID, "a-keep should remain under A")
+			assert.InDelta(t, 0.04, aKeepRow.Position, 0, "a-keep position should be untouched")
+		})
 	})
 }
 

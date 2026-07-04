@@ -32,9 +32,9 @@ vi.mock('@/stores/base', () => ({
 
 const projectUpdateMock = vi.fn()
 vi.mock('@/services/project', () => ({
-	default: vi.fn().mockImplementation(() => ({
-		update: projectUpdateMock,
-	})),
+	default: class {
+		update = projectUpdateMock
+	},
 }))
 
 function createMockProject(overrides: Partial<IProject>): IProject {
@@ -63,6 +63,7 @@ function createMockProject(overrides: Partial<IProject>): IProject {
 describe('project store', () => {
 	beforeEach(() => {
 		setActivePinia(createPinia())
+		projectUpdateMock.mockReset()
 	})
 
 	describe('notArchivedRootProjects', () => {
@@ -152,6 +153,31 @@ describe('project store', () => {
 			// not corrupt the favorite star.
 			expect(store.projects[1].isFavorite).toBe(true)
 			expect(store.projects[1].title).toBe('Original')
+		})
+
+		it('does not roll back a concurrent successful update when a later one fails', async () => {
+			const store = useProjectStore()
+			const original = createMockProject({id: 1, title: 'Original'})
+			store.setProject(original)
+
+			// First call succeeds; second is left pending so it settles after the first.
+			let rejectSecond: (e: Error) => void = () => {}
+			projectUpdateMock
+				.mockResolvedValueOnce(createMockProject({id: 1, title: 'First'}))
+				.mockImplementationOnce(() => new Promise((_, reject) => {
+					rejectSecond = reject
+				}))
+
+			const p1 = store.updateProject({...original, title: 'First'})
+			const p2 = store.updateProject({...original, title: 'Second'})
+
+			await p1
+			rejectSecond(new Error('network down'))
+			await expect(p2).rejects.toThrow()
+
+			// The failed second call must not revert the store over the first's
+			// committed success.
+			expect(store.projects[1].title).toBe('First')
 		})
 	})
 
