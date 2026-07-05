@@ -111,6 +111,11 @@ const taskAddHovered = useElementHover(taskAdd)
 
 const errorMessage = ref('')
 
+// Synchronous double-submit guard. The store loading flag only flips true after a
+// 100ms debounce (setModuleLoading), so a fast double-Enter within that window would
+// otherwise create two tasks. This ref is set immediately and cleared when the op settles.
+const isSubmitting = ref(false)
+
 function resetEmptyTitleError() {
 	if (!newTaskTitle.value) {
 		errorMessage.value = ''
@@ -126,141 +131,146 @@ async function addTask() {
 	}
 	errorMessage.value = ''
 
-	if (loading.value) {
+	if (isSubmitting.value) {
 		return
 	}
+	isSubmitting.value = true
 
-	const taskTitleBackup = newTaskTitle.value
-	// This allows us to find the tasks with the title they had before being parsed
-	// by quick add magic.
-	const createdTasks: { [key: ITask['title']]: ITask } = {}
-	const tasksToCreate = parseSubtasksViaIndention(newTaskTitle.value, authStore.settings.frontendSettings.quickAddMagicMode)
+	try {
+		const taskTitleBackup = newTaskTitle.value
+		// This allows us to find the tasks with the title they had before being parsed
+		// by quick add magic.
+		const createdTasks: { [key: ITask['title']]: ITask } = {}
+		const tasksToCreate = parseSubtasksViaIndention(newTaskTitle.value, authStore.settings.frontendSettings.quickAddMagicMode)
 
-	// We ensure all labels exist prior to passing them down to the create task method
-	// In the store it will only ever see one task at a time so there's no way to reliably 
-	// check if a new label was created before (because everything happens async).
-	const allLabels = tasksToCreate.map(({title}) => getLabelsFromPrefix(title, authStore.settings.frontendSettings.quickAddMagicMode) ?? [])
-	await taskStore.ensureLabelsExist(allLabels.flat())
+		// We ensure all labels exist prior to passing them down to the create task method
+		// In the store it will only ever see one task at a time so there's no way to reliably 
+		// check if a new label was created before (because everything happens async).
+		const allLabels = tasksToCreate.map(({title}) => getLabelsFromPrefix(title, authStore.settings.frontendSettings.quickAddMagicMode) ?? [])
+		await taskStore.ensureLabelsExist(allLabels.flat())
 
-	const taskCollectionService = new TaskService()
-	const projectIndices = new Map<number, number>()
+		const taskCollectionService = new TaskService()
+		const projectIndices = new Map<number, number>()
 
-	let currentProjectId = authStore.settings.defaultProjectId
-	if (typeof router.currentRoute.value.params.projectId !== 'undefined') {
-		currentProjectId = Number(router.currentRoute.value.params.projectId)
-	}
+		let currentProjectId = authStore.settings.defaultProjectId
+		if (typeof router.currentRoute.value.params.projectId !== 'undefined') {
+			currentProjectId = Number(router.currentRoute.value.params.projectId)
+		}
 
-	// Create a map of project indices before creating tasks
-	if (tasksToCreate.length > 1) {
-		for (const {project} of tasksToCreate) {
+		// Create a map of project indices before creating tasks
+		if (tasksToCreate.length > 1) {
+			for (const {project} of tasksToCreate) {
+				const projectId = project !== null
+					? await taskStore.findProjectId({project, projectId: 0})
+					: currentProjectId
+
+				if (!projectIndices.has(projectId)) {
+					const newestTask = await taskCollectionService.getAll(new TaskModel({}), {
+						sort_by: ['id'],
+						order_by: ['desc'],
+						per_page: 1,
+						filter: `project_id = ${projectId}`,
+					})
+					projectIndices.set(projectId, newestTask[0]?.index || 0)
+				}
+			}
+		}
+
+		const newTasks = tasksToCreate.map(async ({title, project}, index) => {
+			if (title === '') {
+				return
+			}
+
+			// If the task has a project specified, make sure to use it
 			const projectId = project !== null
 				? await taskStore.findProjectId({project, projectId: 0})
 				: currentProjectId
 
-			if (!projectIndices.has(projectId)) {
-				const newestTask = await taskCollectionService.getAll(new TaskModel({}), {
-					sort_by: ['id'],
-					order_by: ['desc'],
-					per_page: 1,
-					filter: `project_id = ${projectId}`,
-				})
-				projectIndices.set(projectId, newestTask[0]?.index || 0)
+			// Calculate new index for this task per project
+			let taskIndex: number | undefined
+			if (tasksToCreate.length > 1) {
+				const lastIndex = projectIndices.get(projectId)
+				taskIndex = lastIndex + index + 1
 			}
-		}
-	}
 
-	const newTasks = tasksToCreate.map(async ({title, project}, index) => {
-		if (title === '') {
-			return
-		}
-
-		// If the task has a project specified, make sure to use it
-		const projectId = project !== null
-			? await taskStore.findProjectId({project, projectId: 0})
-			: currentProjectId
-
-		// Calculate new index for this task per project
-		let taskIndex: number | undefined
-		if (tasksToCreate.length > 1) {
-			const lastIndex = projectIndices.get(projectId)
-			taskIndex = lastIndex + index + 1
-		}
-
-		const task = await taskStore.createNewTask({
-			title,
-			projectId: projectId || authStore.settings.defaultProjectId,
-			position: props.defaultPosition,
-			index: taskIndex,
+			const task = await taskStore.createNewTask({
+				title,
+				projectId: projectId || authStore.settings.defaultProjectId,
+				position: props.defaultPosition,
+				index: taskIndex,
+			})
+			createdTasks[title] = task
+			return task
 		})
-		createdTasks[title] = task
-		return task
-	})
 
-	try {
-		newTaskTitle.value = ''
-		await Promise.all(newTasks)
+		try {
+			newTaskTitle.value = ''
+			await Promise.all(newTasks)
 
-		const taskRelationService = new TaskRelationService()
-		const allParentTasks = tasksToCreate.filter(t => t.parent !== null).map(t => t.parent)
-		const relations = tasksToCreate.map(async t => {
-			const createdTask = createdTasks[t.title]
-			if (typeof createdTask === 'undefined') {
-				return
-			}
+			const taskRelationService = new TaskRelationService()
+			const allParentTasks = tasksToCreate.filter(t => t.parent !== null).map(t => t.parent)
+			const relations = tasksToCreate.map(async t => {
+				const createdTask = createdTasks[t.title]
+				if (typeof createdTask === 'undefined') {
+					return
+				}
 
-			const isParent = allParentTasks.includes(t.title)
-			if (t.parent === null && !isParent) {
-				return
-			}
+				const isParent = allParentTasks.includes(t.title)
+				if (t.parent === null && !isParent) {
+					return
+				}
 
-			const createdParentTask = createdTasks[t.parent]
-			if (typeof createdTask === 'undefined' || typeof createdParentTask === 'undefined') {
-				return
-			}
+				const createdParentTask = createdTasks[t.parent]
+				if (typeof createdTask === 'undefined' || typeof createdParentTask === 'undefined') {
+					return
+				}
 
-			const rel = await taskRelationService.create(new TaskRelationModel({
-				taskId: createdTask.id,
-				otherTaskId: createdParentTask.id,
-				relationKind: RELATION_KIND.PARENTTASK,
-			}))
+				const rel = await taskRelationService.create(new TaskRelationModel({
+					taskId: createdTask.id,
+					otherTaskId: createdParentTask.id,
+					relationKind: RELATION_KIND.PARENTTASK,
+				}))
 			
-			if (typeof createdTask.relatedTasks === 'undefined') {
-				createdTask.relatedTasks = {}
-			}
-			if (typeof createdTask.relatedTasks[RELATION_KIND.PARENTTASK] === 'undefined') {
-				createdTask.relatedTasks[RELATION_KIND.PARENTTASK] = []
-			}
-			createdTask.relatedTasks[RELATION_KIND.PARENTTASK].push({
-				...createdParentTask,
-				relatedTasks: {}, // To avoid endless references
-			})
+				if (typeof createdTask.relatedTasks === 'undefined') {
+					createdTask.relatedTasks = {}
+				}
+				if (typeof createdTask.relatedTasks[RELATION_KIND.PARENTTASK] === 'undefined') {
+					createdTask.relatedTasks[RELATION_KIND.PARENTTASK] = []
+				}
+				createdTask.relatedTasks[RELATION_KIND.PARENTTASK].push({
+					...createdParentTask,
+					relatedTasks: {}, // To avoid endless references
+				})
 
-			if (typeof createdParentTask.relatedTasks === 'undefined') {
-				createdParentTask.relatedTasks = {}
-			}
-			if (typeof createdParentTask.relatedTasks[RELATION_KIND.SUBTASK] === 'undefined') {
-				createdParentTask.relatedTasks[RELATION_KIND.SUBTASK] = []
-			}
-			createdParentTask.relatedTasks[RELATION_KIND.SUBTASK].push({
-				...createdTask,
-				relatedTasks: {}, // To avoid endless references
-			})
+				if (typeof createdParentTask.relatedTasks === 'undefined') {
+					createdParentTask.relatedTasks = {}
+				}
+				if (typeof createdParentTask.relatedTasks[RELATION_KIND.SUBTASK] === 'undefined') {
+					createdParentTask.relatedTasks[RELATION_KIND.SUBTASK] = []
+				}
+				createdParentTask.relatedTasks[RELATION_KIND.SUBTASK].push({
+					...createdTask,
+					relatedTasks: {}, // To avoid endless references
+				})
 
-			return rel
-		})
-		await Promise.all(relations)
+				return rel
+			})
+			await Promise.all(relations)
 		
-		// We're emitting all tasks at once at the end to avoid the same task showing up multiple times
-		Object.values(createdTasks).forEach(task => {
-			emit('taskAdded', task)
-		})
-	} catch (e) {
-		newTaskTitle.value = taskTitleBackup
-		if (e?.message === 'NO_PROJECT') {
-			errorMessage.value = t('project.create.addProjectRequired')
-			return
+			// We're emitting all tasks at once at the end to avoid the same task showing up multiple times
+			Object.values(createdTasks).forEach(task => {
+				emit('taskAdded', task)
+			})
+		} catch (e) {
+			newTaskTitle.value = taskTitleBackup
+			if (e?.message === 'NO_PROJECT') {
+				errorMessage.value = t('project.create.addProjectRequired')
+				return
+			}
+			throw e
 		}
-		throw e
+	} finally {
+		isSubmitting.value = false
 	}
 }
 
