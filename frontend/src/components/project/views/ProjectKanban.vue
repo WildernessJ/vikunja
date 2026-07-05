@@ -320,6 +320,7 @@ import {
 	saveCollapsedBucketState,
 } from '@/helpers/saveCollapsedBucketState'
 import {calculateItemPosition} from '@/helpers/calculateItemPosition'
+import {runBucketMoveWithCountRevert} from '@/helpers/runBucketMoveWithCountRevert'
 
 import {isSavedFilter, useSavedFilter} from '@/services/savedFilter'
 import {useTaskDragToProject} from '@/composables/useTaskDragToProject'
@@ -609,33 +610,44 @@ async function updateTaskPosition(e) {
 	}
 
 	try {
-		const newPosition = new TaskPositionModel({
-			position,
-			projectViewId: props.viewId,
-			taskId: newTask.id,
-		})
-		await taskPositionService.value.update(newPosition)
-		newTask.position = position
-		
-		if(bucketHasChanged) {
-			const updatedTaskBucket = await taskBucketService.value.update(new TaskBucketModel({
-				taskId: newTask.id,
-				bucketId: newTask.bucketId,
+		// The bucket counts were bumped optimistically above. Scope the revert to the
+		// position + bucket-move calls only: the tie-break update below runs after the move is
+		// confirmed server-side, so its failure must not roll back the confirmed bucket state.
+		await runBucketMoveWithCountRevert(async () => {
+			const newPosition = new TaskPositionModel({
+				position,
 				projectViewId: props.viewId,
-				projectId: projectIdWithFallback.value,
-			}))
-			Object.assign(newTask, updatedTaskBucket.task)
-			if (updatedTaskBucket.bucketId !== newTask.bucketId) {
-				kanbanStore.moveTaskToBucket(newTask, updatedTaskBucket.bucketId)
-			}
-			newTask.bucketId = updatedTaskBucket.bucketId
-			if (updatedTaskBucket.bucket) {
-				kanbanStore.setBucketById(updatedTaskBucket.bucket, false)
-			}
-		}
-		kanbanStore.setTaskInBucket(newTask)
+				taskId: newTask.id,
+			})
+			await taskPositionService.value.update(newPosition)
+			newTask.position = position
 
-		// Make sure the first and second task don't both get position 0 assigned
+			if(bucketHasChanged) {
+				const updatedTaskBucket = await taskBucketService.value.update(new TaskBucketModel({
+					taskId: newTask.id,
+					bucketId: newTask.bucketId,
+					projectViewId: props.viewId,
+					projectId: projectIdWithFallback.value,
+				}))
+				Object.assign(newTask, updatedTaskBucket.task)
+				if (updatedTaskBucket.bucketId !== newTask.bucketId) {
+					kanbanStore.moveTaskToBucket(newTask, updatedTaskBucket.bucketId)
+				}
+				newTask.bucketId = updatedTaskBucket.bucketId
+				if (updatedTaskBucket.bucket) {
+					kanbanStore.setBucketById(updatedTaskBucket.bucket, false)
+				}
+			}
+			kanbanStore.setTaskInBucket(newTask)
+		}, {
+			bucketHasChanged,
+			oldBucket,
+			newBucket,
+			setBucketById: bucket => kanbanStore.setBucketById(bucket),
+		})
+
+		// Make sure the first and second task don't both get position 0 assigned. This updates a
+		// DIFFERENT task and runs outside the revert scope above on purpose.
 		if (newTaskIndex === 0 && taskAfter !== null && taskAfter.position === 0) {
 			const taskAfterAfter = newBucket.tasks[newTaskIndex + 2] ?? null
 			const newTaskAfter = klona(taskAfter) // cloning the task to avoid pinia store manipulation
@@ -647,14 +659,6 @@ async function updateTaskPosition(e) {
 
 			await taskStore.update(newTaskAfter)
 		}
-	} catch (e) {
-		// The bucket counts were decremented/incremented optimistically above. If the
-		// position or bucket update failed, restore both buckets to their prior counts.
-		if (bucketHasChanged && oldBucket !== undefined) {
-			kanbanStore.setBucketById(oldBucket)
-			kanbanStore.setBucketById(newBucket)
-		}
-		throw e
 	} finally {
 		taskUpdating.value[task.id] = false
 		oneTaskUpdating.value = false
