@@ -93,9 +93,11 @@ watch(
 
 // TaskDetailView reuses this component instance across task navigation, so
 // without resetting the flag `preloadUsers` would keep showing the previous
-// project's members on first focus.
+// project's members on first focus. The candidate list is per-project, so only a
+// project change must invalidate it; navigating between tasks in the same project
+// keeps the already-fetched members and avoids a redundant refetch.
 watch(
-	() => [props.taskId, props.projectId],
+	() => props.projectId,
 	() => {
 		hasPreloaded = false
 		foundUsers.value = []
@@ -130,7 +132,15 @@ async function removeAssignee(user: IUser) {
 }
 
 async function findUser(query = '') {
-	const response = await projectUserService.getAll({projectId: props.projectId}, {s: query}) as IUser[]
+	// Snapshot the project before awaiting: if the user navigates to another
+	// project mid-flight, drop this response so it can't repopulate the list with
+	// the previous project's members after the navigation reset.
+	const requestProjectId = props.projectId
+	const response = await projectUserService.getAll({projectId: requestProjectId}, {s: query}) as IUser[]
+
+	if (requestProjectId !== props.projectId) {
+		return
+	}
 
 	const currentUserId = authStore.info?.id
 
