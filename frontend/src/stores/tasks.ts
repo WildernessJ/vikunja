@@ -560,12 +560,18 @@ export const useTaskStore = defineStore('task', () => {
 	
 	async function toggleFavorite(task: ITask) {
 		const taskService = new TaskService()
+		const wasFavorite = task.isFavorite
 		task.isFavorite = !task.isFavorite
-		task = await taskService.update(task)
-		
+		try {
+			task = await taskService.update(task)
+		} catch (e) {
+			task.isFavorite = wasFavorite
+			throw e
+		}
+
 		// reloading the projects list so that the Favorites project shows up or is hidden when there are (or are not) favorite tasks
-		await projectStore.loadAllProjects() 
-		
+		await projectStore.loadAllProjects()
+
 		return task
 	}
 
