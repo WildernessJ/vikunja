@@ -76,6 +76,46 @@ func (b *TaskBucket) upsert(s *xorm.Session) (err error) {
 	return
 }
 
+// resolveBucketWithCount loads the bucket, enforces its task limit for the given
+// task, and returns it with its real (pre-insert) count populated.
+func resolveBucketWithCount(s *xorm.Session, a web.Auth, task *Task, bucketID int64) (*Bucket, error) {
+	bucket, err := getBucketByID(s, bucketID)
+	if err != nil {
+		return nil, err
+	}
+	taskCount, err := checkBucketLimit(s, a, task, bucket)
+	if err != nil {
+		return nil, err
+	}
+	bucket.Count = taskCount
+	return bucket, nil
+}
+
+// syncTaskIntoOtherDoneBuckets places a newly-done task into the done bucket of
+// every other manual kanban view of its project, so its done state is reflected
+// everywhere.
+func syncTaskIntoOtherDoneBuckets(s *xorm.Session, view *ProjectView, task *Task) (err error) {
+	viewsWithDoneBucket := []*ProjectView{}
+	err = s.
+		Where("project_id = ? AND view_kind = ? AND bucket_configuration_mode = ? AND id != ? AND done_bucket_id != 0",
+			view.ProjectID, ProjectViewKindKanban, BucketConfigurationModeManual, view.ID).
+		Find(&viewsWithDoneBucket)
+	if err != nil {
+		return err
+	}
+	for _, v := range viewsWithDoneBucket {
+		newBucket := &TaskBucket{
+			TaskID:        task.ID,
+			ProjectViewID: v.ID,
+			BucketID:      v.DoneBucketID,
+		}
+		if err = newBucket.upsert(s); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // updateTaskBucket is internally used to actually do the update.
 func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 	oldTaskBucket := &TaskBucket{}
@@ -186,25 +226,20 @@ func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 
 		// Since the done state of the task was changed, we need to move the task into all done buckets everywhere
 		if task.Done {
-			viewsWithDoneBucket := []*ProjectView{}
-			err = s.
-				Where("project_id = ? AND view_kind = ? AND bucket_configuration_mode = ? AND id != ? AND done_bucket_id != 0",
-					view.ProjectID, ProjectViewKindKanban, BucketConfigurationModeManual, view.ID).
-				Find(&viewsWithDoneBucket)
-			if err != nil {
-				return
+			if err = syncTaskIntoOtherDoneBuckets(s, view, task); err != nil {
+				return err
 			}
-			for _, v := range viewsWithDoneBucket {
-				newBucket := &TaskBucket{
-					TaskID:        task.ID,
-					ProjectViewID: v.ID,
-					BucketID:      v.DoneBucketID,
-				}
-				err = newBucket.upsert(s)
-				if err != nil {
-					return
-				}
-			}
+		}
+	}
+
+	// The done-state handling above can reroute a repeating task to the view's
+	// default bucket. The earlier limit check ran against the originally
+	// requested (done) bucket, so re-resolve the real destination, enforce its
+	// limit, and report its true count instead of the done bucket's.
+	if updateBucket && b.BucketID != bucket.ID {
+		bucket, err = resolveBucketWithCount(s, a, task, b.BucketID)
+		if err != nil {
+			return err
 		}
 	}
 
