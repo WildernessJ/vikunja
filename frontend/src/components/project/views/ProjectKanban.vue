@@ -113,7 +113,8 @@
 											}}
 										</DropdownItem>
 										<DropdownItem
-											v-tooltip="$t('project.kanban.doneBucketHintExtended')"
+											v-tooltip="bucketRoleToggleDisabled(bucket, view, 'done') ? $t('project.kanban.doneBucketDisabledIsDefault') : $t('project.kanban.doneBucketHintExtended')"
+											:class="{'is-disabled': bucketRoleToggleDisabled(bucket, view, 'done')}"
 											:icon-class="{'has-text-success': bucket.id === view?.doneBucketId}"
 											icon="check-double"
 											@click.stop="toggleDoneBucket(bucket)"
@@ -121,7 +122,8 @@
 											{{ $t('project.kanban.doneBucket') }}
 										</DropdownItem>
 										<DropdownItem
-											v-tooltip="$t('project.kanban.defaultBucketHint')"
+											v-tooltip="bucketRoleToggleDisabled(bucket, view, 'default') ? $t('project.kanban.defaultBucketDisabledIsDone') : $t('project.kanban.defaultBucketHint')"
+											:class="{'is-disabled': bucketRoleToggleDisabled(bucket, view, 'default')}"
 											:icon-class="{'has-text-primary': bucket.id === view?.defaultBucketId}"
 											icon="th"
 											@click.stop="toggleDefaultBucket(bucket)"
@@ -321,6 +323,7 @@ import {
 } from '@/helpers/saveCollapsedBucketState'
 import {calculateItemPosition} from '@/helpers/calculateItemPosition'
 import {runBucketMoveWithCountRevert} from '@/helpers/runBucketMoveWithCountRevert'
+import {bucketRoleToggleDisabled} from '@/helpers/bucketRoleToggle'
 
 import {isSavedFilter, useSavedFilter} from '@/services/savedFilter'
 import {useTaskDragToProject} from '@/composables/useTaskDragToProject'
@@ -866,6 +869,10 @@ function handleTaskDragStart(e) {
 }
 
 async function toggleDefaultBucket(bucket: IBucket) {
+	if (bucketRoleToggleDisabled(bucket, view.value, 'default')) {
+		return
+	}
+
 	const defaultBucketId = view.value?.defaultBucketId === bucket.id
 		? 0
 		: bucket.id
@@ -888,6 +895,10 @@ async function toggleDefaultBucket(bucket: IBucket) {
 }
 
 async function toggleDoneBucket(bucket: IBucket) {
+	if (bucketRoleToggleDisabled(bucket, view.value, 'done')) {
+		return
+	}
+
 	const doneBucketId = view.value?.doneBucketId === bucket.id
 		? 0
 		: bucket.id
