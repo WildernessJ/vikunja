@@ -5,6 +5,7 @@ const {
 	ipcMain,
 	Menu,
 	nativeImage,
+	nativeTheme,
 	shell,
 	Tray,
 	screen,
@@ -512,6 +513,22 @@ ipcMain.on('desktop:update-quick-entry-shortcut', (_event, shortcut) => {
 
 // ─── App lifecycle ───────────────────────────────────────────────────
 app.whenReady().then(() => {
+	// macOS ignores BrowserWindow's icon option and uses the bundle/dock icon,
+	// which in an unpackaged dev run is Electron's own. Set it explicitly so the
+	// dev dock icon matches the packaged app (electron-builder uses build/icon.icns).
+	if (process.platform === 'darwin') {
+		// macOS ignores BrowserWindow's icon option and uses the dock icon, which in
+		// an unpackaged dev run is Electron's own. The icon-dock-*.png tiles inset the
+		// llama on a rounded square to match macOS sizing; icon.png stays full-bleed
+		// for the tray/Linux window. Swap the tile to match the system theme live.
+		const applyDockIcon = () => {
+			const tile = nativeTheme.shouldUseDarkColors ? 'icon-dock-dark.png' : 'icon-dock-light.png'
+			app.dock.setIcon(nativeImage.createFromPath(path.join(__dirname, tile)))
+		}
+		applyDockIcon()
+		nativeTheme.on('updated', applyDockIcon)
+	}
+
 	zoomLevel = loadZoomLevel()
 
 	startServer(() => {
