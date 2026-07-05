@@ -97,26 +97,26 @@ test.describe('The project sidebar count badges', () => {
 
 	test('never shows a badge on the Favorites pseudo-project', async ({authenticatedPage: page, apiContext, currentUser, userToken}) => {
 		const project = await seedProjectWithCounts(currentUser.id, 'Count Project')
+		// The Favorites pseudo-project (id -1) is returned by GET /projects only
+		// once the user has a favorite *task* — favoriting a project merely
+		// re-lists that real project (keeping its real id and badge). Task id 1
+		// is one of the tasks seeded by seedProjectWithCounts. kind 1 == FavoriteKindTask.
+		await TaskFactory.seed('favorites', [{
+			entity_id: 1,
+			user_id: currentUser.id,
+			kind: 1,
+		}], false)
 		await updateUserSettings(apiContext, userToken, {
 			frontendSettings: {projectSidebarCount: 'all'},
 		})
 
 		await page.goto('/')
+		// The real project badge confirms badges are enabled for this run.
 		await expect(page.locator(`[data-project-id="${project.id}"] .count-badge`)).toHaveText(OPEN_COUNT, {timeout: 10000})
-
-		// Favoriting a project makes the Favorites pseudo-project (id -1) appear.
-		const projectRow = page.locator(`[data-project-id="${project.id}"]`).first()
-		await projectRow.hover()
-		const favoritePromise = page.waitForResponse(response =>
-			response.url().includes(`/projects/${project.id}`) && response.request().method() === 'POST',
-		)
-		await projectRow.locator('.favorite').first().click()
-		await favoritePromise
 
 		const favoritesRow = page.locator('[data-project-id="-1"]')
 		await expect(favoritesRow).toBeVisible()
-		// Scope to the pseudo-project's own row, not its favorited children.
-		await expect(favoritesRow.locator('> .navigation-item .count-badge')).toHaveCount(0)
+		await expect(favoritesRow.locator('.count-badge')).toHaveCount(0)
 	})
 
 	test('persists and applies the setting changed via General settings', async ({authenticatedPage: page, currentUser}) => {
