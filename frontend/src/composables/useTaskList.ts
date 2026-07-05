@@ -225,17 +225,33 @@ export function useTaskList(
 
 	const taskCollectionService = shallowReactive(new TaskCollectionService())
 	const loading = computed(() => taskCollectionService.loading)
-	const totalPages = computed(() => taskCollectionService.totalPages)
+
+	// Pagination is read off the shared service, which `getAll` overwrites on every
+	// response. Snapshot it into composable state under the same request-id guard as
+	// `tasks` so a stale earlier response can't clobber the newest request's page count.
+	const totalPages = ref(0)
 
 	const tasks = ref<ITask[]>([])
+	// Monotonic request id. Switching projects fires overlapping loads; a slower
+	// earlier request must not overwrite the newest project's tasks when it lands
+	// last, so we drop any response that isn't from the most recent call.
+	let latestRequestId = 0
 	async function loadTasks(resetBeforeLoad: boolean = true) {
 		if(resetBeforeLoad) {
 			tasks.value = []
 		}
+		const requestId = ++latestRequestId
 		try {
-			tasks.value = await taskCollectionService.getAll(...getAllTasksParams.value)
+			const loadedTasks = await taskCollectionService.getAll(...getAllTasksParams.value)
+			if (requestId !== latestRequestId) {
+				return tasks.value
+			}
+			tasks.value = loadedTasks
+			totalPages.value = taskCollectionService.totalPages
 		} catch (e) {
-			error(e)
+			if (requestId === latestRequestId) {
+				error(e)
+			}
 		}
 		return tasks.value
 	}
