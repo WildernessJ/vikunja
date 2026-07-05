@@ -47,7 +47,8 @@ func setupProjectViewsEngine20260705180638(t *testing.T) *xorm.Engine {
 		(1, 5, 5),
 		(2, 3, 4),
 		(3, 0, 4),
-		(4, NULL, NULL)`)
+		(4, NULL, NULL),
+		(5, 7, NULL)`)
 	if err != nil {
 		t.Fatalf("could not insert fixtures: %v", err)
 	}
@@ -74,6 +75,17 @@ func TestNormalizeProjectViewDoneBucket20260705180638(t *testing.T) {
 	if err := migrate(engine); err != nil {
 		t.Fatalf("migration failed: %v", err)
 	}
+	assertProjectViewState20260705180638(t, engine, "after first run")
+
+	// Re-running must be a no-op: no error and byte-for-byte identical state.
+	if err := migrate(engine); err != nil {
+		t.Fatalf("re-running migration failed: %v", err)
+	}
+	assertProjectViewState20260705180638(t, engine, "after second run")
+}
+
+func assertProjectViewState20260705180638(t *testing.T, engine *xorm.Engine, when string) {
+	t.Helper()
 
 	type row struct {
 		ID              int64  `xorm:"id"`
@@ -82,30 +94,36 @@ func TestNormalizeProjectViewDoneBucket20260705180638(t *testing.T) {
 	}
 	var rows []row
 	if err := engine.SQL("SELECT id, done_bucket_id, default_bucket_id FROM project_views ORDER BY id").Find(&rows); err != nil {
-		t.Fatalf("could not read rows back: %v", err)
+		t.Fatalf("%s: could not read rows back: %v", when, err)
 	}
-	if len(rows) != 4 {
-		t.Fatalf("expected 4 rows, got %d", len(rows))
+	if len(rows) != 5 {
+		t.Fatalf("%s: expected 5 rows, got %d", when, len(rows))
 	}
 
+	// Row 1: done == default (nonzero) → done cleared to 0, default preserved.
 	if rows[0].DoneBucketID == nil || *rows[0].DoneBucketID != 0 {
-		t.Errorf("row 1: done_bucket_id should be cleared to 0, got %v", rows[0].DoneBucketID)
+		t.Errorf("%s row 1: done_bucket_id should be cleared to 0, got %v", when, rows[0].DoneBucketID)
 	}
 	if rows[0].DefaultBucketID == nil || *rows[0].DefaultBucketID != 5 {
-		t.Errorf("row 1: default_bucket_id must stay 5, got %v", rows[0].DefaultBucketID)
+		t.Errorf("%s row 1: default_bucket_id must stay 5, got %v", when, rows[0].DefaultBucketID)
 	}
+	// Row 2: distinct buckets → untouched.
 	if rows[1].DoneBucketID == nil || *rows[1].DoneBucketID != 3 {
-		t.Errorf("row 2: distinct done bucket must be untouched, got %v", rows[1].DoneBucketID)
+		t.Errorf("%s row 2: distinct done bucket must be untouched, got %v", when, rows[1].DoneBucketID)
 	}
+	// Row 3: already-zero done → stays 0.
 	if rows[2].DoneBucketID == nil || *rows[2].DoneBucketID != 0 {
-		t.Errorf("row 3: zero done bucket must stay 0, got %v", rows[2].DoneBucketID)
+		t.Errorf("%s row 3: zero done bucket must stay 0, got %v", when, rows[2].DoneBucketID)
 	}
+	// Row 4: NULL/NULL → untouched.
 	if rows[3].DoneBucketID != nil {
-		t.Errorf("row 4: NULL done bucket must stay NULL, got %v", *rows[3].DoneBucketID)
+		t.Errorf("%s row 4: NULL done bucket must stay NULL, got %v", when, *rows[3].DoneBucketID)
 	}
-
-	// Re-running must be a no-op.
-	if err := migrate(engine); err != nil {
-		t.Fatalf("re-running migration failed: %v", err)
+	// Row 5: non-null done, NULL default → `done = NULL` is NULL (not true), so untouched.
+	if rows[4].DoneBucketID == nil || *rows[4].DoneBucketID != 7 {
+		t.Errorf("%s row 5: done bucket with NULL default must be untouched (7), got %v", when, rows[4].DoneBucketID)
+	}
+	if rows[4].DefaultBucketID != nil {
+		t.Errorf("%s row 5: default_bucket_id must stay NULL, got %v", when, *rows[4].DefaultBucketID)
 	}
 }
