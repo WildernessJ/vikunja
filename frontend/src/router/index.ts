@@ -5,6 +5,7 @@ import {saveLastVisited} from '@/helpers/saveLastVisited'
 import {getProjectViewId} from '@/helpers/projectView'
 import {parseDateOrString} from '@/helpers/time/parseDateOrString'
 import {getNextWeekDate} from '@/helpers/time/getNextWeekDate'
+import {getStartOfTomorrowInTimezone} from '@/helpers/time/startOfTomorrow'
 import {LINK_SHARE_HASH_PREFIX} from '@/constants/linkShareHash'
 import {REDIRECT_HASH_PREFIX} from '@/constants/redirectHash'
 import {AUTH_ROUTE_NAMES} from '@/constants/authRouteNames'
@@ -223,6 +224,21 @@ const router = createRouter({
 				dateTo: parseDateOrString(route.query.to as string, getNextWeekDate()),
 				showNulls: route.query.showNulls === 'true',
 				showOverdue: route.query.showOverdue === 'true',
+			}),
+		},
+		{
+			path: '/tasks/today',
+			name: 'tasks.today',
+			component: UpcomingTasks,
+			// dateFrom is an inert placeholder: ShowTasks lists *all* undone tasks
+			// unless both bounds are set, and with showOverdue the lower bound is
+			// ignored. dateTo is start-of-tomorrow in the account timezone so the
+			// `due_date < dateTo` filter matches the backend's overdue+today cutoff.
+			props: () => ({
+				dateFrom: new Date(),
+				dateTo: getStartOfTomorrowInTimezone(useAuthStore().settings.timezone),
+				showNulls: false,
+				showOverdue: true,
 			}),
 		},
 		{
