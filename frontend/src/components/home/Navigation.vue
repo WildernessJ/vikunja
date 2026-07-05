@@ -40,6 +40,18 @@
 				</li>
 				<li>
 					<RouterLink
+						v-shortcut="'KeyG KeyT'"
+						:to="{ name: 'tasks.today'}"
+					>
+						<span class="menu-item-icon icon">
+							<Icon :icon="['far', 'sun']" />
+						</span>
+						{{ $t('navigation.today') }}
+						<CountBadge :count="projectCountsStore.todayTotal" />
+					</RouterLink>
+				</li>
+				<li>
+					<RouterLink
 						v-shortcut="'KeyG KeyP'"
 						:to="{ name: 'projects.index'}"
 					>
@@ -133,15 +145,17 @@
 </template>
 
 <script setup lang="ts">
-import {computed} from 'vue'
+import {computed, onMounted} from 'vue'
 
 import PoweredByLink from '@/components/home/PoweredByLink.vue'
 import Logo from '@/components/home/Logo.vue'
 import Loading from '@/components/misc/Loading.vue'
+import CountBadge from '@/components/misc/CountBadge.vue'
 
 import {useBaseStore} from '@/stores/base'
 import {useProjectStore} from '@/stores/projects'
 import {useConfigStore} from '@/stores/config'
+import {useProjectCountsStore} from '@/stores/projectCounts'
 import {PRO_FEATURE} from '@/constants/proFeatures'
 import ProjectsNavigation from '@/components/home/ProjectsNavigation.vue'
 import type {IProject} from '@/modelTypes/IProject'
@@ -150,6 +164,11 @@ import {useSidebarResize} from '@/composables/useSidebarResize'
 const baseStore = useBaseStore()
 const projectStore = useProjectStore()
 const configStore = useConfigStore()
+const projectCountsStore = useProjectCountsStore()
+
+onMounted(() => {
+	projectCountsStore.loadCounts()
+})
 
 const timeTrackingEnabled = computed(() => configStore.isProFeatureEnabled(PRO_FEATURE.TIME_TRACKING))
 

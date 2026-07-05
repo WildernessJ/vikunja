@@ -48,6 +48,10 @@
 					</span>
 				</div>
 				<span class="project-menu-title">{{ getProjectTitle(project) }}</span>
+				<CountBadge
+					v-if="showSidebarCount"
+					:count="sidebarCount"
+				/>
 			</BaseButton>
 			<BaseButton
 				v-if="canToggleFavorite"
@@ -91,6 +95,8 @@ import {computed, ref, onUnmounted, watch} from 'vue'
 import {useProjectStore} from '@/stores/projects'
 import {useBaseStore} from '@/stores/base'
 import {useTaskStore} from '@/stores/tasks'
+import {useProjectCountsStore} from '@/stores/projectCounts'
+import {useAuthStore} from '@/stores/auth'
 import {useStorage} from '@vueuse/core'
 
 import type {IProject} from '@/modelTypes/IProject'
@@ -99,6 +105,7 @@ import BaseButton from '@/components/base/BaseButton.vue'
 import ProjectSettingsDropdown from '@/components/project/ProjectSettingsDropdown.vue'
 import {getProjectTitle} from '@/helpers/getProjectTitle'
 import ColorBubble from '@/components/misc/ColorBubble.vue'
+import CountBadge from '@/components/misc/CountBadge.vue'
 import ProjectsNavigation from '@/components/home/ProjectsNavigation.vue'
 import {PERMISSIONS} from '@/constants/permissions'
 import {isSavedFilter} from '@/services/savedFilter'
@@ -162,6 +169,22 @@ const isDropTarget = computed(() => {
 const projectStore = useProjectStore()
 const baseStore = useBaseStore()
 const currentProject = computed(() => baseStore.currentProject)
+
+const authStore = useAuthStore()
+const projectCountsStore = useProjectCountsStore()
+
+// Pseudo-projects (Favorites at id -1, saved filters below -1) must never show a count badge.
+const showSidebarCount = computed(() =>
+	authStore.settings.frontendSettings.projectSidebarCount !== 'none'
+	&& props.project.id > 0,
+)
+
+const sidebarCount = computed(() => {
+	const count = projectCountsStore.getForProject(props.project.id)
+	return authStore.settings.frontendSettings.projectSidebarCount === 'dueOverdue'
+		? count?.dueOverdue ?? 0
+		: count?.open ?? 0
+})
 
 // Persist open state across browser reloads. Using a separate ref for the state 
 // allows us to use only one entry in local storage instead of one for every project id.

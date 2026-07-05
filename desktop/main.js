@@ -511,6 +511,16 @@ ipcMain.on('desktop:update-quick-entry-shortcut', (_event, shortcut) => {
 	}
 })
 
+ipcMain.on('desktop:set-badge-count', (_event, count) => {
+	const n = Number(count) || 0
+	app.setBadgeCount(n)
+	// setBadgeCount alone does not render a numeric macOS dock badge; set the
+	// dock label explicitly (empty string clears it).
+	if (process.platform === 'darwin' && app.dock) {
+		app.dock.setBadge(n > 0 ? String(n) : '')
+	}
+})
+
 // ─── App lifecycle ───────────────────────────────────────────────────
 app.whenReady().then(() => {
 	// macOS ignores BrowserWindow's icon option and uses the bundle/dock icon,

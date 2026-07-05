@@ -68,6 +68,7 @@ import AddToHomeScreen from '@/components/home/AddToHomeScreen.vue'
 import DemoMode from '@/components/home/DemoMode.vue'
 import {AUTH_ROUTE_NAMES} from '@/constants/authRouteNames'
 import {useQuickAddMode} from '@/composables/useQuickAddMode'
+import {useAppBadge} from '@/composables/useAppBadge'
 
 const importAccountDeleteService = () => import('@/services/accountDelete')
 import {success} from '@/message'
@@ -88,6 +89,7 @@ const route = useRoute()
 const showAuthLayout = computed(() => authStore.authUser && typeof route.name === 'string' && !AUTH_ROUTE_NAMES.has(route.name))
 
 useBodyClass('is-touch', isTouchDevice())
+useAppBadge()
 const keyboardShortcutsActive = computed(() => baseStore.keyboardShortcutsActive)
 
 const {t} = useI18n({useScope: 'global'})

@@ -24,6 +24,7 @@ export interface IFrontendSettings {
 	backgroundBrightness: number | null
 	alwaysShowBucketTaskCount: boolean
 	showLastViewed: boolean
+	projectSidebarCount: 'none' | 'dueOverdue' | 'all'
 	sidebarWidth: number | null
 	commentSortOrder: 'asc' | 'desc'
 	desktopQuickEntryShortcut: string

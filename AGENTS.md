@@ -302,3 +302,7 @@ The license system in `pkg/license/` funds Vikunja's ongoing development. Vikunj
 - Event listeners in `pkg/*/listeners.go` must be registered properly
 - CORS settings in backend must allow frontend domain
 - API tokens have different scopes - check permissions carefully
+
+## Harness
+
+This project uses the harness. Always read `.harness.yaml` before any spec/plan/build/verify operation.

@@ -31,6 +31,7 @@ import {useConfigStore} from '@/stores/config'
 import {useLabelStore} from '@/stores/labels'
 import {useProjectStore} from '@/stores/projects'
 import {useKanbanStore} from '@/stores/kanban'
+import {useProjectCountsStore} from '@/stores/projectCounts'
 import {useBaseStore} from '@/stores/base'
 import ProjectUserService from '@/services/projectUsers'
 import {useAuthStore} from '@/stores/auth'
@@ -145,6 +146,11 @@ async function findAssignees(parsedTaskAssignees: string[], projectId: number): 
 export const useTaskStore = defineStore('task', () => {
 	const baseStore = useBaseStore()
 	const kanbanStore = useKanbanStore()
+	// Sidebar/Today count refresh is wired into this store's create/update/delete
+	// only. Call sites that hit taskService directly (e.g. DeferTask) won't
+	// refresh the badges immediately; they self-heal on the next store mutation
+	// or reload. Known, accepted gap.
+	const projectCountsStore = useProjectCountsStore()
 	const labelStore = useLabelStore()
 	const projectStore = useProjectStore()
 	const authStore = useAuthStore()
@@ -204,6 +210,9 @@ export const useTaskStore = defineStore('task', () => {
 			const updatedTask = await taskService.update(task)
 			kanbanStore.ensureTaskIsInCorrectBucket(updatedTask)
 			lastUpdatedTask.value = updatedTask
+			// Keep the sidebar/Today badges current after done-toggles and
+			// due-date edits. Fire-and-forget so it never blocks the update.
+			void projectCountsStore.loadCounts()
 			return updatedTask
 		} finally {
 			cancel()
@@ -214,6 +223,7 @@ export const useTaskStore = defineStore('task', () => {
 		const taskService = new TaskService()
 		const response = await taskService.delete(task)
 		kanbanStore.removeTaskInBucket(task)
+		void projectCountsStore.loadCounts()
 		return response
 	}
 
@@ -531,6 +541,7 @@ export const useTaskStore = defineStore('task', () => {
 		const taskService = new TaskService()
 		try {
 			const createdTask = await taskService.create(task)
+			void projectCountsStore.loadCounts()
 			return await addLabelsToTask({
 				task: createdTask,
 				parsedLabels: parsedTask.labels,
