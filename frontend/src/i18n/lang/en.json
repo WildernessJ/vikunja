@@ -512,6 +512,8 @@
       "defaultBucket": "Default bucket",
       "defaultBucketHint": "When creating tasks without specifying a bucket, they will be added to this bucket.",
       "defaultBucketSavedSuccess": "The default bucket has been saved successfully.",
+      "doneBucketDisabledIsDefault": "This bucket is already the default bucket. A bucket can't be both the default and the done bucket.",
+      "defaultBucketDisabledIsDone": "This bucket is already the done bucket. A bucket can't be both the default and the done bucket.",
       "deleteLast": "You cannot remove the last bucket.",
       "addTaskPlaceholder": "Enter the new task title…",
       "addTask": "Add a task",
