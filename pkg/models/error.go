@@ -563,6 +563,35 @@ func (err *ErrProjectHasNoBackground) HTTPError() web.HTTPError {
 	}
 }
 
+// ErrProjectViewDefaultBucketEqualsDoneBucket represents an error where a project
+// view is configured with the same bucket as both its default and done bucket.
+type ErrProjectViewDefaultBucketEqualsDoneBucket struct {
+	ProjectViewID int64
+	BucketID      int64
+}
+
+// IsErrProjectViewDefaultBucketEqualsDoneBucket checks if an error is ErrProjectViewDefaultBucketEqualsDoneBucket.
+func IsErrProjectViewDefaultBucketEqualsDoneBucket(err error) bool {
+	_, ok := err.(*ErrProjectViewDefaultBucketEqualsDoneBucket)
+	return ok
+}
+
+func (err *ErrProjectViewDefaultBucketEqualsDoneBucket) Error() string {
+	return fmt.Sprintf("Project view default and done bucket cannot be the same [ProjectViewID: %d, BucketID: %d]", err.ProjectViewID, err.BucketID)
+}
+
+// ErrCodeProjectViewDefaultBucketEqualsDoneBucket holds the unique world-error code of this error
+const ErrCodeProjectViewDefaultBucketEqualsDoneBucket = 3016
+
+// HTTPError holds the http error description
+func (err *ErrProjectViewDefaultBucketEqualsDoneBucket) HTTPError() web.HTTPError {
+	return web.HTTPError{
+		HTTPCode: http.StatusBadRequest,
+		Code:     ErrCodeProjectViewDefaultBucketEqualsDoneBucket,
+		Message:  "The default bucket and the done bucket of a view cannot be the same bucket.",
+	}
+}
+
 // ==============
 // Task errors
 // ==============

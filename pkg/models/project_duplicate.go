@@ -237,7 +237,9 @@ func duplicateViews(s *xorm.Session, pd *ProjectDuplicate, doer web.Auth, taskMa
 		}
 
 		if view.DefaultBucketID != 0 || view.DoneBucketID != 0 {
-			err = view.Update(s, doer)
+			// Internal faithful copy: skip the default==done bucket check so legacy
+			// pre-existing views still duplicate. Normalizing such rows is a deferred migration.
+			err = updateProjectView(s, view)
 			if err != nil {
 				return err
 			}

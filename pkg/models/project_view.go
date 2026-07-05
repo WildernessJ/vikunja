@@ -306,7 +306,25 @@ func (pv *ProjectView) Delete(s *xorm.Session, _ web.Auth) (err error) {
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /projects/{project}/views [put]
 func (pv *ProjectView) Create(s *xorm.Session, a web.Auth) (err error) {
+	if err = pv.checkBucketConfiguration(); err != nil {
+		return
+	}
 	return createProjectView(s, pv, a, true, true)
+}
+
+// checkBucketConfiguration rejects a view whose default and done bucket are the
+// same bucket. Such a config lets a repeating task be dropped into a full bucket
+// with no limit ever enforced (the done-state reroute lands it right back in the
+// same bucket), so the bucket-limit relaxation for repeating tasks depends on the
+// two buckets being distinct.
+func (pv *ProjectView) checkBucketConfiguration() error {
+	if pv.DoneBucketID != 0 && pv.DoneBucketID == pv.DefaultBucketID {
+		return &ErrProjectViewDefaultBucketEqualsDoneBucket{
+			ProjectViewID: pv.ID,
+			BucketID:      pv.DoneBucketID,
+		}
+	}
+	return nil
 }
 
 func createProjectView(s *xorm.Session, p *ProjectView, a web.Auth, createBacklogBucket bool, addExistingTasksToView bool) (err error) {
@@ -441,6 +459,14 @@ func addTasksToView(s *xorm.Session, a web.Auth, pv *ProjectView, b *Bucket) (er
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /projects/{project}/views/{id} [post]
 func (pv *ProjectView) Update(s *xorm.Session, _ web.Auth) (err error) {
+	if err = pv.checkBucketConfiguration(); err != nil {
+		return
+	}
+
+	return updateProjectView(s, pv)
+}
+
+func updateProjectView(s *xorm.Session, pv *ProjectView) (err error) {
 	if pv.Filter != nil && pv.Filter.Filter != "" {
 		_, err = getTaskFiltersFromFilterString(pv.Filter.Filter, pv.Filter.FilterTimezone)
 		if err != nil {

@@ -139,6 +139,22 @@ func syncTaskIntoOtherDoneBuckets(s *xorm.Session, view *ProjectView, task *Task
 	return nil
 }
 
+// repeatingTaskPassesThroughDoneBucket reports whether marking this repeating
+// task done only transits the requested done bucket before the done-state
+// handling reroutes it to the view's default bucket. In that case the task never
+// occupies a done slot, so the done bucket's limit must not block completion —
+// the real destination's limit is still enforced afterwards via
+// resolveDestinationBucket. It returns false when default == done (the reroute
+// lands the task right back in the done bucket, so the limit must still apply);
+// createProjectView/Update forbid that config, this keeps legacy rows safe.
+func repeatingTaskPassesThroughDoneBucket(view *ProjectView, task *Task, requestedBucketID int64) bool {
+	return task.isRepeating() &&
+		requestedBucketID == view.DoneBucketID &&
+		!task.Done &&
+		view.DefaultBucketID != 0 &&
+		view.DefaultBucketID != view.DoneBucketID
+}
+
 // updateTaskBucket is internally used to actually do the update.
 func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 	oldTaskBucket := &TaskBucket{}
@@ -180,7 +196,7 @@ func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 
 	// Check the bucket limit
 	// Only check the bucket limit if the task is being moved between buckets, allow reordering the task within a bucket
-	if b.BucketID != 0 && b.BucketID != oldTaskBucket.BucketID {
+	if b.BucketID != 0 && b.BucketID != oldTaskBucket.BucketID && !repeatingTaskPassesThroughDoneBucket(view, task, b.BucketID) {
 		taskCount, err := checkBucketLimit(s, a, task, bucket)
 		if err != nil {
 			return err
