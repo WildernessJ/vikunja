@@ -33,6 +33,12 @@ describe('bucketRoleToggleDisabled', () => {
 		expect(bucketRoleToggleDisabled(bucket, view, 'default')).toBe(false)
 	})
 
+	it('avoids a lockout for a legacy bucket that is both default and done (both toggles stay enabled)', () => {
+		const view = {defaultBucketId: bucket.id, doneBucketId: bucket.id}
+		expect(bucketRoleToggleDisabled(bucket, view, 'done')).toBe(false)
+		expect(bucketRoleToggleDisabled(bucket, view, 'default')).toBe(false)
+	})
+
 	it('handles a null view by enabling both toggles', () => {
 		expect(bucketRoleToggleDisabled(bucket, null, 'done')).toBe(false)
 		expect(bucketRoleToggleDisabled(bucket, null, 'default')).toBe(false)
