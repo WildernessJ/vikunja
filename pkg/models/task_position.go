@@ -169,8 +169,8 @@ func lockPositionsForViewUpdate(s *xorm.Session, viewID int64) (err error) {
 	return
 }
 
-// lockPositionsForView is the seam updateTaskPosition uses to take the per-view
-// lock, overridable in tests to observe that it is called.
+// lockPositionsForView is the seam the position-rewrite paths use to take the
+// per-view lock, overridable in tests to observe that it is called.
 var lockPositionsForView = lockPositionsForViewUpdate
 
 // updateTaskPosition is the internal function that performs the task position update logic
@@ -249,7 +249,7 @@ func RecalculateTaskPositions(s *xorm.Session, view *ProjectView, a web.Auth) (e
 
 	log.Debugf("Recalculating task positions for view %d", view.ID)
 
-	err = lockPositionsForViewUpdate(s, view.ID)
+	err = lockPositionsForView(s, view.ID)
 	if err != nil {
 		return err
 	}
