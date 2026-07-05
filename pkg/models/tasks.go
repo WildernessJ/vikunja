@@ -798,8 +798,8 @@ func addMoreInfoToTasks(s *xorm.Session, taskMap map[int64]*Task, a web.Auth, vi
 	return
 }
 
-// Checks if adding a new task would exceed the bucket limit
-func checkBucketLimit(s *xorm.Session, a web.Auth, t *Task, bucket *Bucket) (taskCount int64, err error) {
+// countTasksInBucket returns how many tasks currently sit in the bucket.
+func countTasksInBucket(s *xorm.Session, a web.Auth, bucket *Bucket) (taskCount int64, err error) {
 	view, err := GetProjectViewByID(s, bucket.ProjectViewID)
 	if err != nil {
 		return 0, err
@@ -818,17 +818,21 @@ func checkBucketLimit(s *xorm.Session, a web.Auth, t *Task, bucket *Bucket) (tas
 		}
 
 		_, _, taskCount, err = tc.ReadAll(s, a, "", 1, 1)
-		if err != nil {
-			return 0, err
-		}
-	} else {
-		taskCount, err = s.
-			Where("bucket_id = ?", bucket.ID).
-			GroupBy("task_id").
-			Count(&TaskBucket{})
-		if err != nil {
-			return 0, err
-		}
+		return taskCount, err
+	}
+
+	return s.
+		Where("bucket_id = ?", bucket.ID).
+		GroupBy("task_id").
+		Count(&TaskBucket{})
+}
+
+// checkBucketLimit reports the bucket's current task count and errors with
+// ErrBucketLimitExceeded when adding a task would exceed the bucket's limit.
+func checkBucketLimit(s *xorm.Session, a web.Auth, t *Task, bucket *Bucket) (taskCount int64, err error) {
+	taskCount, err = countTasksInBucket(s, a, bucket)
+	if err != nil {
+		return 0, err
 	}
 
 	if bucket.Limit > 0 && taskCount >= bucket.Limit {
@@ -1231,6 +1235,10 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 		err = s.
 			Where("project_id = ? AND view_kind = ? AND bucket_configuration_mode = ?",
 				t.ProjectID, ProjectViewKindKanban, BucketConfigurationModeManual).
+			// Deterministic order so concurrent done-toggles take the per-view
+			// FOR UPDATE locks in the same sequence, avoiding a cross-view
+			// deadlock (#12).
+			OrderBy("id").
 			Find(&views)
 		if err != nil {
 			return

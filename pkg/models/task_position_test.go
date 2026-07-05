@@ -24,6 +24,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"xorm.io/builder"
+	"xorm.io/xorm"
 )
 
 func TestFindPositionConflicts(t *testing.T) {
@@ -277,6 +278,42 @@ func TestResolveTaskPositionConflicts(t *testing.T) {
 			assert.Greater(t, p.Position, 0.0)
 			assert.Less(t, p.Position, 1000.0)
 		}
+	})
+}
+
+// TestUpdateTaskPositionTakesViewLock verifies both branches of updateTaskPosition
+// acquire the per-view lock before touching position rows. The ordinary
+// (position >= MinPositionSpacing) branch used to skip it, so two concurrent drags
+// computing the same midpoint could both find no conflict and commit duplicate
+// positions (#12, upstream #3089).
+//
+// The lock is a no-op on SQLite (no FOR UPDATE), so its mutual-exclusion can't be
+// observed in the test harness. Instead we spy on lockPositionsForView and assert
+// it is invoked for the view on this path.
+func TestUpdateTaskPositionTakesViewLock(t *testing.T) {
+	t.Run("ordinary path locks the view before the upsert", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		orig := lockPositionsForView
+		defer func() { lockPositionsForView = orig }()
+		var lockedViews []int64
+		lockPositionsForView = func(s *xorm.Session, viewID int64) error {
+			lockedViews = append(lockedViews, viewID)
+			return orig(s, viewID)
+		}
+
+		// A position at or above the spacing threshold takes the ordinary
+		// (non-recalculating) branch, which historically skipped the lock.
+		tp := &TaskPosition{TaskID: 1, ProjectViewID: 1, Position: 256}
+		require.GreaterOrEqual(t, tp.Position, MinPositionSpacing)
+
+		err := updateTaskPosition(s, nil, tp)
+		require.NoError(t, err)
+
+		assert.Contains(t, lockedViews, int64(1),
+			"the ordinary (position >= MinPositionSpacing) path must take the per-view lock")
 	})
 }
 

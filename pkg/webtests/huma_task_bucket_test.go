@@ -17,6 +17,7 @@
 package webtests
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"testing"
@@ -123,5 +124,173 @@ func TestTaskBucketV2(t *testing.T) {
 
 		rec := humaRequest(t, e, http.MethodPut, fmt.Sprintf(path, 1), `{"task_id":1}`, token, "")
 		require.Equal(t, http.StatusForbidden, rec.Code, "body: %s", rec.Body.String())
+	})
+}
+
+// moveTaskBucket updates the task_buckets row directly, bypassing the move logic,
+// so a test can position a task before exercising the endpoint.
+func moveTaskBucket(t *testing.T, taskID, viewID, bucketID int64) {
+	s := db.NewSession()
+	defer s.Close()
+	_, err := s.
+		Where("task_id = ? AND project_view_id = ?", taskID, viewID).
+		Cols("bucket_id").
+		Update(&models.TaskBucket{BucketID: bucketID})
+	require.NoError(t, err)
+	require.NoError(t, s.Commit())
+}
+
+func setBucketLimit(t *testing.T, bucketID, limit int64) {
+	s := db.NewSession()
+	defer s.Close()
+	_, err := s.
+		Where("id = ?", bucketID).
+		Cols("limit").
+		Update(&models.Bucket{Limit: limit})
+	require.NoError(t, err)
+	require.NoError(t, s.Commit())
+}
+
+// setViewDefaultAndDoneBucket points a view's default and done bucket at the
+// given bucket ids. Passing the same id for both models the user-reachable
+// configuration where one bucket is both the default and the done column.
+func setViewDefaultAndDoneBucket(t *testing.T, viewID, defaultBucketID, doneBucketID int64) {
+	s := db.NewSession()
+	defer s.Close()
+	_, err := s.
+		Where("id = ?", viewID).
+		Cols("default_bucket_id", "done_bucket_id").
+		Update(&models.ProjectView{DefaultBucketID: defaultBucketID, DoneBucketID: doneBucketID})
+	require.NoError(t, err)
+	require.NoError(t, s.Commit())
+}
+
+// TestTaskBucketV2RepeatingDoneReroute covers the reroute a repeating task takes
+// when it is marked done: view 4 sends it back to its default bucket (1) instead
+// of leaving it in the done bucket (3). The destination bucket's limit must be
+// enforced and its real count reported — not the done bucket's.
+func TestTaskBucketV2RepeatingDoneReroute(t *testing.T) {
+	const path = "/api/v2/projects/1/views/4/buckets/%d/tasks"
+
+	t.Run("rerouted repeating task respects the default bucket's limit", func(t *testing.T) {
+		e, err := setupTestEnv()
+		require.NoError(t, err)
+		token := humaTokenFor(t, &testuser1)
+
+		// Task 28 repeats. Move it out of the default bucket (1) so the reroute is
+		// a genuine move, then cap bucket 1 at its current occupancy (10) so any
+		// further insert exceeds the limit.
+		moveTaskBucket(t, 28, 4, 2)
+		setBucketLimit(t, 1, 10)
+
+		rec := humaRequest(t, e, http.MethodPut, fmt.Sprintf(path, 3), `{"task_id":28}`, token, "")
+		require.Equal(t, http.StatusPreconditionFailed, rec.Code, "body: %s", rec.Body.String())
+		assert.Contains(t, rec.Body.String(), fmt.Sprintf(`"code":%d`, models.ErrCodeBucketLimitExceeded))
+
+		// The rejected move must roll back entirely: the task stays in bucket 2.
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":   28,
+			"bucket_id": 2,
+		}, false)
+		db.AssertMissing(t, "task_buckets", map[string]interface{}{
+			"task_id":   28,
+			"bucket_id": 1,
+		})
+	})
+
+	t.Run("rerouted back into its origin bucket still reports that bucket", func(t *testing.T) {
+		e, err := setupTestEnv()
+		require.NoError(t, err)
+		token := humaTokenFor(t, &testuser1)
+
+		// The natural fixture state: task 28 already sits in its default bucket
+		// (1). Marking it done routes it back into bucket 1 - the very bucket it
+		// started in - so no row moves. The response must still report the real
+		// destination (bucket 1) and its true count (11 tasks, task 28 included),
+		// not the done bucket (3). This is the common trigger for a repeating task
+		// marked done from its "To-Do" column.
+		rec := humaRequest(t, e, http.MethodPut, fmt.Sprintf(path, 3), `{"task_id":28}`, token, "")
+		require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
+
+		var resp models.TaskBucket
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+		require.NotNil(t, resp.Bucket)
+		assert.Equal(t, int64(1), resp.Bucket.ID, "must report the origin/default bucket the task was routed back to, not the done bucket")
+		assert.Equal(t, int64(11), resp.Bucket.Count, "must report the origin bucket's real count, not the done bucket's")
+		require.NotNil(t, resp.Task)
+		assert.False(t, resp.Task.Done, "a repeating task reopens for its next occurrence, so it is not left done")
+
+		// The task stays in bucket 1 and is not left in the done bucket.
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":   28,
+			"bucket_id": 1,
+		}, false)
+		db.AssertMissing(t, "task_buckets", map[string]interface{}{
+			"task_id":   28,
+			"bucket_id": 3,
+		})
+	})
+
+	t.Run("reports the destination bucket and its real count", func(t *testing.T) {
+		e, err := setupTestEnv()
+		require.NoError(t, err)
+		token := humaTokenFor(t, &testuser1)
+
+		// Same setup, but bucket 1 has room. Bucket 1 holds 10 tasks after moving
+		// task 28 out; the reroute lands task 28 back in it for 11 total.
+		moveTaskBucket(t, 28, 4, 2)
+
+		rec := humaRequest(t, e, http.MethodPut, fmt.Sprintf(path, 3), `{"task_id":28}`, token, "")
+		require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
+
+		var resp models.TaskBucket
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+		require.NotNil(t, resp.Bucket)
+		assert.Equal(t, int64(1), resp.Bucket.ID, "must report the default bucket the task was routed to, not the done bucket")
+		assert.Equal(t, int64(11), resp.Bucket.Count, "must report the destination bucket's real count")
+
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":   28,
+			"bucket_id": 1,
+		}, false)
+	})
+}
+
+// TestTaskBucketV2DefaultEqualsDoneBucketLimit guards the invariant that a full
+// bucket rejects an incoming task even when it is both the view's default and
+// done bucket. The frontend lets a user pick one bucket for both roles, and the
+// backend forbids no such config. When default == done, a repeating task dragged
+// into that bucket is "rerouted" straight back into it, so a bypass that skips
+// the done bucket's limit check would let the task land in a full bucket with no
+// limit check on any path. The limit must still be enforced.
+func TestTaskBucketV2DefaultEqualsDoneBucketLimit(t *testing.T) {
+	const path = "/api/v2/projects/1/views/4/buckets/%d/tasks"
+
+	t.Run("full default==done bucket rejects a rerouted repeating task", func(t *testing.T) {
+		e, err := setupTestEnv()
+		require.NoError(t, err)
+		token := humaTokenFor(t, &testuser1)
+
+		// Make bucket 3 both the default and the done bucket of view 4, then fill
+		// it: it holds 4 tasks (2, 6, 7, 8), so a limit of 4 caps it at capacity.
+		setViewDefaultAndDoneBucket(t, 4, 3, 3)
+		setBucketLimit(t, 3, 4)
+		// Repeating task 28 sits in bucket 1, so dropping it into bucket 3 is a
+		// genuine cross-bucket move into the full default==done bucket.
+
+		rec := humaRequest(t, e, http.MethodPut, fmt.Sprintf(path, 3), `{"task_id":28}`, token, "")
+		require.Equal(t, http.StatusPreconditionFailed, rec.Code, "body: %s", rec.Body.String())
+		assert.Contains(t, rec.Body.String(), fmt.Sprintf(`"code":%d`, models.ErrCodeBucketLimitExceeded))
+
+		// The rejected move must roll back entirely: task 28 stays in bucket 1 and
+		// never lands in the full default==done bucket.
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":   28,
+			"bucket_id": 1,
+		}, false)
+		db.AssertMissing(t, "task_buckets", map[string]interface{}{
+			"task_id":   28,
+			"bucket_id": 3,
+		})
 	})
 }
