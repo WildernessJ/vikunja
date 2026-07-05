@@ -50,6 +50,11 @@ export default abstract class AbstractService<Model extends IAbstract = IAbstrac
 	http
 	loading = false
 	uploadProgress = 0
+
+	// Ref-counted loading state: a single shared debounce timer plus an in-flight
+	// counter so overlapping requests on the same instance don't flicker the spinner.
+	private inFlightRequests = 0
+	private loadingTimeout: ReturnType<typeof setTimeout> | null = null
 	paths: Paths = {
 		create: '',
 		get: '',
@@ -197,12 +202,33 @@ export default abstract class AbstractService<Model extends IAbstract = IAbstrac
 	 * already finished, so we return a method to call in that case.
 	 */
 	setLoading() {
-		const timeout = setTimeout(() => {
-			this.loading = true
-		}, 100)
+		this.inFlightRequests++
+
+		if (this.loadingTimeout === null) {
+			this.loadingTimeout = setTimeout(() => {
+				this.loadingTimeout = null
+				if (this.inFlightRequests > 0) {
+					this.loading = true
+				}
+			}, 100)
+		}
+
+		let cancelled = false
 		return () => {
-			clearTimeout(timeout)
-			this.loading = false
+			if (cancelled) {
+				return
+			}
+			cancelled = true
+
+			this.inFlightRequests--
+			if (this.inFlightRequests <= 0) {
+				this.inFlightRequests = 0
+				if (this.loadingTimeout !== null) {
+					clearTimeout(this.loadingTimeout)
+					this.loadingTimeout = null
+				}
+				this.loading = false
+			}
 		}
 	}
 
