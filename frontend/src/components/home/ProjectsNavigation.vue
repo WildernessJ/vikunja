@@ -108,6 +108,12 @@ async function saveProjectPosition(e: SortableEvent) {
 			parentProjectId,
 		} as IProject)
 		emit('update:modelValue', availableProjects.value)
+	} catch (e) {
+		// vuedraggable reordered availableProjects in place. Since we only emit on success,
+		// props.modelValue still holds the prior order — reset the clone to it so the sidebar
+		// doesn't keep a reordering that was never persisted.
+		availableProjects.value = props.modelValue ? [...props.modelValue] : []
+		throw e
 	} finally {
 		projectUpdating.value[project.id] = false
 	}

@@ -647,6 +647,14 @@ async function updateTaskPosition(e) {
 
 			await taskStore.update(newTaskAfter)
 		}
+	} catch (e) {
+		// The bucket counts were decremented/incremented optimistically above. If the
+		// position or bucket update failed, restore both buckets to their prior counts.
+		if (bucketHasChanged && oldBucket !== undefined) {
+			kanbanStore.setBucketById(oldBucket)
+			kanbanStore.setBucketById(newBucket)
+		}
+		throw e
 	} finally {
 		taskUpdating.value[task.id] = false
 		oneTaskUpdating.value = false
