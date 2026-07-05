@@ -91,6 +91,17 @@ watch(
 	},
 )
 
+// TaskDetailView reuses this component instance across task navigation, so
+// without resetting the flag `preloadUsers` would keep showing the previous
+// project's members on first focus.
+watch(
+	() => [props.taskId, props.projectId],
+	() => {
+		hasPreloaded = false
+		foundUsers.value = []
+	},
+)
+
 async function addAssignee(user: IUser) {
 	if (isAdding) {
 		return
