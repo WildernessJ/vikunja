@@ -399,8 +399,10 @@ func (Test) Web(ctx context.Context) error {
 
 func (Test) Filter(ctx context.Context, filter string) error {
 	mg.Deps(initVars)
-	// We run everything sequentially and not in parallel to prevent issues with real test databases
-	return runAndStreamOutput(ctx, "go", "test", goDetectVerboseFlag(), "-p", "1", "-timeout", "45m", "-run", filter, "-short", "./...")
+	// No -short here: -run already narrows to matching tests, and -short makes
+	// the webtests/e2etests/caldavtests packages skip entirely (their TestMain
+	// bails on testing.Short()), silently passing a filter aimed at one of them.
+	return runAndStreamOutput(ctx, "go", "test", goDetectVerboseFlag(), "-p", "1", "-timeout", "45m", "-run", filter, "./...")
 }
 
 func (Test) All() {
@@ -486,16 +488,25 @@ func (Test) E2E(ctx context.Context, args string) error {
 		return fmt.Errorf("failed to create files dir: %w", err)
 	}
 
-	// Start the API server — all config via env vars, no config file
-	// Uses in-memory SQLite (no DB file on disk)
+	// Start the API server — all config via env vars, run from tmpDir so a
+	// stray repo config.yml is not picked up (viper searches the working dir).
+	// Uses in-memory SQLite (no DB file on disk).
 	fmt.Println("\n--- Starting API server ---")
-	apiCmd := exec.CommandContext(ctx, "./vikunja", "web")
+	binPath, err := filepath.Abs(Executable)
+	if err != nil {
+		return fmt.Errorf("could not resolve API binary path: %w", err)
+	}
+	apiCmd := exec.CommandContext(ctx, binPath, "web")
+	apiCmd.Dir = tmpDir
 	apiCmd.Env = append(os.Environ(),
 		fmt.Sprintf("VIKUNJA_SERVICE_INTERFACE=:%d", apiPort),
 		fmt.Sprintf("VIKUNJA_SERVICE_PUBLICURL=http://127.0.0.1:%d/", apiPort),
 		fmt.Sprintf("VIKUNJA_SERVICE_TESTINGTOKEN=%s", testingToken),
 		fmt.Sprintf("VIKUNJA_SERVICE_ROOTPATH=%s", tmpDir),
 		"VIKUNJA_SERVICE_JWTSECRET=e2e-test-jwt-secret-do-not-use-in-production",
+		// Force CORS on regardless of any config file the binary might still
+		// find (e.g. /etc/vikunja); the frontend calls the API cross-origin.
+		"VIKUNJA_CORS_ENABLE=true",
 		"VIKUNJA_DATABASE_TYPE=sqlite",
 		"VIKUNJA_DATABASE_PATH=memory",
 		fmt.Sprintf("VIKUNJA_FILES_BASEPATH=%s", filepath.Join(tmpDir, "files")),
