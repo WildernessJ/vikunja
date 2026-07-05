@@ -151,6 +151,20 @@ func setBucketLimit(t *testing.T, bucketID, limit int64) {
 	require.NoError(t, s.Commit())
 }
 
+// setViewDefaultAndDoneBucket points a view's default and done bucket at the
+// given bucket ids. Passing the same id for both models the user-reachable
+// configuration where one bucket is both the default and the done column.
+func setViewDefaultAndDoneBucket(t *testing.T, viewID, defaultBucketID, doneBucketID int64) {
+	s := db.NewSession()
+	defer s.Close()
+	_, err := s.
+		Where("id = ?", viewID).
+		Cols("default_bucket_id", "done_bucket_id").
+		Update(&models.ProjectView{DefaultBucketID: defaultBucketID, DoneBucketID: doneBucketID})
+	require.NoError(t, err)
+	require.NoError(t, s.Commit())
+}
+
 // TestTaskBucketV2RepeatingDoneReroute covers the reroute a repeating task takes
 // when it is marked done: view 4 sends it back to its default bucket (1) instead
 // of leaving it in the done bucket (3). The destination bucket's limit must be
@@ -217,30 +231,6 @@ func TestTaskBucketV2RepeatingDoneReroute(t *testing.T) {
 		})
 	})
 
-	t.Run("a full done bucket does not block a repeating task's completion", func(t *testing.T) {
-		e, err := setupTestEnv()
-		require.NoError(t, err)
-		token := humaTokenFor(t, &testuser1)
-
-		// Cap the done bucket (3) at its current occupancy so it is full. A
-		// repeating task marked done is only routed *through* it back to the
-		// default bucket, so the done bucket's limit must not reject completion.
-		setBucketLimit(t, 3, 4)
-
-		rec := humaRequest(t, e, http.MethodPut, fmt.Sprintf(path, 3), `{"task_id":28}`, token, "")
-		require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
-
-		var resp models.TaskBucket
-		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-		require.NotNil(t, resp.Bucket)
-		assert.Equal(t, int64(1), resp.Bucket.ID, "must land in the default bucket, not be blocked by the full done bucket")
-
-		db.AssertExists(t, "task_buckets", map[string]interface{}{
-			"task_id":   28,
-			"bucket_id": 1,
-		}, false)
-	})
-
 	t.Run("reports the destination bucket and its real count", func(t *testing.T) {
 		e, err := setupTestEnv()
 		require.NoError(t, err)
@@ -263,5 +253,44 @@ func TestTaskBucketV2RepeatingDoneReroute(t *testing.T) {
 			"task_id":   28,
 			"bucket_id": 1,
 		}, false)
+	})
+}
+
+// TestTaskBucketV2DefaultEqualsDoneBucketLimit guards the invariant that a full
+// bucket rejects an incoming task even when it is both the view's default and
+// done bucket. The frontend lets a user pick one bucket for both roles, and the
+// backend forbids no such config. When default == done, a repeating task dragged
+// into that bucket is "rerouted" straight back into it, so a bypass that skips
+// the done bucket's limit check would let the task land in a full bucket with no
+// limit check on any path. The limit must still be enforced.
+func TestTaskBucketV2DefaultEqualsDoneBucketLimit(t *testing.T) {
+	const path = "/api/v2/projects/1/views/4/buckets/%d/tasks"
+
+	t.Run("full default==done bucket rejects a rerouted repeating task", func(t *testing.T) {
+		e, err := setupTestEnv()
+		require.NoError(t, err)
+		token := humaTokenFor(t, &testuser1)
+
+		// Make bucket 3 both the default and the done bucket of view 4, then fill
+		// it: it holds 4 tasks (2, 6, 7, 8), so a limit of 4 caps it at capacity.
+		setViewDefaultAndDoneBucket(t, 4, 3, 3)
+		setBucketLimit(t, 3, 4)
+		// Repeating task 28 sits in bucket 1, so dropping it into bucket 3 is a
+		// genuine cross-bucket move into the full default==done bucket.
+
+		rec := humaRequest(t, e, http.MethodPut, fmt.Sprintf(path, 3), `{"task_id":28}`, token, "")
+		require.Equal(t, http.StatusPreconditionFailed, rec.Code, "body: %s", rec.Body.String())
+		assert.Contains(t, rec.Body.String(), fmt.Sprintf(`"code":%d`, models.ErrCodeBucketLimitExceeded))
+
+		// The rejected move must roll back entirely: task 28 stays in bucket 1 and
+		// never lands in the full default==done bucket.
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":   28,
+			"bucket_id": 1,
+		}, false)
+		db.AssertMissing(t, "task_buckets", map[string]interface{}{
+			"task_id":   28,
+			"bucket_id": 3,
+		})
 	})
 }

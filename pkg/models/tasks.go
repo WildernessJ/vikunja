@@ -798,7 +798,7 @@ func addMoreInfoToTasks(s *xorm.Session, taskMap map[int64]*Task, a web.Auth, vi
 	return
 }
 
-// Checks if adding a new task would exceed the bucket limit
+// countTasksInBucket returns how many tasks currently sit in the bucket.
 func countTasksInBucket(s *xorm.Session, a web.Auth, bucket *Bucket) (taskCount int64, err error) {
 	view, err := GetProjectViewByID(s, bucket.ProjectViewID)
 	if err != nil {
@@ -827,6 +827,8 @@ func countTasksInBucket(s *xorm.Session, a web.Auth, bucket *Bucket) (taskCount 
 		Count(&TaskBucket{})
 }
 
+// checkBucketLimit reports the bucket's current task count and errors with
+// ErrBucketLimitExceeded when adding a task would exceed the bucket's limit.
 func checkBucketLimit(s *xorm.Session, a web.Auth, t *Task, bucket *Bucket) (taskCount int64, err error) {
 	taskCount, err = countTasksInBucket(s, a, bucket)
 	if err != nil {

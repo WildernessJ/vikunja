@@ -114,14 +114,6 @@ func resolveDestinationBucket(s *xorm.Session, a web.Auth, task *Task, bucketID 
 	return bucket, nil
 }
 
-// taskReroutesOutOfDoneBucket reports whether dropping this repeating task into
-// the view's done bucket will immediately reroute it back to the default bucket.
-// When it will, the done bucket's limit must not gate the move — the task never
-// occupies a slot there.
-func taskReroutesOutOfDoneBucket(view *ProjectView, task *Task, targetBucketID int64) bool {
-	return view.DoneBucketID != 0 && view.DoneBucketID == targetBucketID && !task.Done && task.isRepeating()
-}
-
 // syncTaskIntoOtherDoneBuckets places a newly-done task into the done bucket of
 // every other manual kanban view of its project, so its done state is reflected
 // everywhere.
@@ -186,16 +178,9 @@ func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 		return err
 	}
 
-	// A repeating task dropped into the done bucket never stays there; it is
-	// rerouted to the default bucket below. Checking the done bucket's limit here
-	// would wrongly reject the completion when that bucket is full, even though
-	// the task never occupies a slot in it. The real destination's limit is
-	// enforced by the re-resolve after the reroute.
-	reroutesOutOfDoneBucket := taskReroutesOutOfDoneBucket(view, task, b.BucketID)
-
 	// Check the bucket limit
 	// Only check the bucket limit if the task is being moved between buckets, allow reordering the task within a bucket
-	if b.BucketID != 0 && b.BucketID != oldTaskBucket.BucketID && !reroutesOutOfDoneBucket {
+	if b.BucketID != 0 && b.BucketID != oldTaskBucket.BucketID {
 		taskCount, err := checkBucketLimit(s, a, task, bucket)
 		if err != nil {
 			return err
