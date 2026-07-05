@@ -178,5 +178,10 @@
         "notifications": {
             "title": "Vikunja notifications for %[1]s"
         }
+    },
+    "error": {
+        "projectview": {
+            "default_bucket_equals_done_bucket": "The default bucket and the done bucket of a view cannot be the same bucket."
+        }
     }
 }

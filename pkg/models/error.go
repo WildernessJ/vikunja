@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"code.vikunja.io/api/pkg/config"
+	"code.vikunja.io/api/pkg/i18n"
 	"code.vikunja.io/api/pkg/web"
 )
 
@@ -560,6 +561,35 @@ func (err *ErrProjectHasNoBackground) HTTPError() web.HTTPError {
 		Code:     ErrCodeProjectHasNoBackground,
 		// Message kept verbatim from v1's inline handler error so the wire body is unchanged.
 		Message: "Project background not found",
+	}
+}
+
+// ErrProjectViewDefaultBucketEqualsDoneBucket represents an error where a project
+// view is configured with the same bucket as both its default and done bucket.
+type ErrProjectViewDefaultBucketEqualsDoneBucket struct {
+	ProjectViewID int64
+	BucketID      int64
+}
+
+// IsErrProjectViewDefaultBucketEqualsDoneBucket checks if an error is ErrProjectViewDefaultBucketEqualsDoneBucket.
+func IsErrProjectViewDefaultBucketEqualsDoneBucket(err error) bool {
+	_, ok := err.(*ErrProjectViewDefaultBucketEqualsDoneBucket)
+	return ok
+}
+
+func (err *ErrProjectViewDefaultBucketEqualsDoneBucket) Error() string {
+	return fmt.Sprintf("Project view default and done bucket cannot be the same [ProjectViewID: %d, BucketID: %d]", err.ProjectViewID, err.BucketID)
+}
+
+// ErrCodeProjectViewDefaultBucketEqualsDoneBucket holds the unique world-error code of this error
+const ErrCodeProjectViewDefaultBucketEqualsDoneBucket = 3016
+
+// HTTPError holds the http error description
+func (err *ErrProjectViewDefaultBucketEqualsDoneBucket) HTTPError() web.HTTPError {
+	return web.HTTPError{
+		HTTPCode: http.StatusBadRequest,
+		Code:     ErrCodeProjectViewDefaultBucketEqualsDoneBucket,
+		Message:  i18n.T(config.DefaultSettingsLanguage.GetString(), "error.projectview.default_bucket_equals_done_bucket"),
 	}
 }
 
