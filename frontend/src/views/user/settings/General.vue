@@ -70,6 +70,15 @@
 				v-model="settings.frontendSettings.showLastViewed"
 				:label="$t('user.settings.general.showLastViewed')"
 			/>
+			<FormField
+				:label="$t('user.settings.general.projectSidebarCount')"
+				layout="two-col"
+			>
+				<FormSelect
+					v-model="settings.frontendSettings.projectSidebarCount"
+					:options="projectSidebarCountOptions"
+				/>
+			</FormField>
 			<FormCheckbox
 				v-model="settings.emailRemindersEnabled"
 				:label="$t('user.settings.general.emailReminders')"
@@ -379,6 +388,12 @@ const dateDisplayOptions = computed(() => [
 const timeFormatOptions = computed(() => [
 	{value: TIME_FORMAT.HOURS_12, label: t('user.settings.general.timeFormatOptions.12h')},
 	{value: TIME_FORMAT.HOURS_24, label: t('user.settings.general.timeFormatOptions.24h')},
+])
+
+const projectSidebarCountOptions = computed(() => [
+	{value: 'none', label: t('user.settings.general.projectSidebarCountNone')},
+	{value: 'dueOverdue', label: t('user.settings.general.projectSidebarCountDueOverdue')},
+	{value: 'all', label: t('user.settings.general.projectSidebarCountAll')},
 ])
 
 const colorSchemeOptions = computed(() => [
