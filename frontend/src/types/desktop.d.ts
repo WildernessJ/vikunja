@@ -11,6 +11,7 @@ export interface VikunjaDesktop {
 	onOAuthError: (callback: (error: string) => void) => void
 	refreshToken: (apiUrl: string, refreshToken: string) => Promise<OAuthTokens>
 	updateQuickEntryShortcut: (shortcut: string) => void
+	setBadgeCount: (count: number) => void
 }
 
 declare global {

@@ -12,5 +12,6 @@ contextBridge.exposeInMainWorld('vikunjaDesktop', {
 	},
 	refreshToken: (apiUrl, refreshToken) => ipcRenderer.invoke('oauth:refresh-token', apiUrl, refreshToken),
 	updateQuickEntryShortcut: (shortcut) => ipcRenderer.send('desktop:update-quick-entry-shortcut', shortcut),
+	setBadgeCount: (count) => ipcRenderer.send('desktop:set-badge-count', count),
 	isDesktop: true,
 })
