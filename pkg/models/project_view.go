@@ -306,6 +306,9 @@ func (pv *ProjectView) Delete(s *xorm.Session, _ web.Auth) (err error) {
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /projects/{project}/views [put]
 func (pv *ProjectView) Create(s *xorm.Session, a web.Auth) (err error) {
+	if err = pv.checkBucketConfiguration(); err != nil {
+		return
+	}
 	return createProjectView(s, pv, a, true, true)
 }
 
@@ -325,10 +328,6 @@ func (pv *ProjectView) checkBucketConfiguration() error {
 }
 
 func createProjectView(s *xorm.Session, p *ProjectView, a web.Auth, createBacklogBucket bool, addExistingTasksToView bool) (err error) {
-	if err = p.checkBucketConfiguration(); err != nil {
-		return
-	}
-
 	if p.Filter != nil && p.Filter.Filter != "" {
 		_, err = getTaskFiltersFromFilterString(p.Filter.Filter, p.Filter.FilterTimezone)
 		if err != nil {
@@ -464,6 +463,10 @@ func (pv *ProjectView) Update(s *xorm.Session, _ web.Auth) (err error) {
 		return
 	}
 
+	return updateProjectView(s, pv)
+}
+
+func updateProjectView(s *xorm.Session, pv *ProjectView) (err error) {
 	if pv.Filter != nil && pv.Filter.Filter != "" {
 		_, err = getTaskFiltersFromFilterString(pv.Filter.Filter, pv.Filter.FilterTimezone)
 		if err != nil {

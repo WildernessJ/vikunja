@@ -75,6 +75,56 @@ func TestProjectDuplicate(t *testing.T) {
 	})
 }
 
+// TestProjectDuplicate_LegacyDefaultEqualsDoneBucket verifies that duplicating a
+// project containing a legacy kanban view whose default and done bucket are the same
+// still succeeds. Such views predate the default==done validation (the frontend used
+// to allow them), and duplication is a faithful internal copy that must not reject
+// pre-existing account state. See issue #26.
+func TestProjectDuplicate_LegacyDefaultEqualsDoneBucket(t *testing.T) {
+	files.InitTestFileFixtures(t)
+	db.LoadAndAssertFixtures(t)
+	s := db.NewSession()
+	defer s.Close()
+
+	u := &user.User{ID: 1}
+
+	// Normal creation now rejects default==done, so create a valid kanban view and
+	// then force the legacy state directly, bypassing the model-level check.
+	pv := &ProjectView{
+		Title:                   "legacy default==done",
+		ProjectID:               1,
+		ViewKind:                ProjectViewKindKanban,
+		BucketConfigurationMode: BucketConfigurationModeManual,
+	}
+	require.NoError(t, pv.Create(s, u))
+	require.NotZero(t, pv.DefaultBucketID)
+
+	pv.DoneBucketID = pv.DefaultBucketID
+	_, err := s.ID(pv.ID).Cols("done_bucket_id").Update(pv)
+	require.NoError(t, err)
+
+	l := &ProjectDuplicate{ProjectID: 1}
+	can, err := l.CanCreate(s, u)
+	require.NoError(t, err)
+	require.True(t, can)
+	require.NoError(t, l.Create(s, u))
+
+	var duplicatedViews []*ProjectView
+	err = s.Where("project_id = ?", l.Project.ID).Find(&duplicatedViews)
+	require.NoError(t, err)
+
+	var copied *ProjectView
+	for _, v := range duplicatedViews {
+		if v.Title == "legacy default==done" {
+			copied = v
+			break
+		}
+	}
+	require.NotNil(t, copied, "the legacy view was not copied into the duplicated project")
+	assert.NotZero(t, copied.DoneBucketID)
+	assert.Equal(t, copied.DefaultBucketID, copied.DoneBucketID, "duplicated view should faithfully copy the legacy default==done config")
+}
+
 func assertShareCount(t *testing.T, s *xorm.Session, projectID, users, teams, links int64) {
 	userCount, err := s.Where("project_id = ?", projectID).Count(&ProjectUser{})
 	require.NoError(t, err)

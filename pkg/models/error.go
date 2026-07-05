@@ -23,7 +23,6 @@ import (
 	"strings"
 
 	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/i18n"
 	"code.vikunja.io/api/pkg/web"
 )
 
@@ -589,7 +588,7 @@ func (err *ErrProjectViewDefaultBucketEqualsDoneBucket) HTTPError() web.HTTPErro
 	return web.HTTPError{
 		HTTPCode: http.StatusBadRequest,
 		Code:     ErrCodeProjectViewDefaultBucketEqualsDoneBucket,
-		Message:  i18n.T(config.DefaultSettingsLanguage.GetString(), "error.projectview.default_bucket_equals_done_bucket"),
+		Message:  "The default bucket and the done bucket of a view cannot be the same bucket.",
 	}
 }
 
