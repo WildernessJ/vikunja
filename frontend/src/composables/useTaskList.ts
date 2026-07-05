@@ -228,9 +228,8 @@ export function useTaskList(
 
 	// Pagination is read off the shared service, which `getAll` overwrites on every
 	// response. Snapshot it into composable state under the same request-id guard as
-	// `tasks` so a stale earlier response can't clobber the newest request's counts.
+	// `tasks` so a stale earlier response can't clobber the newest request's page count.
 	const totalPages = ref(0)
-	const resultCount = ref(0)
 
 	const tasks = ref<ITask[]>([])
 	// Monotonic request id. Switching projects fires overlapping loads; a slower
@@ -249,7 +248,6 @@ export function useTaskList(
 			}
 			tasks.value = loadedTasks
 			totalPages.value = taskCollectionService.totalPages
-			resultCount.value = taskCollectionService.resultCount
 		} catch (e) {
 			if (requestId === latestRequestId) {
 				error(e)
@@ -271,7 +269,6 @@ export function useTaskList(
 		tasks,
 		loading,
 		totalPages,
-		resultCount,
 		currentPage: page,
 		loadTasks,
 		params,

@@ -3,7 +3,7 @@ import {ref} from 'vue'
 import type {ITask} from '@/modelTypes/ITask'
 
 const getAllMock = vi.fn()
-let serviceInstance: {totalPages: number, resultCount: number}
+let serviceInstance: {totalPages: number}
 
 vi.mock('vue-router', () => ({
 	useRouter: () => ({
@@ -40,7 +40,6 @@ vi.mock('@/services/taskCollection', () => ({
 	default: class {
 		loading = false
 		totalPages = 1
-		resultCount = 0
 		getAll(...args: unknown[]) {
 			serviceInstance = this
 			return getAllMock(...args)
@@ -122,8 +121,8 @@ describe('useTaskList request sequencing', () => {
 		expect(tasks.value).toEqual([task(2)])
 	})
 
-	it('does not clobber totalPages/resultCount with a stale response', async () => {
-		const {totalPages, resultCount, loadTasks} = useTaskList(() => 1, () => 1)
+	it('does not clobber totalPages with a stale response', async () => {
+		const {totalPages, loadTasks} = useTaskList(() => 1, () => 1)
 
 		const older = deferred<ITask[]>()
 		const newer = deferred<ITask[]>()
@@ -136,21 +135,17 @@ describe('useTaskList request sequencing', () => {
 
 		// The newer request lands first with its own pagination.
 		serviceInstance.totalPages = 7
-		serviceInstance.resultCount = 70
 		newer.resolve([task(2)])
 		await newerLoad
 		expect(totalPages.value).toBe(7)
-		expect(resultCount.value).toBe(70)
 
 		// The older request resolves last: `getAll` already overwrote the shared
 		// service's pagination, but the guarded composable state must keep the
-		// newest request's counts.
+		// newest request's page count.
 		serviceInstance.totalPages = 3
-		serviceInstance.resultCount = 30
 		older.resolve([task(1)])
 		await olderLoad
 		expect(totalPages.value).toBe(7)
-		expect(resultCount.value).toBe(70)
 	})
 
 	it('does not surface an error from a superseded request', async () => {
