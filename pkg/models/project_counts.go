@@ -98,9 +98,9 @@ func GetProjectTaskCounts(s *xorm.Session, a web.Auth) (map[int64]*ProjectTaskCo
 	return counts, nil
 }
 
-// startOfTomorrowInUserTimezone mirrors the timezone handling in
-// getUndoneOverdueTasks: use the user's configured timezone, falling back to
-// the instance default when empty.
+// startOfTomorrowInUserTimezone follows the same tz-resolution pattern as
+// getUndoneOverdueTasks (user's configured timezone, falling back to the
+// instance default when empty); the boundary it computes is unrelated.
 func startOfTomorrowInUserTimezone(u *user.User) (time.Time, error) {
 	tzName := u.Timezone
 	if tzName == "" {

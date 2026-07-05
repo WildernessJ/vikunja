@@ -13,6 +13,12 @@ dayjs.extend(timezone)
  * timezone when none is configured.
  */
 export function getStartOfTomorrowInTimezone(tz?: string): Date {
+	// The `: dayjs()` fallback resolves the boundary in the browser timezone,
+	// whereas the backend counts endpoint falls back to the server default
+	// (service.timezone), which the frontend has no access to. They diverge only
+	// for accounts with an empty saved timezone — a non-normal state, since
+	// registration and settings-save both backfill it — so this bounded gap is
+	// accepted rather than plumbing the server default through the config API.
 	const base = tz ? dayjs().tz(tz) : dayjs()
 	return base.add(1, 'day').startOf('day').toDate()
 }

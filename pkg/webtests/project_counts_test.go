@@ -24,6 +24,7 @@ import (
 
 	"code.vikunja.io/api/pkg/db"
 	"code.vikunja.io/api/pkg/models"
+	"code.vikunja.io/api/pkg/user"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -116,4 +117,67 @@ func TestProjectCounts_FutureDueDateExcluded(t *testing.T) {
 	require.Contains(t, counts, int64(1))
 	assert.Equal(t, int64(20), counts[1].Open, "the future-dated task adds to open")
 	assert.Equal(t, int64(3), counts[1].DueOverdue, "a future due_date must not count as overdue")
+}
+
+// TestProjectCounts_UserTimezoneBoundary proves the endpoint uses the user's
+// configured timezone (not the config fallback) to place the due/overdue
+// boundary. Every fixture user has an empty timezone, so without this the tz
+// branch of startOfTomorrowInUserTimezone is never exercised.
+//
+// It inserts two tasks straddling start-of-tomorrow in America/New_York: one an
+// hour before the boundary (must count as overdue) and one an hour after (must
+// not). Both instants are derived from the current time in that zone, so the
+// test never straddles the day boundary regardless of when it runs.
+//
+// The exactly-one-more assertion also distinguishes New York from the GMT
+// fallback the test config uses: because the two zones' start-of-tomorrow
+// instants differ by 5h/19h, the fallback would classify both tasks the same
+// way (adding 0 or 2, never 1) — so a regression that ignored the user's
+// timezone would change the count.
+func TestProjectCounts_UserTimezoneBoundary(t *testing.T) {
+	_, err := setupTestEnv()
+	require.NoError(t, err)
+
+	s := db.NewSession()
+	defer s.Close()
+
+	const tz = "America/New_York"
+	u, err := user.GetUserByID(s, 1)
+	require.NoError(t, err)
+	u.Timezone = tz
+	_, err = s.ID(u.ID).Cols("timezone").Update(u)
+	require.NoError(t, err)
+
+	loc, err := time.LoadLocation(tz)
+	require.NoError(t, err)
+
+	now := time.Now().In(loc)
+	startOfTomorrow := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc).AddDate(0, 0, 1)
+
+	_, err = s.Insert(&models.Task{
+		Title:       "due late today in New York",
+		ProjectID:   1,
+		Index:       9002,
+		Done:        false,
+		DueDate:     startOfTomorrow.Add(-time.Hour).UTC(),
+		CreatedByID: 1,
+	})
+	require.NoError(t, err)
+
+	_, err = s.Insert(&models.Task{
+		Title:       "due early tomorrow in New York",
+		ProjectID:   1,
+		Index:       9003,
+		Done:        false,
+		DueDate:     startOfTomorrow.Add(time.Hour).UTC(),
+		CreatedByID: 1,
+	})
+	require.NoError(t, err)
+
+	counts, err := models.GetProjectTaskCounts(s, &testuser1)
+	require.NoError(t, err)
+
+	require.Contains(t, counts, int64(1))
+	assert.Equal(t, int64(21), counts[1].Open, "both new undone tasks add to open")
+	assert.Equal(t, int64(4), counts[1].DueOverdue, "only the task due before start-of-tomorrow in the user's timezone is overdue (3 fixtures + 1)")
 }
