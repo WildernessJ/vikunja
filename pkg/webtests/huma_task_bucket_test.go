@@ -184,6 +184,63 @@ func TestTaskBucketV2RepeatingDoneReroute(t *testing.T) {
 		})
 	})
 
+	t.Run("rerouted back into its origin bucket still reports that bucket", func(t *testing.T) {
+		e, err := setupTestEnv()
+		require.NoError(t, err)
+		token := humaTokenFor(t, &testuser1)
+
+		// The natural fixture state: task 28 already sits in its default bucket
+		// (1). Marking it done routes it back into bucket 1 - the very bucket it
+		// started in - so no row moves. The response must still report the real
+		// destination (bucket 1) and its true count (11 tasks, task 28 included),
+		// not the done bucket (3). This is the common trigger for a repeating task
+		// marked done from its "To-Do" column.
+		rec := humaRequest(t, e, http.MethodPut, fmt.Sprintf(path, 3), `{"task_id":28}`, token, "")
+		require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
+
+		var resp models.TaskBucket
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+		require.NotNil(t, resp.Bucket)
+		assert.Equal(t, int64(1), resp.Bucket.ID, "must report the origin/default bucket the task was routed back to, not the done bucket")
+		assert.Equal(t, int64(11), resp.Bucket.Count, "must report the origin bucket's real count, not the done bucket's")
+		require.NotNil(t, resp.Task)
+		assert.False(t, resp.Task.Done, "a repeating task reopens for its next occurrence, so it is not left done")
+
+		// The task stays in bucket 1 and is not left in the done bucket.
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":   28,
+			"bucket_id": 1,
+		}, false)
+		db.AssertMissing(t, "task_buckets", map[string]interface{}{
+			"task_id":   28,
+			"bucket_id": 3,
+		})
+	})
+
+	t.Run("a full done bucket does not block a repeating task's completion", func(t *testing.T) {
+		e, err := setupTestEnv()
+		require.NoError(t, err)
+		token := humaTokenFor(t, &testuser1)
+
+		// Cap the done bucket (3) at its current occupancy so it is full. A
+		// repeating task marked done is only routed *through* it back to the
+		// default bucket, so the done bucket's limit must not reject completion.
+		setBucketLimit(t, 3, 4)
+
+		rec := humaRequest(t, e, http.MethodPut, fmt.Sprintf(path, 3), `{"task_id":28}`, token, "")
+		require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
+
+		var resp models.TaskBucket
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+		require.NotNil(t, resp.Bucket)
+		assert.Equal(t, int64(1), resp.Bucket.ID, "must land in the default bucket, not be blocked by the full done bucket")
+
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":   28,
+			"bucket_id": 1,
+		}, false)
+	})
+
 	t.Run("reports the destination bucket and its real count", func(t *testing.T) {
 		e, err := setupTestEnv()
 		require.NoError(t, err)

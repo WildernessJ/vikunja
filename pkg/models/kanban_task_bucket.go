@@ -91,6 +91,37 @@ func resolveBucketWithCount(s *xorm.Session, a web.Auth, task *Task, bucketID in
 	return bucket, nil
 }
 
+// resolveDestinationBucket loads the bucket the task ends up in after a reroute
+// and populates its real count. When the task genuinely moves into the bucket
+// (isMove) its limit is enforced and the pre-insert count is returned (the
+// caller bumps it after the upsert). When the task already sits in the bucket
+// (a reroute back to its origin) nothing moves and no new slot is consumed, so
+// the current count is returned without re-checking the limit — otherwise a full
+// bucket would wrongly block its own task's completion.
+func resolveDestinationBucket(s *xorm.Session, a web.Auth, task *Task, bucketID int64, isMove bool) (*Bucket, error) {
+	if isMove {
+		return resolveBucketWithCount(s, a, task, bucketID)
+	}
+
+	bucket, err := getBucketByID(s, bucketID)
+	if err != nil {
+		return nil, err
+	}
+	bucket.Count, err = countTasksInBucket(s, a, bucket)
+	if err != nil {
+		return nil, err
+	}
+	return bucket, nil
+}
+
+// taskReroutesOutOfDoneBucket reports whether dropping this repeating task into
+// the view's done bucket will immediately reroute it back to the default bucket.
+// When it will, the done bucket's limit must not gate the move — the task never
+// occupies a slot there.
+func taskReroutesOutOfDoneBucket(view *ProjectView, task *Task, targetBucketID int64) bool {
+	return view.DoneBucketID != 0 && view.DoneBucketID == targetBucketID && !task.Done && task.isRepeating()
+}
+
 // syncTaskIntoOtherDoneBuckets places a newly-done task into the done bucket of
 // every other manual kanban view of its project, so its done state is reflected
 // everywhere.
@@ -155,9 +186,16 @@ func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 		return err
 	}
 
+	// A repeating task dropped into the done bucket never stays there; it is
+	// rerouted to the default bucket below. Checking the done bucket's limit here
+	// would wrongly reject the completion when that bucket is full, even though
+	// the task never occupies a slot in it. The real destination's limit is
+	// enforced by the re-resolve after the reroute.
+	reroutesOutOfDoneBucket := taskReroutesOutOfDoneBucket(view, task, b.BucketID)
+
 	// Check the bucket limit
 	// Only check the bucket limit if the task is being moved between buckets, allow reordering the task within a bucket
-	if b.BucketID != 0 && b.BucketID != oldTaskBucket.BucketID {
+	if b.BucketID != 0 && b.BucketID != oldTaskBucket.BucketID && !reroutesOutOfDoneBucket {
 		taskCount, err := checkBucketLimit(s, a, task, bucket)
 		if err != nil {
 			return err
@@ -234,10 +272,14 @@ func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 
 	// The done-state handling above can reroute a repeating task to the view's
 	// default bucket. The earlier limit check ran against the originally
-	// requested (done) bucket, so re-resolve the real destination, enforce its
-	// limit, and report its true count instead of the done bucket's.
-	if updateBucket && b.BucketID != bucket.ID {
-		bucket, err = resolveBucketWithCount(s, a, task, b.BucketID)
+	// requested (done) bucket, so re-resolve the real destination and report its
+	// true count instead of the done bucket's. This must run even when
+	// updateBucket is false (the reroute target is the bucket the task already
+	// sits in): no row moves, but the response still has to reflect the real
+	// destination. b.BucketID differs from the loaded bucket.ID only when a
+	// reroute changed the destination.
+	if b.BucketID != bucket.ID {
+		bucket, err = resolveDestinationBucket(s, a, task, b.BucketID, updateBucket)
 		if err != nil {
 			return err
 		}
