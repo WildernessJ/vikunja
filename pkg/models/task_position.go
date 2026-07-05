@@ -169,18 +169,22 @@ func lockPositionsForViewUpdate(s *xorm.Session, viewID int64) (err error) {
 	return
 }
 
+// lockPositionsForView is the seam updateTaskPosition uses to take the per-view
+// lock, overridable in tests to observe that it is called.
+var lockPositionsForView = lockPositionsForViewUpdate
+
 // updateTaskPosition is the internal function that performs the task position update logic
 // without dispatching events. This is used by moveTaskToDoneBuckets to avoid duplicate events.
 func updateTaskPosition(s *xorm.Session, a web.Auth, tp *TaskPosition) (err error) {
-	if tp.Position < MinPositionSpacing {
-		// The recalculation below will need the view lock anyway. Taking it
-		// before the upsert keeps the lock order consistent with concurrent
-		// recalculations (view lock first, then position rows), avoiding a
-		// lock-order deadlock.
-		err = lockPositionsForViewUpdate(s, tp.ProjectViewID)
-		if err != nil {
-			return err
-		}
+	// Serialize position updates for this view before touching any rows. Two
+	// concurrent drags computing the same midpoint would otherwise each find no
+	// conflict and both commit, leaving duplicate stored positions (#12, upstream
+	// #3089). The low-position recalculation branch below needs this lock too;
+	// taking it up front for every path keeps the lock order consistent (view
+	// lock first, then position rows) and avoids lock-order deadlocks.
+	err = lockPositionsForView(s, tp.ProjectViewID)
+	if err != nil {
+		return err
 	}
 
 	err = upsertTaskPosition(s, tp)
