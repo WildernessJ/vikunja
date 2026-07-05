@@ -207,9 +207,7 @@ export default abstract class AbstractService<Model extends IAbstract = IAbstrac
 		if (this.loadingTimeout === null) {
 			this.loadingTimeout = setTimeout(() => {
 				this.loadingTimeout = null
-				if (this.inFlightRequests > 0) {
-					this.loading = true
-				}
+				this.loading = true
 			}, 100)
 		}
 
