@@ -202,6 +202,28 @@ func TestUpdateDone_RRuleMode(t *testing.T) {
 		assert.True(t, originalReminder.Add(delta).Equal(newTask.Reminders[0].Reminder), "reminder should shift by the same delta as the due date")
 	})
 
+	t.Run("deadline shifts by the same delta as the due date", func(t *testing.T) {
+		monday := nextOrSameWeekday(time.Now().AddDate(5, 0, 0), time.Monday)
+		due := time.Date(monday.Year(), monday.Month(), monday.Day(), 9, 0, 0, 0, time.UTC)
+		wantDue := due.AddDate(0, 0, 4) // next Friday in the BYDAY=MO,FR set, same week
+		deadline := due.Add(48 * time.Hour)
+
+		oldTask := &Task{
+			Done:        false,
+			RepeatMode:  TaskRepeatModeRRule,
+			RepeatRRule: "FREQ=WEEKLY;BYDAY=MO,FR",
+			DueDate:     due,
+			Deadline:    deadline,
+		}
+		newTask := &Task{Done: true}
+
+		updateDone(oldTask, newTask)
+
+		require.False(t, newTask.Done)
+		delta := wantDue.Sub(due)
+		assert.True(t, deadline.Add(delta).Equal(newTask.Deadline), "deadline should shift by the same delta as the due date")
+	})
+
 	t.Run("overdue completion preserves the original time-of-day", func(t *testing.T) {
 		// Original due date is a Monday 09:00 far in the past, so completion
 		// happens well after the due time. The next due date must land on a

@@ -565,6 +565,33 @@ END:VCALENDAR`,
 				HexColor: "7b68ee",
 			},
 		},
+		{
+			name: "with deadline",
+			args: args{content: `BEGIN:VCALENDAR
+VERSION:2.0
+X-PUBLISHED-TTL:PT4H
+X-WR-CALNAME:test
+PRODID:-//RandomProdID which is not random//EN
+BEGIN:VTODO
+UID:randomuid
+DTSTAMP:20181201T011204
+SUMMARY:Todo #1
+DESCRIPTION:Lorem Ipsum
+DUE:20230304T150000Z
+X-VIKUNJA-DEADLINE:20230310T090000Z
+LAST-MODIFIED:00010101T000000
+END:VTODO
+END:VCALENDAR`,
+			},
+			wantVTask: &models.Task{
+				Title:       "Todo #1",
+				UID:         "randomuid",
+				Description: "Lorem Ipsum",
+				Updated:     time.Unix(1543626724, 0).In(config.GetTimeZone()),
+				DueDate:     time.Date(2023, 3, 4, 15, 0, 0, 0, config.GetTimeZone()),
+				Deadline:    time.Date(2023, 3, 10, 9, 0, 0, 0, config.GetTimeZone()),
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -823,6 +850,45 @@ DESCRIPTION:The second child task
 CREATED:20181201T011204Z
 LAST-MODIFIED:20181201T011204Z
 RELATED-TO;RELTYPE=PARENT:randomuid_parent
+END:VTODO
+END:VCALENDAR`,
+		},
+		{
+			name: "Format Task with deadline as CalDAV",
+			args: args{
+				list: &models.ProjectWithTasksAndBuckets{
+					Project: models.Project{
+						Title: "List title",
+					},
+				},
+				tasks: []*models.TaskWithComments{
+					{
+						Task: models.Task{
+							Title:       "Task 1",
+							UID:         "randomuid",
+							Description: "Description",
+							Created:     time.Unix(1543626721, 0).In(config.GetTimeZone()),
+							DueDate:     time.Unix(1543626722, 0).In(config.GetTimeZone()),
+							Deadline:    time.Unix(1543626723, 0).In(config.GetTimeZone()),
+							Updated:     time.Unix(1543626725, 0).In(config.GetTimeZone()),
+						},
+					},
+				},
+			},
+			wantCaldav: `BEGIN:VCALENDAR
+VERSION:2.0
+X-PUBLISHED-TTL:PT4H
+X-WR-CALNAME:List title
+PRODID:-//Vikunja Todo App//EN
+BEGIN:VTODO
+UID:randomuid
+DTSTAMP:20181201T011205Z
+SUMMARY:Task 1
+DESCRIPTION:Description
+DUE:20181201T011202Z
+X-VIKUNJA-DEADLINE:20181201T011203Z
+CREATED:20181201T011201Z
+LAST-MODIFIED:20181201T011205Z
 END:VTODO
 END:VCALENDAR`,
 		},

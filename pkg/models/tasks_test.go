@@ -116,6 +116,29 @@ func TestTask_Create(t *testing.T) {
 		err = s.Commit()
 		require.NoError(t, err)
 	})
+	t.Run("reminder relative to deadline", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		task := &Task{
+			Title:       "Lorem",
+			Description: "Lorem Ipsum Dolor",
+			ProjectID:   1,
+			Deadline:    time.Date(2023, time.March, 7, 22, 5, 0, 0, time.UTC),
+			Reminders: []*TaskReminder{
+				{
+					RelativeTo:     "deadline",
+					RelativePeriod: -86400,
+				},
+			}}
+		err := task.Create(s, usr)
+		require.NoError(t, err)
+		assert.Equal(t, time.Date(2023, time.March, 6, 22, 5, 0, 0, time.UTC), task.Reminders[0].Reminder)
+		assert.Equal(t, ReminderRelationDeadline, task.Reminders[0].RelativeTo)
+		err = s.Commit()
+		require.NoError(t, err)
+	})
 	t.Run("empty title", func(t *testing.T) {
 		db.LoadAndAssertFixtures(t)
 		s := db.NewSession()
@@ -641,6 +664,40 @@ func TestTask_Update(t *testing.T) {
 		assert.Equal(t, "updated", updatedTask.Title)
 		assert.True(t, updatedTask.DoneAt.IsZero())
 	})
+	t.Run("set and clear deadline independently of due date", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		deadline := time.Date(2026, time.August, 1, 17, 0, 0, 0, time.UTC)
+		task := &Task{
+			ID:       1,
+			Deadline: deadline,
+		}
+		err := task.Update(s, u)
+		require.NoError(t, err)
+		require.NoError(t, s.Commit())
+
+		updatedTask := &Task{ID: 1}
+		err = updatedTask.ReadOne(s, u)
+		require.NoError(t, err)
+		assert.True(t, deadline.Equal(updatedTask.Deadline))
+		assert.True(t, updatedTask.DueDate.IsZero(), "due_date must stay untouched by setting deadline")
+
+		clearTask := &Task{
+			ID:       1,
+			Deadline: time.Time{},
+		}
+		err = clearTask.Update(s, u)
+		require.NoError(t, err)
+		require.NoError(t, s.Commit())
+
+		clearedTask := &Task{ID: 1}
+		err = clearedTask.ReadOne(s, u)
+		require.NoError(t, err)
+		assert.True(t, clearedTask.Deadline.IsZero())
+		assert.True(t, clearedTask.DueDate.IsZero(), "due_date must stay untouched by clearing deadline")
+	})
 }
 
 func TestTask_Delete(t *testing.T) {
@@ -675,6 +732,24 @@ func TestUpdateTasksHelper(t *testing.T) {
 	require.Len(t, updated, 1)
 	assert.Equal(t, "helper", updated[0].Title)
 	assert.False(t, updated[0].Done)
+}
+
+func TestUpdateTasksHelper_DeadlineUntouchedOnBulkEdit(t *testing.T) {
+	db.LoadAndAssertFixtures(t)
+	s := db.NewSession()
+	defer s.Close()
+
+	u := &user.User{ID: 1}
+
+	deadline := time.Date(2026, time.September, 1, 12, 0, 0, 0, time.UTC)
+	_, err := updateTasks(s, u, &Task{Deadline: deadline}, []int64{10}, []string{"deadline"})
+	require.NoError(t, err)
+
+	updated, err := updateTasks(s, u, &Task{Title: "bulk-edited"}, []int64{10}, []string{"title"})
+	require.NoError(t, err)
+	require.Len(t, updated, 1)
+	assert.Equal(t, "bulk-edited", updated[0].Title)
+	assert.True(t, deadline.Equal(updated[0].Deadline), "deadline must be untouched by a bulk edit that doesn't include it")
 }
 
 func TestUpdateDone(t *testing.T) {
@@ -819,6 +894,46 @@ func TestUpdateDone(t *testing.T) {
 			assert.Equal(t, expected, newTask.EndDate)
 			assert.False(t, newTask.Done)
 		})
+		t.Run("update deadline", func(t *testing.T) {
+			oldTask := &Task{
+				Done:        false,
+				RepeatAfter: 8600,
+				Deadline:    time.Unix(1550000000, 0),
+			}
+			newTask := &Task{
+				Done: true,
+			}
+			updateDone(oldTask, newTask)
+
+			var expected = time.Unix(1550008600, 0)
+			for time.Since(expected) > 0 {
+				expected = expected.Add(time.Second * time.Duration(oldTask.RepeatAfter))
+			}
+
+			assert.Equal(t, expected, newTask.Deadline)
+			assert.False(t, newTask.Done)
+		})
+		t.Run("deadline advances independently of due date", func(t *testing.T) {
+			oldTask := &Task{
+				Done:        false,
+				RepeatAfter: 8600,
+				Deadline:    time.Unix(1550000000, 0),
+				// No DueDate set: the deadline shift must not depend on it.
+			}
+			newTask := &Task{
+				Done: true,
+			}
+			updateDone(oldTask, newTask)
+
+			var expected = time.Unix(1550008600, 0)
+			for time.Since(expected) > 0 {
+				expected = expected.Add(time.Second * time.Duration(oldTask.RepeatAfter))
+			}
+
+			assert.True(t, newTask.DueDate.IsZero())
+			assert.Equal(t, expected, newTask.Deadline)
+			assert.False(t, newTask.Done)
+		})
 		t.Run("ensure due date is repeated even if the original one is in the future", func(t *testing.T) {
 			oldTask := &Task{
 				Done:        false,
@@ -928,6 +1043,24 @@ func TestUpdateDone(t *testing.T) {
 				assert.Equal(t, time.Now().Add(diff+time.Duration(oldTask.RepeatAfter)*time.Second).Unix(), newTask.EndDate.Unix())
 				assert.False(t, newTask.Done)
 			})
+			t.Run("deadline shifts flat from now, not derived from due date", func(t *testing.T) {
+				oldTask := &Task{
+					Done:        false,
+					RepeatAfter: 8600,
+					RepeatMode:  TaskRepeatModeFromCurrentDate,
+					DueDate:     time.Unix(1550000000, 0),
+					Deadline:    time.Unix(1560000000, 0),
+				}
+				newTask := &Task{
+					Done: true,
+				}
+				updateDone(oldTask, newTask)
+
+				// Deadline must move by the flat repeat interval from now, unlike
+				// start/end which are re-derived from the new due date.
+				assert.Equal(t, time.Now().Add(time.Duration(oldTask.RepeatAfter)*time.Second).Unix(), newTask.Deadline.Unix())
+				assert.False(t, newTask.Done)
+			})
 		})
 		t.Run("repeat each month", func(t *testing.T) {
 			t.Run("due date", func(t *testing.T) {
@@ -1031,6 +1164,23 @@ func TestUpdateDone(t *testing.T) {
 				assert.True(t, newTask.EndDate.After(oldEndDate))
 				assert.NotEqual(t, oldEndDate.Month(), newTask.EndDate.Month())
 				assert.Equal(t, oldDiff, newTask.EndDate.Sub(newTask.StartDate))
+				assert.False(t, newTask.Done)
+			})
+			t.Run("deadline", func(t *testing.T) {
+				oldTask := &Task{
+					Done:       false,
+					RepeatMode: TaskRepeatModeMonth,
+					Deadline:   time.Unix(1550000000, 0),
+				}
+				newTask := &Task{
+					Done: true,
+				}
+				oldDeadline := oldTask.Deadline
+
+				updateDone(oldTask, newTask)
+
+				assert.True(t, newTask.Deadline.After(oldDeadline))
+				assert.NotEqual(t, oldDeadline.Month(), newTask.Deadline.Month())
 				assert.False(t, newTask.Done)
 			})
 		})

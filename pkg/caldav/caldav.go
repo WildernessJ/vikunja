@@ -62,6 +62,7 @@ type Todo struct {
 	Start                time.Time
 	End                  time.Time
 	DueDate              time.Time
+	Deadline             time.Time
 	Duration             time.Duration
 	RepeatAfter          int64
 	RepeatMode           models.TaskRepeatMode
@@ -211,6 +212,13 @@ ORGANIZER;CN=:` + escapeICalText(t.Organizer.Username)
 DUE:` + makeCalDavTimeFromTimeStamp(t.DueDate)
 		}
 
+		if t.Deadline.Unix() > 0 {
+			// No standard RFC 5545 property maps to a hard deadline distinct
+			// from DUE; round-trip it via a non-standard X-property.
+			caldavtodos += `
+X-VIKUNJA-DEADLINE:` + makeCalDavTimeFromTimeStamp(t.Deadline)
+		}
+
 		if t.Created.Unix() > 0 {
 			caldavtodos += `
 CREATED:` + makeCalDavTimeFromTimeStamp(t.Created)
@@ -278,6 +286,10 @@ TRIGGER;RELATED=START:` + makeCalDavDuration(a.Duration)
 		case models.ReminderRelationEndDate, models.ReminderRelationDueDate:
 			caldavalarms += `
 TRIGGER;RELATED=END:` + makeCalDavDuration(a.Duration)
+		case models.ReminderRelationDeadline:
+			// RFC 5545 TRIGGER;RELATED= only supports START/END; a deadline has no
+			// equivalent, so it's exported as an absolute trigger like the default case.
+			fallthrough
 		default:
 			caldavalarms += `
 TRIGGER;VALUE=DATE-TIME:` + makeCalDavTimeFromTimeStamp(a.Time)
