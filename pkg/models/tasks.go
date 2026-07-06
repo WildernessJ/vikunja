@@ -1712,6 +1712,13 @@ func setTaskDatesRRuleRepeat(oldTask, newTask *Task) {
 	// skip to: from-completion always evaluates from now; otherwise from the
 	// later of the due date and now, so a not-yet-due task still advances one
 	// step while an overdue task skips the occurrences it already missed.
+	//
+	// Deliberate degenerate case: a from-completion task whose due date is still
+	// in the future resolves to that future date, not the next occurrence after
+	// completion. rrule-go's Dtstart is both the time-of-day source and the
+	// occurrence floor, so anchoring there to keep 09:00 means it cannot emit
+	// anything earlier. Preserving time-of-day wins over honoring "from now" for
+	// this spec-uncovered edge — do not "fix" it back by anchoring Dtstart on now.
 	dtstart := oldTask.DueDate
 	cutoff := oldTask.DueDate
 	if oldTask.RepeatFromCompletion || cutoff.Before(now) {
