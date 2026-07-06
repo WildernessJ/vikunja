@@ -1706,15 +1706,22 @@ func setTaskDatesRRuleRepeat(oldTask, newTask *Task) {
 	}
 
 	now := time.Now()
-	anchor := oldTask.DueDate
-	if oldTask.RepeatFromCompletion {
-		anchor = now
+
+	// The rule is anchored at the original due date so its time-of-day and
+	// interval phase are preserved. The cutoff only decides which occurrence to
+	// skip to: from-completion always evaluates from now; otherwise from the
+	// later of the due date and now, so a not-yet-due task still advances one
+	// step while an overdue task skips the occurrences it already missed.
+	dtstart := oldTask.DueDate
+	cutoff := oldTask.DueDate
+	if oldTask.RepeatFromCompletion || cutoff.Before(now) {
+		cutoff = now
 	}
-	if anchor.Before(now) {
-		anchor = now
+	if dtstart.IsZero() {
+		dtstart = now
 	}
 
-	next, ok := nextRRuleOccurrence(oldTask.RepeatRRule, anchor, config.GetTimeZone())
+	next, ok := nextRRuleOccurrence(oldTask.RepeatRRule, dtstart, cutoff, config.GetTimeZone())
 	if !ok {
 		// UNTIL bound exhausted (or no valid occurrence at all): the task stays done.
 		return
@@ -1722,7 +1729,7 @@ func setTaskDatesRRuleRepeat(oldTask, newTask *Task) {
 
 	base := oldTask.DueDate
 	if base.IsZero() {
-		base = anchor
+		base = cutoff
 	}
 	delta := next.Sub(base)
 

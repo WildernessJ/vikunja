@@ -121,7 +121,9 @@ func TestNextRRuleOccurrence(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, ok := nextRRuleOccurrence(tt.rule, tt.after, tt.loc)
+			// These cases anchor and cut off at the same instant (the pre-split
+			// semantics), which exercises the core occurrence math directly.
+			got, ok := nextRRuleOccurrence(tt.rule, tt.after, tt.after, tt.loc)
 			assert.Equal(t, tt.wantOk, ok)
 			if tt.wantOk {
 				assert.True(t, tt.want.Equal(got), "want %s, got %s", tt.want, got)
@@ -200,30 +202,78 @@ func TestUpdateDone_RRuleMode(t *testing.T) {
 		assert.True(t, originalReminder.Add(delta).Equal(newTask.Reminders[0].Reminder), "reminder should shift by the same delta as the due date")
 	})
 
-	t.Run("repeat_from_completion anchors on now, ignoring a still-future due date", func(t *testing.T) {
-		// A due date 5 years out is guaranteed to be in the future relative to
-		// "now" at test time. If the implementation ignored RepeatFromCompletion
-		// and anchored on the due date instead, the result would land ~5 years
-		// out too, which the assertions below would catch.
-		farFutureMonday := nextOrSameWeekday(time.Now().AddDate(5, 0, 0), time.Monday)
-
+	t.Run("overdue completion preserves the original time-of-day", func(t *testing.T) {
+		// Original due date is a Monday 09:00 far in the past, so completion
+		// happens well after the due time. The next due date must land on a
+		// Monday at 09:00 (the rule's time-of-day, carried by the original due
+		// date), NOT at the completion clock time.
 		oldTask := &Task{
-			Done:                 false,
-			RepeatMode:           TaskRepeatModeRRule,
-			RepeatRRule:          "FREQ=WEEKLY;BYDAY=MO",
-			RepeatFromCompletion: true,
-			DueDate:              farFutureMonday,
+			Done:        false,
+			RepeatMode:  TaskRepeatModeRRule,
+			RepeatRRule: "FREQ=WEEKLY;BYDAY=MO",
+			DueDate:     time.Date(2020, 1, 6, 9, 0, 0, 0, time.UTC), // a Monday, long past
 		}
 		newTask := &Task{Done: true}
 
 		before := time.Now()
 		updateDone(oldTask, newTask)
-		after := time.Now()
 
 		require.False(t, newTask.Done)
-		assert.Equal(t, time.Monday, newTask.DueDate.Weekday())
-		assert.True(t, newTask.DueDate.After(before), "next occurrence must be after completion time, not the stale future due date")
-		assert.LessOrEqual(t, newTask.DueDate.Sub(after), 8*24*time.Hour, "next occurrence must be within about a week of now, not ~5 years out")
+		got := newTask.DueDate.In(time.UTC)
+		assert.Equal(t, time.Monday, got.Weekday(), "next due must fall on the rule's weekday")
+		assert.Equal(t, 9, got.Hour(), "next due must keep the original 09:00 time-of-day, not the completion time")
+		assert.Equal(t, 0, got.Minute())
+		assert.Equal(t, 0, got.Second())
+		assert.True(t, newTask.DueDate.After(before), "next due must be strictly after now")
+	})
+
+	t.Run("repeat_from_completion preserves the original time-of-day", func(t *testing.T) {
+		// From-completion evaluates the next occurrence relative to now, but the
+		// time-of-day still comes from the original due date (09:00).
+		oldTask := &Task{
+			Done:                 false,
+			RepeatMode:           TaskRepeatModeRRule,
+			RepeatRRule:          "FREQ=WEEKLY;BYDAY=MO",
+			RepeatFromCompletion: true,
+			DueDate:              time.Date(2020, 1, 6, 9, 0, 0, 0, time.UTC), // a Monday, long past
+		}
+		newTask := &Task{Done: true}
+
+		before := time.Now()
+		updateDone(oldTask, newTask)
+
+		require.False(t, newTask.Done)
+		got := newTask.DueDate.In(time.UTC)
+		assert.Equal(t, time.Monday, got.Weekday())
+		assert.Equal(t, 9, got.Hour(), "from-completion next due must keep the original 09:00, not the completion time")
+		assert.Equal(t, 0, got.Minute())
+		assert.True(t, newTask.DueDate.After(before), "next due must be strictly after now")
+	})
+
+	t.Run("INTERVAL greater than 1 preserves the interval phase", func(t *testing.T) {
+		// FREQ=WEEKLY;INTERVAL=2 anchored to a specific past Monday: the next due
+		// must be an EVEN number of weeks from the original due date (phase
+		// preserved), at the original 09:00, not re-phased off the completion date.
+		base := time.Date(2020, 1, 6, 9, 0, 0, 0, time.UTC) // a Monday
+		oldTask := &Task{
+			Done:        false,
+			RepeatMode:  TaskRepeatModeRRule,
+			RepeatRRule: "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO",
+			DueDate:     base,
+		}
+		newTask := &Task{Done: true}
+
+		before := time.Now()
+		updateDone(oldTask, newTask)
+
+		require.False(t, newTask.Done)
+		got := newTask.DueDate.In(time.UTC)
+		assert.Equal(t, time.Monday, got.Weekday())
+		assert.Equal(t, 9, got.Hour())
+		assert.True(t, newTask.DueDate.After(before))
+
+		weeks := int(newTask.DueDate.Sub(base).Round(24*time.Hour).Hours() / 24 / 7)
+		assert.Equal(t, 0, weeks%2, "next due must be an even number of weeks from the original due date (INTERVAL=2 phase), got %d weeks", weeks)
 	})
 
 	t.Run("UNTIL bound reached: task stays done", func(t *testing.T) {

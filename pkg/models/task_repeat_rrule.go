@@ -33,7 +33,10 @@ func anchorRRuleDueDate(t *Task) bool {
 	if t.RepeatMode != TaskRepeatModeRRule || !t.DueDate.IsZero() {
 		return false
 	}
-	next, ok := nextRRuleOccurrence(t.RepeatRRule, time.Now(), config.GetTimeZone())
+	// No prior due date means no time-of-day to preserve; anchor and cutoff are
+	// both now, so the first occurrence at or after now becomes the due date.
+	now := time.Now()
+	next, ok := nextRRuleOccurrence(t.RepeatRRule, now, now, config.GetTimeZone())
 	if !ok {
 		return false
 	}
@@ -94,10 +97,14 @@ func validateTaskRRule(rule string) error {
 }
 
 // nextRRuleOccurrence returns the first occurrence of rule strictly after the
-// given time, evaluated in loc. ok is false when rule is empty or invalid, or
-// when the rule has no occurrence left after "after" (e.g. its UNTIL bound has
-// passed) — the caller decides what "no next occurrence" means for the task.
-func nextRRuleOccurrence(rule string, after time.Time, loc *time.Location) (time.Time, bool) {
+// cutoff `after`, with the rule anchored at `dtstart`. The two are deliberately
+// separate: dtstart fixes the recurrence's time-of-day AND interval phase (so an
+// "every Monday 09:00" rule keeps 09:00 and an INTERVAL>1 rule keeps its week
+// phase), while `after` only skips past already-elapsed occurrences. Conflating
+// them — using the completion time as dtstart — leaks the completion clock time
+// into every future occurrence. ok is false when rule is empty or invalid, or
+// when no occurrence remains after the cutoff (e.g. its UNTIL bound has passed).
+func nextRRuleOccurrence(rule string, dtstart, after time.Time, loc *time.Location) (time.Time, bool) {
 	if rule == "" {
 		return time.Time{}, false
 	}
@@ -109,7 +116,7 @@ func nextRRuleOccurrence(rule string, after time.Time, loc *time.Location) (time
 	if err != nil {
 		return time.Time{}, false
 	}
-	option.Dtstart = after.In(loc)
+	option.Dtstart = dtstart.In(loc)
 
 	r, err := rrule.NewRRule(*option)
 	if err != nil {
