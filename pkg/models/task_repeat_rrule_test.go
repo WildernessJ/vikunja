@@ -144,6 +144,8 @@ func TestValidateTaskRRule(t *testing.T) {
 		{name: "INTERVAL is valid", rule: "FREQ=DAILY;INTERVAL=2", wantErr: false},
 		{name: "YEARLY is valid", rule: "FREQ=YEARLY;BYMONTHDAY=15", wantErr: false},
 		{name: "BYMONTH is outside the supported subset and rejected", rule: "FREQ=YEARLY;BYMONTH=1;BYDAY=1MO", wantErr: true},
+		{name: "COUNT bound is out of subset and rejected", rule: "FREQ=WEEKLY;COUNT=3", wantErr: true},
+		{name: "COUNT with daily freq is rejected", rule: "FREQ=DAILY;COUNT=10", wantErr: true},
 		{name: "bogus frequency is rejected", rule: "FREQ=BOGUS", wantErr: true},
 		{name: "unsupported frequency/component is rejected", rule: "FREQ=HOURLY;BYMINUTE=30", wantErr: true},
 		{name: "empty string is rejected", rule: "", wantErr: true},

@@ -47,6 +47,13 @@ func validateTaskRRule(rule string) error {
 		return ErrInvalidTaskRepeatRRule{RRule: rule}
 	}
 
+	// COUNT is out of the supported subset (see spec Non-Goals): occurrence
+	// counting needs per-task state we don't store, and since each completion
+	// resets Dtstart, a COUNT rule would never exhaust and repeat forever.
+	if option.Count > 0 {
+		return ErrInvalidTaskRepeatRRule{RRule: rule}
+	}
+
 	if len(option.Bymonth) > 0 || len(option.Byyearday) > 0 || len(option.Byweekno) > 0 ||
 		len(option.Byhour) > 0 || len(option.Byminute) > 0 || len(option.Bysecond) > 0 ||
 		len(option.Byeaster) > 0 {
