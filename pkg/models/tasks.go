@@ -19,6 +19,7 @@ package models
 import (
 	"math"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -927,6 +928,7 @@ func createTask(s *xorm.Session, t *Task, a web.Auth, updateAssignees bool, setB
 		if err := validateTaskRRule(t.RepeatRRule); err != nil {
 			return err
 		}
+		anchorRRuleDueDate(t)
 	}
 
 	// Check if the project exists
@@ -1243,6 +1245,12 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 	if t.RepeatMode == TaskRepeatModeRRule {
 		if err := validateTaskRRule(t.RepeatRRule); err != nil {
 			return err
+		}
+		// Persist the anchored due date even when the caller's field set (and
+		// thus colsToUpdate) doesn't include due_date; without this the Cols()
+		// allow-list would silently drop it on a partial update.
+		if anchorRRuleDueDate(t) && !slices.Contains(colsToUpdate, "due_date") {
+			colsToUpdate = append(colsToUpdate, "due_date")
 		}
 	}
 

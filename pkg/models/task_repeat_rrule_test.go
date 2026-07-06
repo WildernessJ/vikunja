@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"code.vikunja.io/api/pkg/config"
 	"code.vikunja.io/api/pkg/db"
 	"code.vikunja.io/api/pkg/user"
 
@@ -287,5 +288,103 @@ func TestTaskBucket_Update_RRuleRepeatingTask(t *testing.T) {
 	db.AssertMissing(t, "task_buckets", map[string]interface{}{
 		"task_id":   28,
 		"bucket_id": 3,
+	})
+}
+
+func TestRRuleDueDateAnchoring(t *testing.T) {
+	usr := &user.User{ID: 1, Username: "user1"}
+
+	isMonOrFri := func(wd time.Weekday) bool {
+		return wd == time.Monday || wd == time.Friday
+	}
+
+	t.Run("create without a due date anchors to the first occurrence", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		before := time.Now()
+		task := &Task{
+			Title:       "anchor me",
+			ProjectID:   1,
+			RepeatMode:  TaskRepeatModeRRule,
+			RepeatRRule: "FREQ=WEEKLY;BYDAY=MO,FR",
+		}
+		require.NoError(t, task.Create(s, usr))
+		require.NoError(t, s.Commit())
+
+		assert.False(t, task.DueDate.IsZero(), "due date must be anchored, not left empty")
+		assert.True(t, task.DueDate.After(before), "anchored due date must be strictly after now")
+		assert.True(t, isMonOrFri(task.DueDate.In(config.GetTimeZone()).Weekday()), "anchored due date must fall on a rule occurrence (Mon or Fri), got %s", task.DueDate.Weekday())
+		assert.Less(t, task.DueDate.Sub(before), 8*24*time.Hour, "first weekly occurrence must be within a week")
+
+		reread, err := GetTaskByIDSimple(s, task.ID)
+		require.NoError(t, err)
+		assert.False(t, reread.DueDate.IsZero(), "anchored due date must persist to the database")
+	})
+
+	t.Run("create with an explicit due date does not overwrite it", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		explicit := time.Date(2026, 7, 31, 9, 0, 0, 0, time.UTC) // a Friday
+		task := &Task{
+			Title:       "keep my date",
+			ProjectID:   1,
+			RepeatMode:  TaskRepeatModeRRule,
+			RepeatRRule: "FREQ=WEEKLY;BYDAY=MO,FR",
+			DueDate:     explicit,
+		}
+		require.NoError(t, task.Create(s, usr))
+		require.NoError(t, s.Commit())
+
+		assert.True(t, explicit.Equal(task.DueDate), "explicit due date must not be overwritten, got %s", task.DueDate)
+	})
+
+	t.Run("create with a fully-past UNTIL leaves the due date empty and does not error", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		task := &Task{
+			Title:       "expired rule",
+			ProjectID:   1,
+			RepeatMode:  TaskRepeatModeRRule,
+			RepeatRRule: "FREQ=WEEKLY;BYDAY=MO;UNTIL=20200110T000000Z",
+		}
+		require.NoError(t, task.Create(s, usr))
+		require.NoError(t, s.Commit())
+
+		assert.True(t, task.DueDate.IsZero(), "a rule with no future occurrence must leave the due date empty")
+	})
+
+	t.Run("partial update into rrule mode anchors and persists the due date", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		// A plain task with no due date, so the update is the first time a rule appears.
+		plain := &Task{Title: "plain", ProjectID: 1}
+		require.NoError(t, plain.Create(s, usr))
+		require.NoError(t, s.Commit())
+		require.True(t, plain.DueDate.IsZero())
+
+		before := time.Now()
+		// Explicitly exclude due_date from the updated fields to exercise the
+		// narrowed colsToUpdate allow-list — the anchor must add it back itself.
+		upd := &Task{
+			ID:          plain.ID,
+			RepeatMode:  TaskRepeatModeRRule,
+			RepeatRRule: "FREQ=WEEKLY;BYDAY=MO,FR",
+		}
+		require.NoError(t, upd.updateSingleTask(s, usr, []string{"repeat_mode", "repeat_rrule"}))
+		require.NoError(t, s.Commit())
+
+		reread, err := GetTaskByIDSimple(s, plain.ID)
+		require.NoError(t, err)
+		assert.False(t, reread.DueDate.IsZero(), "anchored due date must persist even when due_date is not in the updated field set")
+		assert.True(t, reread.DueDate.After(before), "anchored due date must be strictly after now")
+		assert.True(t, isMonOrFri(reread.DueDate.In(config.GetTimeZone()).Weekday()), "anchored due date must fall on a rule occurrence")
 	})
 }

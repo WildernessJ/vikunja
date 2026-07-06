@@ -19,8 +19,27 @@ package models
 import (
 	"time"
 
+	"code.vikunja.io/api/pkg/config"
+
 	"github.com/teambition/rrule-go"
 )
+
+// anchorRRuleDueDate gives an RRULE-mode task a due date when it has none, set
+// to the first occurrence strictly after now, so a recurring task is never left
+// dateless and inert (Todoist parity). It never overwrites an existing due date
+// and does nothing for non-RRULE modes or a rule with no future occurrence
+// (e.g. an already-passed UNTIL). Returns true when it set a due date.
+func anchorRRuleDueDate(t *Task) bool {
+	if t.RepeatMode != TaskRepeatModeRRule || !t.DueDate.IsZero() {
+		return false
+	}
+	next, ok := nextRRuleOccurrence(t.RepeatRRule, time.Now(), config.GetTimeZone())
+	if !ok {
+		return false
+	}
+	t.DueDate = next
+	return true
+}
 
 // supportedRRuleFreqs whitelists the RFC 5545 subset this engine understands.
 // Anything outside it (BYHOUR/BYMINUTE/BYMONTH/etc., or an unlisted FREQ) parses

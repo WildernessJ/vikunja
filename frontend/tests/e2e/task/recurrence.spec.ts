@@ -128,5 +128,11 @@ test.describe('Task recurrence', () => {
 		expect(body.title).toBe('water plants')
 		expect(body.repeat_mode).toBe(3)
 		expect(body.repeat_rrule).toBe('FREQ=WEEKLY;BYDAY=MO,FR')
+
+		// The backend anchors the due date to the first occurrence, so a quick-add
+		// pattern task is never left dateless and inert.
+		const created = await r.json()
+		expect(created.due_date).not.toBe('0001-01-01T00:00:00Z')
+		expect(new Date(created.due_date).getTime()).toBeGreaterThan(Date.now() - 60_000)
 	})
 })
