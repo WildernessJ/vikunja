@@ -1169,7 +1169,36 @@
       "hours": "Hours",
       "days": "Days",
       "weeks": "Weeks",
-      "invalidAmount": "Please enter more than 0."
+      "invalidAmount": "Please enter more than 0.",
+      "customPattern": "Custom pattern",
+      "weekly": "Weekly",
+      "onDayOfMonth": "On day of month",
+      "onTheNth": "On the",
+      "onLastDay": "On the last day of the month",
+      "onLastWorkday": "On the last workday of the month",
+      "endsOn": "Ends on",
+      "noEndDate": "No end date",
+      "patternSummary": "Repeats {summary}",
+      "summaryWeekly": "weekly on {days}",
+      "summaryMonthlyDay": "monthly on day {day}",
+      "summaryMonthlyNth": "monthly on the {ordinal} {weekday}",
+      "weekdayShort": {
+        "mo": "Mon",
+        "tu": "Tue",
+        "we": "Wed",
+        "th": "Thu",
+        "fr": "Fri",
+        "sa": "Sat",
+        "su": "Sun"
+      },
+      "ordinal": {
+        "1": "first",
+        "2": "second",
+        "3": "third",
+        "4": "fourth",
+        "5": "fifth",
+        "last": "last"
+      }
     },
     "quickAddMagic": {
       "hint": "Use magic prefixes to define due dates, assignees and other task properties.",

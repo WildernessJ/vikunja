@@ -20,6 +20,7 @@ export const parseTaskText = (text: string, prefixesMode: PrefixMode = PrefixMod
 		priority: null,
 		assignees: [],
 		repeats: null,
+		rruleRepeat: null,
 	}
 
 	// If the entire text is wrapped in quotes, strip them and skip all parsing
@@ -48,9 +49,10 @@ export const parseTaskText = (text: string, prefixesMode: PrefixMode = PrefixMod
 
 	result.assignees = getItemsFromPrefix(result.text, prefixes.assignee)
 
-	const {textWithoutMatched, repeats} = getRepeats(result.text)
+	const {textWithoutMatched, repeats, rruleRepeat} = getRepeats(result.text, now)
 	result.text = textWithoutMatched
 	result.repeats = repeats
+	result.rruleRepeat = rruleRepeat
 
 	const {newText, date} = parseDate(result.text, now)
 	result.text = newText

@@ -46,12 +46,21 @@
 						<option :value="TASK_REPEAT_MODES.REPEAT_MODE_FROM_CURRENT_DATE">
 							{{ $t('task.repeat.fromCurrentDate') }}
 						</option>
+						<option :value="TASK_REPEAT_MODES.REPEAT_MODE_RRULE">
+							{{ $t('task.repeat.customPattern') }}
+						</option>
 					</select>
 				</div>
 			</div>
 		</div>
+		<RecurrencePatternPicker
+			v-if="task.repeatMode === TASK_REPEAT_MODES.REPEAT_MODE_RRULE"
+			v-model="task.repeatRrule"
+			:disabled="disabled"
+			@update:modelValue="updateRrule"
+		/>
 		<div
-			v-if="task.repeatMode !== TASK_REPEAT_MODES.REPEAT_MODE_MONTH"
+			v-if="showIntervalEditor"
 			class="is-flex"
 		>
 			<p class="pis-4">
@@ -94,7 +103,7 @@
 </template>
 
 <script setup lang="ts">
-import {ref, reactive, watch} from 'vue'
+import {ref, reactive, computed, watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 
 import {error} from '@/message'
@@ -103,6 +112,7 @@ import {TASK_REPEAT_MODES} from '@/types/IRepeatMode'
 import type {IRepeatAfter} from '@/types/IRepeatAfter'
 import type {ITask} from '@/modelTypes/ITask'
 import TaskModel from '@/models/task'
+import RecurrencePatternPicker from '@/components/misc/RecurrencePatternPicker.vue'
 
 const props = withDefaults(defineProps<{
 	modelValue: ITask | undefined,
@@ -123,6 +133,13 @@ const repeatAfter = reactive({
 	type: '',
 })
 
+// The interval amount/type editor is only meaningful for the two interval-based
+// modes; monthly ignores it and the calendar-pattern mode has its own picker.
+const showIntervalEditor = computed(() =>
+	task.value.repeatMode === TASK_REPEAT_MODES.REPEAT_MODE_DEFAULT ||
+	task.value.repeatMode === TASK_REPEAT_MODES.REPEAT_MODE_FROM_CURRENT_DATE,
+)
+
 watch(
 	() => props.modelValue,
 	(value: ITask) => {
@@ -138,7 +155,20 @@ watch(
 )
 
 function updateData() {
-	if (!task.value || 
+	if (!task.value) {
+		return
+	}
+
+	// Calendar-pattern mode is driven by the picker; don't persist an empty rule
+	// (the backend rejects it). The picker calls updateRrule once a pattern is set.
+	if (task.value.repeatMode === TASK_REPEAT_MODES.REPEAT_MODE_RRULE) {
+		if (task.value.repeatRrule !== '') {
+			emit('update:modelValue', task.value)
+		}
+		return
+	}
+
+	if (
 		(task.value.repeatMode === TASK_REPEAT_MODES.REPEAT_MODE_DEFAULT && repeatAfter.amount === 0) ||
 		(task.value.repeatMode === TASK_REPEAT_MODES.REPEAT_MODE_FROM_CURRENT_DATE && repeatAfter.amount === 0)
 	) {
@@ -151,6 +181,17 @@ function updateData() {
 	}
 
 	Object.assign(task.value.repeatAfter, repeatAfter)
+	emit('update:modelValue', task.value)
+}
+
+function updateRrule(rrule: string) {
+	if (!task.value) {
+		return
+	}
+	task.value.repeatRrule = rrule
+	if (rrule === '') {
+		return
+	}
 	emit('update:modelValue', task.value)
 }
 
