@@ -51,21 +51,23 @@ type Todo struct {
 	UID       string
 
 	// Optional
-	Summary     string
-	Description string
-	Completed   time.Time
-	Organizer   *user.User
-	Priority    int64 // 0-9, 1 is highest
-	Relations   []Relation
-	Color       string
-	Categories  []string
-	Start       time.Time
-	End         time.Time
-	DueDate     time.Time
-	Duration    time.Duration
-	RepeatAfter int64
-	RepeatMode  models.TaskRepeatMode
-	Alarms      []Alarm
+	Summary              string
+	Description          string
+	Completed            time.Time
+	Organizer            *user.User
+	Priority             int64 // 0-9, 1 is highest
+	Relations            []Relation
+	Color                string
+	Categories           []string
+	Start                time.Time
+	End                  time.Time
+	DueDate              time.Time
+	Duration             time.Duration
+	RepeatAfter          int64
+	RepeatMode           models.TaskRepeatMode
+	RepeatRRule          string
+	RepeatFromCompletion bool
+	Alarms               []Alarm
 
 	Created time.Time
 	Updated time.Time // last-mod
@@ -219,15 +221,23 @@ CREATED:` + makeCalDavTimeFromTimeStamp(t.Created)
 PRIORITY:` + strconv.Itoa(mapPriorityToCaldav(t.Priority))
 		}
 
-		if t.RepeatAfter > 0 || t.RepeatMode == models.TaskRepeatModeMonth {
-			if t.RepeatMode == models.TaskRepeatModeMonth {
+		switch {
+		case t.RepeatMode == models.TaskRepeatModeRRule && t.RepeatRRule != "":
+			caldavtodos += `
+RRULE:` + t.RepeatRRule
+			if t.RepeatFromCompletion {
+				// RFC 5545 has no from-completion concept; round-trip it via
+				// a non-standard property re-read on import.
 				caldavtodos += `
-RRULE:FREQ=MONTHLY;BYMONTHDAY=` + t.DueDate.Format("02") // Day of the month
-			} else {
-				freq, interval := getRruleFromInterval(t.RepeatAfter)
-				caldavtodos += `
-RRULE:FREQ=` + freq + `;INTERVAL=` + strconv.FormatInt(interval, 10)
+X-VIKUNJA-REPEAT-FROM-COMPLETION:1`
 			}
+		case t.RepeatMode == models.TaskRepeatModeMonth:
+			caldavtodos += `
+RRULE:FREQ=MONTHLY;BYMONTHDAY=` + t.DueDate.Format("02") // Day of the month
+		case t.RepeatAfter > 0:
+			freq, interval := getRruleFromInterval(t.RepeatAfter)
+			caldavtodos += `
+RRULE:FREQ=` + freq + `;INTERVAL=` + strconv.FormatInt(interval, 10)
 		}
 
 		if len(t.Categories) > 0 {

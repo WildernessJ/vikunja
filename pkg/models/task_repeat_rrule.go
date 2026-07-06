@@ -32,6 +32,13 @@ var supportedRRuleFreqs = map[rrule.Frequency]bool{
 	rrule.YEARLY:  true,
 }
 
+// IsValidTaskRRule reports whether rule is a valid, supported RRULE for
+// TaskRepeatModeRRule. CalDAV import uses it to decide whether to keep an
+// incoming recurrence rule (unsupported rules are dropped, not rejected).
+func IsValidTaskRRule(rule string) bool {
+	return validateTaskRRule(rule) == nil
+}
+
 // validateTaskRRule rejects empty, malformed, or out-of-subset RRULE strings.
 func validateTaskRRule(rule string) error {
 	if rule == "" {

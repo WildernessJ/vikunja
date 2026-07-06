@@ -221,18 +221,20 @@ func GetCaldavTodosForTasks(project *models.ProjectWithTasksAndBuckets, projectT
 			Description: t.Description,
 			Completed:   t.DoneAt,
 			// Organizer:     &t.CreatedBy, // Disabled until we figure out how this works
-			Categories:  categories,
-			Priority:    t.Priority,
-			Start:       t.StartDate,
-			End:         t.EndDate,
-			Created:     t.Created,
-			Updated:     t.Updated,
-			DueDate:     t.DueDate,
-			Duration:    duration,
-			RepeatAfter: t.RepeatAfter,
-			RepeatMode:  t.RepeatMode,
-			Alarms:      alarms,
-			Relations:   relations,
+			Categories:           categories,
+			Priority:             t.Priority,
+			Start:                t.StartDate,
+			End:                  t.EndDate,
+			Created:              t.Created,
+			Updated:              t.Updated,
+			DueDate:              t.DueDate,
+			Duration:             duration,
+			RepeatAfter:          t.RepeatAfter,
+			RepeatMode:           t.RepeatMode,
+			RepeatRRule:          t.RepeatRRule,
+			RepeatFromCompletion: t.RepeatFromCompletion,
+			Alarms:               alarms,
+			Relations:            relations,
 		})
 	}
 
@@ -411,6 +413,19 @@ func ParseTaskFromVTODO(content string) (vTask *models.Task, err error) {
 
 	if duration > 0 && !vTask.StartDate.IsZero() {
 		vTask.EndDate = vTask.StartDate.Add(duration)
+	}
+
+	// RRULE must be read via GetProperty, not the UnknownPropertiesIANAProperties
+	// map above. Unsupported/invalid rules are dropped silently so an exotic
+	// recurrence from an external client never hard-fails the import.
+	if rrule := vTodo.GetProperty(ics.ComponentPropertyRrule); rrule != nil && rrule.Value != "" {
+		if models.IsValidTaskRRule(rrule.Value) {
+			vTask.RepeatMode = models.TaskRepeatModeRRule
+			vTask.RepeatRRule = rrule.Value
+			if fromCompletion, ok := task["X-VIKUNJA-REPEAT-FROM-COMPLETION"]; ok && fromCompletion.Value == "1" {
+				vTask.RepeatFromCompletion = true
+			}
+		}
 	}
 
 	for _, vAlarm := range vTodo.SubComponents() {
