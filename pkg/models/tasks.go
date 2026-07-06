@@ -45,6 +45,7 @@ const (
 	TaskRepeatModeDefault TaskRepeatMode = iota
 	TaskRepeatModeMonth
 	TaskRepeatModeFromCurrentDate
+	TaskRepeatModeRRule
 )
 
 // MaxTaskRepeatAfterSeconds caps repeat_after at ten years. Sized to
@@ -79,8 +80,12 @@ type Task struct {
 	ProjectID int64 `xorm:"bigint INDEX not null unique(tasks_project_index)" json:"project_id" param:"project" doc:"The id of the project this task belongs to. On create it is taken from the URL; on update, setting it to a different project moves the task (requires write access to the target project)."`
 	// An amount in seconds this task repeats itself. If this is set, when marking the task as done, it will mark itself as "undone" and then increase all remindes and the due date by its amount.
 	RepeatAfter int64 `xorm:"bigint INDEX null" json:"repeat_after" valid:"range(0|9223372036854775807)" doc:"The interval in seconds this task repeats. When set, marking the task done re-opens it and bumps its reminders and due date by this amount."`
-	// Can have three possible values which will trigger when the task is marked as done: 0 = repeats after the amount specified in repeat_after, 1 = repeats all dates each months (ignoring repeat_after), 3 = repeats from the current date rather than the last set date.
-	RepeatMode TaskRepeatMode `xorm:"not null default 0" json:"repeat_mode" doc:"How the task repeats when marked done: 0 = after repeat_after seconds, 1 = monthly (ignores repeat_after), 2 = from the current date rather than the last set date."`
+	// Can have four possible values which will trigger when the task is marked as done: 0 = repeats after the amount specified in repeat_after, 1 = repeats all dates each months (ignoring repeat_after), 2 = repeats from the current date rather than the last set date, 3 = repeats on the calendar pattern in repeat_rrule.
+	RepeatMode TaskRepeatMode `xorm:"not null default 0" json:"repeat_mode" doc:"How the task repeats when marked done: 0 = after repeat_after seconds, 1 = monthly (ignores repeat_after), 2 = from the current date rather than the last set date, 3 = calendar pattern from repeat_rrule."`
+	// An RFC 5545 RRULE string used when repeat_mode is 3 (calendar-pattern recurrence, e.g. "every 3rd Friday").
+	RepeatRRule string `xorm:"TEXT null 'repeat_rrule'" json:"repeat_rrule" doc:"An RFC 5545 RRULE string used when repeat_mode is 3."`
+	// When true and repeat_mode is 3, the next occurrence is evaluated from the completion timestamp rather than the previous due date.
+	RepeatFromCompletion bool `xorm:"not null default false 'repeat_from_completion'" json:"repeat_from_completion" doc:"When true and repeat_mode is 3, the next occurrence is evaluated from the completion timestamp rather than the previous due date."`
 	// The task priority. Can be anything you want, it is possible to sort by this later.
 	Priority int64 `xorm:"bigint null" json:"priority"`
 	// When this task starts.
@@ -191,7 +196,8 @@ func (t *Task) GetFrontendURL() string {
 
 func (t *Task) isRepeating() bool {
 	return t.RepeatAfter > 0 ||
-		t.RepeatMode == TaskRepeatModeMonth
+		t.RepeatMode == TaskRepeatModeMonth ||
+		t.RepeatMode == TaskRepeatModeRRule
 }
 
 type taskFilterConcatinator string
@@ -917,6 +923,12 @@ func createTask(s *xorm.Session, t *Task, a web.Auth, updateAssignees bool, setB
 		return err
 	}
 
+	if t.RepeatMode == TaskRepeatModeRRule {
+		if err := validateTaskRRule(t.RepeatRRule); err != nil {
+			return err
+		}
+	}
+
 	// Check if the project exists
 	p, err := GetProjectSimpleByID(s, t.ProjectID)
 	if err != nil {
@@ -1151,6 +1163,8 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 		"project_id",
 		"bucket_id",
 		"repeat_mode",
+		"repeat_rrule",
+		"repeat_from_completion",
 		"cover_image_attachment_id",
 	}
 
@@ -1211,6 +1225,12 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 		if !fieldSet["repeat_mode"] {
 			t.RepeatMode = ot.RepeatMode
 		}
+		if !fieldSet["repeat_rrule"] {
+			t.RepeatRRule = ot.RepeatRRule
+		}
+		if !fieldSet["repeat_from_completion"] {
+			t.RepeatFromCompletion = ot.RepeatFromCompletion
+		}
 		if !fieldSet["cover_image_attachment_id"] {
 			t.CoverImageAttachmentID = ot.CoverImageAttachmentID
 		}
@@ -1218,6 +1238,12 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 
 	if err := validateRepeatAfter(t.RepeatAfter); err != nil {
 		return err
+	}
+
+	if t.RepeatMode == TaskRepeatModeRRule {
+		if err := validateTaskRRule(t.RepeatRRule); err != nil {
+			return err
+		}
 	}
 
 	// If the task is being moved between projects, make sure to move the bucket + index as well
@@ -1660,6 +1686,60 @@ func setTaskDatesMonthRepeat(oldTask, newTask *Task) {
 	newTask.Done = false
 }
 
+// setTaskDatesRRuleRepeat mirrors setTaskDatesDefault's date-shift semantics
+// (fields shift by a delta derived from the old due date, not reset relative
+// to now like setTaskDatesFromCurrentDateRepeat): a calendar pattern can't be
+// evaluated independently against each field (a start date's weekday rarely
+// matches the due date's "3rd Friday" rule), so the RRULE is only evaluated
+// once against the due date and the resulting delta is applied uniformly.
+func setTaskDatesRRuleRepeat(oldTask, newTask *Task) {
+	if oldTask.RepeatRRule == "" {
+		return
+	}
+
+	now := time.Now()
+	anchor := oldTask.DueDate
+	if oldTask.RepeatFromCompletion {
+		anchor = now
+	}
+	if anchor.Before(now) {
+		anchor = now
+	}
+
+	next, ok := nextRRuleOccurrence(oldTask.RepeatRRule, anchor, config.GetTimeZone())
+	if !ok {
+		// UNTIL bound exhausted (or no valid occurrence at all): the task stays done.
+		return
+	}
+
+	base := oldTask.DueDate
+	if base.IsZero() {
+		base = anchor
+	}
+	delta := next.Sub(base)
+
+	if !oldTask.DueDate.IsZero() {
+		newTask.DueDate = next
+	}
+
+	newTask.Reminders = oldTask.Reminders
+	if len(oldTask.Reminders) > 0 {
+		for in, r := range oldTask.Reminders {
+			newTask.Reminders[in].Reminder = r.Reminder.Add(delta)
+		}
+	}
+
+	if !oldTask.StartDate.IsZero() {
+		newTask.StartDate = oldTask.StartDate.Add(delta)
+	}
+
+	if !oldTask.EndDate.IsZero() {
+		newTask.EndDate = oldTask.EndDate.Add(delta)
+	}
+
+	newTask.Done = false
+}
+
 func setTaskDatesFromCurrentDateRepeat(oldTask, newTask *Task) {
 	if oldTask.RepeatAfter == 0 {
 		return
@@ -1759,6 +1839,8 @@ func updateDone(oldTask *Task, newTask *Task) (updateDoneAt bool) {
 			setTaskDatesFromCurrentDateRepeat(oldTask, newTask)
 		case TaskRepeatModeDefault:
 			setTaskDatesDefault(oldTask, newTask)
+		case TaskRepeatModeRRule:
+			setTaskDatesRRuleRepeat(oldTask, newTask)
 		}
 
 		// A recurring task reopens for its next occurrence, so its checklist starts fresh.
