@@ -1,6 +1,7 @@
 import {test, expect} from '../../support/fixtures'
 import {ProjectFactory} from '../../factories/project'
 import {TaskFactory} from '../../factories/task'
+import {createDefaultViews} from '../project/prepareProjects'
 
 test.describe('Task recurrence', () => {
 	test.beforeEach(async () => {
@@ -75,5 +76,63 @@ test.describe('Task recurrence', () => {
 		await page.locator('#repeatMode').selectOption({label: 'Monthly'})
 
 		await expect(page.locator('input[placeholder*="amount" i]')).toHaveCount(0)
+	})
+
+	test('sets a weekly Mon+Fri calendar pattern and round-trips it on reload', async ({authenticatedPage: page}) => {
+		const [task] = await TaskFactory.create(1, {
+			id: 1,
+			project_id: 1,
+			due_date: new Date(Date.now() + 86_400_000).toISOString(),
+		}, false)
+		await page.goto(`/tasks/${task.id}`)
+
+		await page.getByRole('button', {name: 'Set Repeating Interval'}).click()
+		await page.locator('#repeatMode').selectOption({label: 'Custom pattern'})
+
+		await page.locator('.weekday-option').filter({hasText: 'Mon'}).locator('input').check()
+
+		const save = page.waitForResponse(r =>
+			r.url().includes(`/tasks/${task.id}`) &&
+			r.request().method() === 'POST' &&
+			(r.request().postDataJSON()?.repeat_rrule ?? '').includes('MO,FR'),
+		)
+		await page.locator('.weekday-option').filter({hasText: 'Fri'}).locator('input').check()
+		const r = await save
+		const body = r.request().postDataJSON()
+		expect(body.repeat_mode).toBe(3)
+		expect(body.repeat_rrule).toBe('FREQ=WEEKLY;BYDAY=MO,FR')
+
+		// Reload: an RRULE-mode task auto-expands the repeat editor, which parses
+		// the stored rule back into checked weekday boxes.
+		await page.goto(`/tasks/${task.id}`)
+		const monInput = page.locator('.weekday-option').filter({hasText: 'Mon'}).locator('input')
+		const friInput = page.locator('.weekday-option').filter({hasText: 'Fri'}).locator('input')
+		await expect(monInput).toBeChecked()
+		await expect(friInput).toBeChecked()
+		await expect(page.locator('.weekday-option').filter({hasText: 'Tue'}).locator('input')).not.toBeChecked()
+	})
+
+	test('quick-add "every mon, fri" creates a calendar-pattern task', async ({authenticatedPage: page}) => {
+		await createDefaultViews(1)
+		await page.goto('/projects/1/1')
+
+		await page.locator('.input[placeholder="Add a task…"]').fill('water plants every mon, fri')
+
+		const create = page.waitForResponse(r =>
+			r.url().includes('/projects/1/tasks') &&
+			r.request().method() === 'PUT',
+		)
+		await page.locator('.button').filter({hasText: 'Add'}).click()
+		const r = await create
+		const body = r.request().postDataJSON()
+		expect(body.title).toBe('water plants')
+		expect(body.repeat_mode).toBe(3)
+		expect(body.repeat_rrule).toBe('FREQ=WEEKLY;BYDAY=MO,FR')
+
+		// The backend anchors the due date to the first occurrence, so a quick-add
+		// pattern task is never left dateless and inert.
+		const created = await r.json()
+		expect(created.due_date).not.toBe('0001-01-01T00:00:00Z')
+		expect(new Date(created.due_date).getTime()).toBeGreaterThan(Date.now() - 60_000)
 	})
 })

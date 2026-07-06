@@ -515,9 +515,12 @@ export const useTaskStore = defineStore('task', () => {
 			}
 		}
 
+		// A calendar-pattern "starting <date>" bound anchors the first occurrence
+		// on the task's due date when no explicit due date was parsed.
+		const anchorDate = parsedTask.date ?? parsedTask.rruleRepeat?.startDate ?? null
 		// I don't know why, but it all goes up in flames when I just pass in the date normally.
-		const dueDate = parsedTask.date !== null ? new Date(parsedTask.date).toISOString() : null
-	
+		const dueDate = anchorDate !== null ? new Date(anchorDate).toISOString() : null
+
 		const task = new TaskModel({
 			title: cleanedTitle,
 			projectId: foundProjectId,
@@ -534,7 +537,11 @@ export const useTaskStore = defineStore('task', () => {
 			dueDate,
 		)
 
-		if (parsedTask.repeats?.type === REPEAT_TYPES.Months && parsedTask.repeats?.amount === 1) {
+		if (parsedTask.rruleRepeat !== null) {
+			task.repeatMode = TASK_REPEAT_MODES.REPEAT_MODE_RRULE
+			task.repeatRrule = parsedTask.rruleRepeat.rrule
+			task.repeatFromCompletion = parsedTask.rruleRepeat.fromCompletion
+		} else if (parsedTask.repeats?.type === REPEAT_TYPES.Months && parsedTask.repeats?.amount === 1) {
 			task.repeatMode = TASK_REPEAT_MODES.REPEAT_MODE_MONTH
 		}
 

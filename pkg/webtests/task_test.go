@@ -171,6 +171,17 @@ func TestTask(t *testing.T) {
 				assert.Contains(t, rec.Body.String(), `"repeat_after":0`)
 				assert.NotContains(t, rec.Body.String(), `"repeat_after":3600`)
 			})
+			t.Run("Repeat rrule", func(t *testing.T) {
+				rec, err := testHandler.testUpdateWithUser(nil, map[string]string{"projecttask": "1"}, `{"repeat_mode":3,"repeat_rrule":"FREQ=WEEKLY;BYDAY=MO,FR"}`)
+				require.NoError(t, err)
+				assert.Contains(t, rec.Body.String(), `"repeat_mode":3`)
+				assert.Contains(t, rec.Body.String(), `"repeat_rrule":"FREQ=WEEKLY;BYDAY=MO,FR"`)
+			})
+			t.Run("Repeat rrule invalid", func(t *testing.T) {
+				_, err := testHandler.testUpdateWithUser(nil, map[string]string{"projecttask": "1"}, `{"repeat_mode":3,"repeat_rrule":"FREQ=BOGUS"}`)
+				require.Error(t, err)
+				assertHandlerErrorCode(t, err, models.ErrCodeInvalidTaskRepeatRRule)
+			})
 			t.Run("Repeat after update done", func(t *testing.T) {
 				rec, err := testHandler.testUpdateWithUser(nil, map[string]string{"projecttask": "28"}, `{"done":true}`)
 				require.NoError(t, err)

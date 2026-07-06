@@ -360,6 +360,84 @@ END:VCALENDAR`,
 			},
 		},
 		{
+			name: "with supported rrule",
+			args: args{content: `BEGIN:VCALENDAR
+VERSION:2.0
+X-PUBLISHED-TTL:PT4H
+X-WR-CALNAME:test
+PRODID:-//RandomProdID which is not random//EN
+BEGIN:VTODO
+UID:randomuid
+DTSTAMP:20181201T011204
+SUMMARY:Todo #1
+DESCRIPTION:Lorem Ipsum
+RRULE:FREQ=WEEKLY;BYDAY=MO,FR
+LAST-MODIFIED:00010101T000000
+END:VTODO
+END:VCALENDAR`,
+			},
+			wantVTask: &models.Task{
+				Title:       "Todo #1",
+				UID:         "randomuid",
+				Description: "Lorem Ipsum",
+				Updated:     time.Unix(1543626724, 0).In(config.GetTimeZone()),
+				RepeatMode:  models.TaskRepeatModeRRule,
+				RepeatRRule: "FREQ=WEEKLY;BYDAY=MO,FR",
+			},
+		},
+		{
+			name: "with supported rrule and repeat-from-completion flag",
+			args: args{content: `BEGIN:VCALENDAR
+VERSION:2.0
+X-PUBLISHED-TTL:PT4H
+X-WR-CALNAME:test
+PRODID:-//RandomProdID which is not random//EN
+BEGIN:VTODO
+UID:randomuid
+DTSTAMP:20181201T011204
+SUMMARY:Todo #1
+DESCRIPTION:Lorem Ipsum
+RRULE:FREQ=WEEKLY;BYDAY=MO
+X-VIKUNJA-REPEAT-FROM-COMPLETION:1
+LAST-MODIFIED:00010101T000000
+END:VTODO
+END:VCALENDAR`,
+			},
+			wantVTask: &models.Task{
+				Title:                "Todo #1",
+				UID:                  "randomuid",
+				Description:          "Lorem Ipsum",
+				Updated:              time.Unix(1543626724, 0).In(config.GetTimeZone()),
+				RepeatMode:           models.TaskRepeatModeRRule,
+				RepeatRRule:          "FREQ=WEEKLY;BYDAY=MO",
+				RepeatFromCompletion: true,
+			},
+		},
+		{
+			name: "with unsupported rrule is imported without recurrence",
+			args: args{content: `BEGIN:VCALENDAR
+VERSION:2.0
+X-PUBLISHED-TTL:PT4H
+X-WR-CALNAME:test
+PRODID:-//RandomProdID which is not random//EN
+BEGIN:VTODO
+UID:randomuid
+DTSTAMP:20181201T011204
+SUMMARY:Todo #1
+DESCRIPTION:Lorem Ipsum
+RRULE:FREQ=HOURLY;BYMINUTE=30
+LAST-MODIFIED:00010101T000000
+END:VTODO
+END:VCALENDAR`,
+			},
+			wantVTask: &models.Task{
+				Title:       "Todo #1",
+				UID:         "randomuid",
+				Description: "Lorem Ipsum",
+				Updated:     time.Unix(1543626724, 0).In(config.GetTimeZone()),
+			},
+		},
+		{
 			name: "with apple hex color",
 			args: args{content: `BEGIN:VCALENDAR
 VERSION:2.0
@@ -588,6 +666,46 @@ TRIGGER;RELATED=END:-PT1H0M0S
 ACTION:DISPLAY
 DESCRIPTION:Task 1
 END:VALARM
+END:VTODO
+END:VCALENDAR`,
+		},
+		{
+			name: "Format Task with rrule recurrence as CalDAV",
+			args: args{
+				list: &models.ProjectWithTasksAndBuckets{
+					Project: models.Project{
+						Title: "List title",
+					},
+				},
+				tasks: []*models.TaskWithComments{
+					{
+						Task: models.Task{
+							Title:                "Task 1",
+							UID:                  "randomuid",
+							Description:          "Description",
+							Created:              time.Unix(1543626721, 0).In(config.GetTimeZone()),
+							Updated:              time.Unix(1543626725, 0).In(config.GetTimeZone()),
+							RepeatMode:           models.TaskRepeatModeRRule,
+							RepeatRRule:          "FREQ=WEEKLY;BYDAY=MO,FR",
+							RepeatFromCompletion: true,
+						},
+					},
+				},
+			},
+			wantCaldav: `BEGIN:VCALENDAR
+VERSION:2.0
+X-PUBLISHED-TTL:PT4H
+X-WR-CALNAME:List title
+PRODID:-//Vikunja Todo App//EN
+BEGIN:VTODO
+UID:randomuid
+DTSTAMP:20181201T011205Z
+SUMMARY:Task 1
+DESCRIPTION:Description
+CREATED:20181201T011201Z
+RRULE:FREQ=WEEKLY;BYDAY=MO,FR
+X-VIKUNJA-REPEAT-FROM-COMPLETION:1
+LAST-MODIFIED:20181201T011205Z
 END:VTODO
 END:VCALENDAR`,
 		},

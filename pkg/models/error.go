@@ -645,6 +645,34 @@ func (err ErrInvalidTaskRepeatInterval) HTTPError() web.HTTPError {
 	}
 }
 
+// ErrInvalidTaskRepeatRRule represents an error where the provided
+// task repeat_rrule is not a valid or supported RFC 5545 RRULE.
+type ErrInvalidTaskRepeatRRule struct {
+	RRule string
+}
+
+// IsErrInvalidTaskRepeatRRule checks if an error is ErrInvalidTaskRepeatRRule.
+func IsErrInvalidTaskRepeatRRule(err error) bool {
+	_, ok := err.(ErrInvalidTaskRepeatRRule)
+	return ok
+}
+
+func (err ErrInvalidTaskRepeatRRule) Error() string {
+	return fmt.Sprintf("Invalid task repeat rrule. [RRule: %s]", err.RRule)
+}
+
+// ErrCodeInvalidTaskRepeatRRule holds the unique world-error code of this error.
+const ErrCodeInvalidTaskRepeatRRule = 4030
+
+// HTTPError holds the http error description.
+func (err ErrInvalidTaskRepeatRRule) HTTPError() web.HTTPError {
+	return web.HTTPError{
+		HTTPCode: http.StatusBadRequest,
+		Code:     ErrCodeInvalidTaskRepeatRRule,
+		Message:  fmt.Sprintf("The task repeat rrule %q is not a valid or supported recurrence rule.", err.RRule),
+	}
+}
+
 // ErrTaskDoesNotExist represents a "ErrProjectDoesNotExist" kind of error. Used if the project does not exist.
 type ErrTaskDoesNotExist struct {
 	ID int64
