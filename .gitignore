@@ -56,3 +56,4 @@ plans/
 docs/context/
 /.crush/
 /.playwright-mcp
+.review-last/
