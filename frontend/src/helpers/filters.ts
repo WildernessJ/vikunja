@@ -13,6 +13,7 @@ function trimQuotes(str: string): string {
 
 export const DATE_FIELDS = [
 	'dueDate',
+	'deadline',
 	'startDate',
 	'endDate',
 	'doneAt',

@@ -1,4 +1,5 @@
 import {parseDate} from './dateParser'
+import {parseDeadline} from './deadlineParser'
 import {PREFIXES, PrefixMode} from './prefixes'
 import {getItemsFromPrefix, getLabelsFromPrefix, getProjectFromPrefix} from './prefixParser'
 import {getPriority} from './priorityParser'
@@ -15,6 +16,7 @@ export const parseTaskText = (text: string, prefixesMode: PrefixMode = PrefixMod
 	const result: ParsedTaskText = {
 		text: text,
 		date: null,
+		deadline: null,
 		labels: [],
 		project: null,
 		priority: null,
@@ -53,6 +55,12 @@ export const parseTaskText = (text: string, prefixesMode: PrefixMode = PrefixMod
 	result.text = textWithoutMatched
 	result.repeats = repeats
 	result.rruleRepeat = rruleRepeat
+
+	// Parse the braced deadline before the due date so the date grammar never
+	// sees (and consumes) the deadline's inner text as the due date.
+	const {newText: textWithoutDeadline, deadline} = parseDeadline(result.text, now)
+	result.text = textWithoutDeadline
+	result.deadline = deadline
 
 	const {newText, date} = parseDate(result.text, now)
 	result.text = newText

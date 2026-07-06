@@ -521,10 +521,13 @@ export const useTaskStore = defineStore('task', () => {
 		// I don't know why, but it all goes up in flames when I just pass in the date normally.
 		const dueDate = anchorDate !== null ? new Date(anchorDate).toISOString() : null
 
+		const deadline = parsedTask.deadline !== null ? new Date(parsedTask.deadline).toISOString() : null
+
 		const task = new TaskModel({
 			title: cleanedTitle,
 			projectId: foundProjectId,
 			dueDate,
+			deadline,
 			priority: parsedTask.priority,
 			assignees,
 			bucketId: bucketId || 0,

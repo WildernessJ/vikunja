@@ -41,6 +41,7 @@ import {
 	faFilePdf,
 	faFillDrip,
 	faFilter,
+	faFlagCheckered,
 	faForward,
 	faGripLines,
 	faHeader,
@@ -153,6 +154,7 @@ library.add(faEye)
 library.add(faEyeSlash)
 library.add(faFillDrip)
 library.add(faFilter)
+library.add(faFlagCheckered)
 library.add(faForward)
 library.add(faGripLines)
 library.add(faHeader)

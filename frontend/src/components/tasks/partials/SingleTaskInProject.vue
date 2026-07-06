@@ -112,6 +112,22 @@
 					</template>
 				</Popup>
 
+				<BaseButton
+					v-if="task.deadline !== null && task.deadline.getTime() > 0"
+					v-tooltip="formatDateLong(task.deadline)"
+					class="deadline"
+					:class="{'is-overdue': isDeadlineOverdue}"
+					@click.prevent.stop="openTaskDetail"
+				>
+					<Icon icon="flag-checkered" />
+					<time
+						:datetime="formatISO(task.deadline)"
+						class="is-italic"
+					>
+						{{ $t('task.detail.deadlineChip', {at: deadlineFormatted}) }}
+					</time>
+				</BaseButton>
+
 				<span>
 					<span
 						v-if="task.attachments.length > 0"
@@ -315,12 +331,37 @@ onMounted(updateDueDate)
 
 watch(() => task.value.dueDate, updateDueDate)
 
+function updateDeadline() {
+	if (!task.value.deadline) {
+		return
+	}
+
+	deadlineFormatted.value = formatDisplayDate(task.value.deadline)
+}
+
+const deadlineFormatted = ref('')
+useIntervalFn(updateDeadline, 60_000, {
+	immediateCallback: true,
+})
+onMounted(updateDeadline)
+
+watch(() => task.value.deadline, updateDeadline)
+
 const {now} = useGlobalNow()
 const isOverdue = computed(() => (
 	!task.value.done &&
 	task.value.dueDate !== null &&
 	task.value.dueDate.getTime() > 0 &&
 	task.value.dueDate.getTime() <= now.value.getTime()
+))
+
+// Deadline overdue is tracked separately from due-date overdue so the two can be
+// styled distinctly: the due date is a soft plan, the deadline a hard cutoff.
+const isDeadlineOverdue = computed(() => (
+	!task.value.done &&
+	task.value.deadline !== null &&
+	task.value.deadline.getTime() > 0 &&
+	task.value.deadline.getTime() <= now.value.getTime()
 ))
 
 let oldTask
@@ -470,6 +511,29 @@ defineExpose({
 
 	&[data-is-overdue] .dueDate {
 		color: var(--danger);
+	}
+
+	.deadline {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+		margin-inline-start: 8px;
+		color: var(--grey-500);
+		font-size: .85rem;
+
+		svg {
+			font-size: .8rem;
+		}
+
+		// A passed deadline is a hard cutoff, so it reads louder than an overdue
+		// due date (plain red text): a filled danger pill, not just tinted text.
+		&.is-overdue {
+			color: var(--white);
+			background-color: var(--danger);
+			border-radius: 4px;
+			padding: 1px 6px;
+			font-weight: 600;
+		}
 	}
 
 	.task-project {
