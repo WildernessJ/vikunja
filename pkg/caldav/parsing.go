@@ -230,6 +230,7 @@ func GetCaldavTodosForTasks(project *models.ProjectWithTasksAndBuckets, projectT
 			DueDate:              t.DueDate,
 			Deadline:             t.Deadline,
 			Duration:             duration,
+			EstimatedDuration:    t.EstimatedDuration,
 			RepeatAfter:          t.RepeatAfter,
 			RepeatMode:           t.RepeatMode,
 			RepeatRRule:          t.RepeatRRule,
@@ -415,6 +416,12 @@ func ParseTaskFromVTODO(content string) (vTask *models.Task, err error) {
 
 	if duration > 0 && !vTask.StartDate.IsZero() {
 		vTask.EndDate = vTask.StartDate.Add(duration)
+	}
+
+	if estimated, ok := task["X-VIKUNJA-ESTIMATED-DURATION"]; ok {
+		if seconds, err := strconv.ParseInt(estimated.Value, 10, 64); err == nil {
+			vTask.EstimatedDuration = seconds
+		}
 	}
 
 	// RRULE must be read via GetProperty, not the UnknownPropertiesIANAProperties
