@@ -59,6 +59,9 @@ func RegisterListeners() {
 	events.RegisterListener((&TaskCreatedEvent{}).Name(), &UpdateTaskInSavedFilterViews{})
 	events.RegisterListener((&TaskUpdatedEvent{}).Name(), &UpdateTaskInSavedFilterViews{})
 	events.RegisterListener((&TaskCommentCreatedEvent{}).Name(), &MarkTaskUnreadOnComment{})
+	for _, eventName := range activityCapturedEventNames() {
+		events.RegisterListener(eventName, &ActivityCaptureListener{EventName: eventName})
+	}
 	if config.WebhooksEnabled.GetBool() {
 		RegisterEventForWebhook(&TaskCreatedEvent{})
 		RegisterEventForWebhook(&TaskUpdatedEvent{})

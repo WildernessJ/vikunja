@@ -1493,6 +1493,12 @@ func (p *Project) Delete(s *xorm.Session, a web.Auth) (err error) {
 		return
 	}
 
+	// Delete activity feed entries (no DB-level FK cascade in this codebase)
+	_, err = s.Where("project_id = ?", p.ID).Delete(&Activity{})
+	if err != nil {
+		return
+	}
+
 	// Delete the project
 	_, err = s.ID(p.ID).Delete(&Project{})
 	if err != nil {

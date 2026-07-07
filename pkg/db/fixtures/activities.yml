@@ -1,0 +1,5 @@
+# Intentionally empty: the activity feed starts at deployment (no backfill), so
+# there is no seed data. The file exists (and is listed in SetupTests) so
+# testfixtures truncates the table between tests, keeping activity assertions
+# isolated.
+[]

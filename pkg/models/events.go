@@ -563,3 +563,18 @@ type AdminAccessDeniedEvent struct {
 func (e *AdminAccessDeniedEvent) Name() string {
 	return "admin.access.denied"
 }
+
+// TaskDoneChangedEvent is dispatched only on an actual done-state transition,
+// at the two production sites where the transition is known (the task-update
+// flow and the Kanban done-bucket drag). TaskUpdatedEvent carries only
+// post-state, so completion cannot be inferred from it.
+type TaskDoneChangedEvent struct {
+	Task *Task      `json:"task"`
+	Doer *user.User `json:"doer"`
+	Done bool       `json:"done"`
+}
+
+// Name defines the name for TaskDoneChangedEvent
+func (t *TaskDoneChangedEvent) Name() string {
+	return "task.done.changed"
+}
