@@ -173,6 +173,17 @@ func (w *Webhook) Create(s *xorm.Session, a web.Auth) (err error) {
 		return InvalidFieldError([]string{"project_id", "user_id"})
 	}
 
+	// Templates carry no outward-facing surfaces: reject webhooks on template projects.
+	if w.ProjectID != 0 {
+		project, perr := GetProjectSimpleByID(s, w.ProjectID)
+		if perr != nil {
+			return perr
+		}
+		if project.IsTemplate {
+			return ErrProjectIsTemplate{ProjectID: w.ProjectID}
+		}
+	}
+
 	if !strings.HasPrefix(w.TargetURL, "http") {
 		return InvalidFieldError([]string{"target_url"})
 	}

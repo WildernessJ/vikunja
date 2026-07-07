@@ -18,6 +18,7 @@ package models
 
 import (
 	"testing"
+	"time"
 
 	"code.vikunja.io/api/pkg/db"
 	"code.vikunja.io/api/pkg/files"
@@ -72,6 +73,98 @@ func TestProjectDuplicate(t *testing.T) {
 		require.NoError(t, l.Create(s, u))
 
 		assertShareCount(t, s, l.Project.ID, 2, 1, 1)
+	})
+}
+
+func TestProjectDuplicate_TemplateModes(t *testing.T) {
+	t.Run("save as template freezes snapshot, sets flag, no suffix", func(t *testing.T) {
+		files.InitTestFileFixtures(t)
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+		u := &user.User{ID: 1}
+
+		src := &Project{Title: "Trip source", OwnerID: 1}
+		require.NoError(t, src.Create(s, u))
+		task := &Task{Title: "pack socks", ProjectID: src.ID}
+		require.NoError(t, task.Create(s, u))
+
+		pd := &ProjectDuplicate{ProjectID: src.ID, AsTemplate: true}
+		can, err := pd.CanCreate(s, u)
+		require.NoError(t, err)
+		require.True(t, can)
+		pd.Project.Title = "Packing"
+		require.NoError(t, pd.Create(s, u))
+
+		assert.True(t, pd.Project.IsTemplate, "save-as-template must set is_template")
+		assert.Equal(t, "Packing", pd.Project.Title, "template must use the supplied name, no ' - duplicate' suffix")
+
+		// Rename the source task; the frozen template snapshot must not change.
+		task.Title = "pack shoes"
+		_, err = s.ID(task.ID).Cols("title").Update(task)
+		require.NoError(t, err)
+
+		var templateTasks []*Task
+		require.NoError(t, s.Where("project_id = ?", pd.Project.ID).Find(&templateTasks))
+		require.Len(t, templateTasks, 1)
+		assert.Equal(t, "pack socks", templateTasks[0].Title, "template snapshot must stay frozen after source edits")
+	})
+
+	t.Run("save as template does not copy shares even when requested", func(t *testing.T) {
+		files.InitTestFileFixtures(t)
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		// Project 3 has user, team and link shares.
+		u := &user.User{ID: 3}
+		pd := &ProjectDuplicate{ProjectID: 3, DuplicateShares: true, AsTemplate: true}
+		can, err := pd.CanCreate(s, u)
+		require.NoError(t, err)
+		require.True(t, can)
+		pd.Project.Title = "Shared template"
+		require.NoError(t, pd.Create(s, u))
+
+		assertShareCount(t, s, pd.Project.ID, 0, 0, 0)
+	})
+
+	t.Run("instantiate from template resets done and uses supplied title", func(t *testing.T) {
+		files.InitTestFileFixtures(t)
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+		u := &user.User{ID: 1}
+
+		// Build a template with a done and a not-done task.
+		tmpl := &Project{Title: "Packing template", OwnerID: 1}
+		require.NoError(t, tmpl.Create(s, u))
+		_, err := s.ID(tmpl.ID).Cols("is_template").Update(&Project{IsTemplate: true})
+		require.NoError(t, err)
+
+		doneTask := &Task{Title: "done item", ProjectID: tmpl.ID}
+		require.NoError(t, doneTask.Create(s, u))
+		_, err = s.ID(doneTask.ID).Cols("done", "done_at").Update(&Task{Done: true, DoneAt: time.Now()})
+		require.NoError(t, err)
+		openTask := &Task{Title: "open item", ProjectID: tmpl.ID}
+		require.NoError(t, openTask.Create(s, u))
+
+		pd := &ProjectDuplicate{ProjectID: tmpl.ID, FromTemplate: true}
+		can, err := pd.CanCreate(s, u)
+		require.NoError(t, err)
+		require.True(t, can)
+		pd.Project.Title = "Japan trip"
+		require.NoError(t, pd.Create(s, u))
+
+		assert.False(t, pd.Project.IsTemplate, "instantiated project must not be a template")
+		assert.Equal(t, "Japan trip", pd.Project.Title, "instantiated project uses the supplied title, no suffix")
+
+		var tasks []*Task
+		require.NoError(t, s.Where("project_id = ?", pd.Project.ID).Find(&tasks))
+		require.Len(t, tasks, 2)
+		for _, tk := range tasks {
+			assert.False(t, tk.Done, "task %q must be reset to not-done on instantiation", tk.Title)
+			assert.True(t, tk.DoneAt.IsZero(), "task %q done_at must be cleared on instantiation", tk.Title)
+		}
 	})
 }
 

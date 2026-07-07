@@ -533,3 +533,25 @@ func TestGetResourcesByList_URLProjectConsistency(t *testing.T) {
 		assert.Empty(t, resources, "unauthorized user must not receive any tasks")
 	})
 }
+
+// SC-004: the CalDAV project listing must not expose template projects.
+func TestGetResources_ExcludesTemplates(t *testing.T) {
+	t.Run("template project hidden from listing", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		_, err := s.ID(1).Cols("is_template").Update(&models.Project{IsTemplate: true})
+		require.NoError(t, err)
+		require.NoError(t, s.Commit())
+		s.Close()
+
+		u := &user.User{ID: 1, Username: "user1"}
+		storage := &VikunjaCaldavProjectStorage{user: u, project: &models.ProjectWithTasksAndBuckets{}}
+
+		resources, err := storage.GetResources("/dav/projects", true)
+		require.NoError(t, err)
+
+		for _, r := range resources {
+			assert.NotEqual(t, "Test1", r.Name, "template project 1 must not appear in the CalDAV listing")
+		}
+	})
+}

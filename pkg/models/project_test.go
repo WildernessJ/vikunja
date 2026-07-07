@@ -26,6 +26,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"xorm.io/xorm"
 )
 
 func TestProject_CreateOrUpdate(t *testing.T) {
@@ -800,6 +801,94 @@ func TestProject_ReadAll(t *testing.T) {
 		// Sanity: a non-archived project owned by user 1 is still present in the filtered list.
 		assert.NotNil(t, findByID(withoutArchived, 1),
 			"non-archived project 1 must still be present when getArchived=false")
+	})
+}
+
+func TestProject_TemplateExclusion(t *testing.T) {
+	findByID := func(ps []*Project, id int64) *Project {
+		for _, p := range ps {
+			if p.ID == id {
+				return p
+			}
+		}
+		return nil
+	}
+
+	markTemplate := func(t *testing.T, s *xorm.Session, id int64) {
+		_, err := s.ID(id).Cols("is_template").Update(&Project{IsTemplate: true})
+		require.NoError(t, err)
+	}
+
+	// SC-004: user project statement / recursive CTE excludes templates by default.
+	t.Run("sidebar list excludes templates", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+		markTemplate(t, s, 1)
+
+		projects, _, err := getAllProjectsForUser(s, 1, &projectOptions{})
+		require.NoError(t, err)
+		assert.Nil(t, findByID(projects, 1), "template project 1 must be hidden from the normal listing")
+	})
+
+	// SC-004: the includeTemplates option surfaces templates for the export carve-out.
+	t.Run("includeTemplates option surfaces templates", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+		markTemplate(t, s, 1)
+
+		projects, _, err := getAllProjectsForUser(s, 1, &projectOptions{includeTemplates: true})
+		require.NoError(t, err)
+		assert.NotNil(t, findByID(projects, 1), "template project 1 must be present when includeTemplates=true")
+	})
+
+	// SC-004: ReadAll is the CalDAV listing entry point (listStorageProvider.go GetResources).
+	t.Run("ReadAll excludes templates", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+		markTemplate(t, s, 1)
+
+		u := &user.User{ID: 1}
+		project := Project{}
+		res, _, _, err := project.ReadAll(s, u, "", 1, 50)
+		require.NoError(t, err)
+		ls := res.([]*Project)
+		assert.Nil(t, findByID(ls, 1), "template project 1 must be hidden from ReadAll (project list / CalDAV)")
+	})
+
+	// SC-004: task-collection scoping (Upcoming / saved filters over "all projects").
+	t.Run("task collection scoping excludes templates", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+		markTemplate(t, s, 1)
+
+		u := &user.User{ID: 1}
+		tc := &TaskCollection{ProjectID: 0}
+		projects, err := getRelevantProjectsFromCollection(s, u, tc)
+		require.NoError(t, err)
+		assert.Nil(t, findByID(projects, 1), "template project 1 must be excluded from task-collection scoping")
+	})
+
+	// SC-004: data export must include templates (carve-out via includeTemplates).
+	t.Run("export options include templates", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+		markTemplate(t, s, 1)
+
+		u := &user.User{ID: 1}
+		// Same options exportProjectsAndTasks uses.
+		projects, _, _, err := getRawProjectsForUser(s, &projectOptions{
+			user:             u,
+			perPage:          -1,
+			getArchived:      true,
+			includeTemplates: true,
+		})
+		require.NoError(t, err)
+		assert.NotNil(t, findByID(projects, 1), "template project 1 must be included in the data export")
 	})
 }
 

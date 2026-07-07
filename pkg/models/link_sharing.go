@@ -166,6 +166,16 @@ func (share *LinkSharing) Create(s *xorm.Session, a web.Auth) (err error) {
 		return
 	}
 
+	// Templates carry no outward-facing surfaces. Create() never loads the target
+	// project otherwise, so fetch it here to reject link shares on templates.
+	project, err := GetProjectSimpleByID(s, share.ProjectID)
+	if err != nil {
+		return err
+	}
+	if project.IsTemplate {
+		return ErrProjectIsTemplate{ProjectID: share.ProjectID}
+	}
+
 	share.SharedByID = a.GetID()
 	hash, err := utils.CryptoRandomString(40)
 	if err != nil {

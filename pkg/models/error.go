@@ -363,6 +363,30 @@ func (err ErrProjectIsArchived) HTTPError() web.HTTPError {
 	return web.HTTPError{HTTPCode: http.StatusPreconditionFailed, Code: ErrCodeProjectIsArchived, Message: "This project is archived. Editing or creating new tasks is not possible."}
 }
 
+// ErrProjectIsTemplate represents an error where an outward-facing surface
+// (link share, webhook) is created on a template project.
+type ErrProjectIsTemplate struct {
+	ProjectID int64
+}
+
+// IsErrProjectIsTemplate checks if an error is a project is template error.
+func IsErrProjectIsTemplate(err error) bool {
+	_, ok := err.(ErrProjectIsTemplate)
+	return ok
+}
+
+func (err ErrProjectIsTemplate) Error() string {
+	return fmt.Sprintf("Project is a template [ProjectID: %d]", err.ProjectID)
+}
+
+// ErrCodeProjectIsTemplate holds the unique world-error code of this error
+const ErrCodeProjectIsTemplate = 3017
+
+// HTTPError holds the http error description
+func (err ErrProjectIsTemplate) HTTPError() web.HTTPError {
+	return web.HTTPError{HTTPCode: http.StatusPreconditionFailed, Code: ErrCodeProjectIsTemplate, Message: "This project is a template. Link shares and webhooks cannot be created on templates."}
+}
+
 // ErrProjectCannotBelongToAPseudoParentProject represents an error where a project cannot belong to a pseudo project
 type ErrProjectCannotBelongToAPseudoParentProject struct {
 	ProjectID       int64

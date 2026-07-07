@@ -90,7 +90,7 @@ func (l *Label) hasAccessToLabel(s *xorm.Session, a web.Auth) (has bool, maxPerm
 	} else {
 		accessibleProjects = builder.In(
 			"project_id",
-			getUserProjectsStatement(a.GetID(), "").Select("l.id"),
+			getUserProjectsStatement(a.GetID(), "", false).Select("l.id"),
 		)
 	}
 
