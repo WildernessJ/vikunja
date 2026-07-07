@@ -1378,6 +1378,13 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 		colsToUpdate = append(colsToUpdate, "done_at")
 	}
 
+	// Re-arming recurring reminders on un-done lives here, not in the session-less
+	// updateDone, because it must evaluate the rule in the task creator's timezone
+	// (resolved via the session) to stay consistent with the firing-path re-arm.
+	if ot.Done && !t.Done {
+		reArmRecurringRemindersOnUndone(&ot, t, reminderTimezoneForTask(s, &ot))
+	}
+
 	// Update the reminders
 	if err := ot.updateReminders(s, t); err != nil {
 		return err
@@ -1962,7 +1969,6 @@ func updateDone(oldTask *Task, newTask *Task) (updateDoneAt bool) {
 	// When unmarking a task as done, reset the timestamp
 	if oldTask.Done && !newTask.Done {
 		newTask.DoneAt = time.Time{}
-		reArmRecurringRemindersOnUndone(oldTask, newTask)
 	}
 
 	return doneStatusChanged
@@ -1976,7 +1982,13 @@ func updateDone(oldTask *Task, newTask *Task) (updateDoneAt bool) {
 // empty; assigning them across mirrors setTaskDatesDefault. Plain reminders are
 // left exactly as stored. When no recurring reminder is present nothing is
 // touched, so a plain un-done keeps its existing behavior.
-func reArmRecurringRemindersOnUndone(oldTask, newTask *Task) {
+//
+// loc is the task creator's timezone (resolved by the caller via
+// reminderTimezoneForTask): the rule MUST be evaluated in the same zone as the
+// firing-path re-arm, otherwise a server/creator TZ mismatch across a DST
+// boundary shifts the occurrence permanently — the next firing anchors dtstart
+// on the wrong instant and BYDAY keeps the wrong wall-clock time forever.
+func reArmRecurringRemindersOnUndone(oldTask, newTask *Task, loc *time.Location) {
 	hasRecurring := false
 	for _, r := range oldTask.Reminders {
 		if r.RepeatRRule != "" {
@@ -1996,8 +2008,7 @@ func reArmRecurringRemindersOnUndone(oldTask, newTask *Task) {
 		}
 		// dtstart is the reminder's own time, carrying its time-of-day and phase;
 		// the cutoff is now, so it resumes at the first occurrence still ahead.
-		// Server timezone matches the other repeat-mode date helpers.
-		if next, ok := nextRRuleOccurrence(r.RepeatRRule, r.Reminder, now, config.GetTimeZone()); ok {
+		if next, ok := nextRRuleOccurrence(r.RepeatRRule, r.Reminder, now, loc); ok {
 			r.Reminder = next
 		}
 	}

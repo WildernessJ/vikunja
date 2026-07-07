@@ -840,7 +840,7 @@ func TestUpdateDone(t *testing.T) {
 		newTask := &Task{Done: false}
 
 		before := time.Now()
-		updateDone(oldTask, newTask)
+		reArmRecurringRemindersOnUndone(oldTask, newTask, time.UTC)
 
 		require.Len(t, newTask.Reminders, 2)
 
@@ -861,7 +861,7 @@ func TestUpdateDone(t *testing.T) {
 			},
 		}
 		newTask := &Task{Done: false}
-		updateDone(oldTask, newTask)
+		reArmRecurringRemindersOnUndone(oldTask, newTask, time.UTC)
 
 		// The client-supplied (nil) reminder set is not overwritten when there is
 		// nothing recurring to re-arm.

@@ -298,6 +298,67 @@ func TestDispatchReminder(t *testing.T) {
 	})
 }
 
+// TestUnDoneReArmUsesCreatorTimezone drives the un-done re-arm through the full
+// Task.Update path (the only path that resolves the creator's timezone from the
+// session). It anchors the reminder in the DST period OPPOSITE the one the test
+// currently runs in, so the next occurrence after "now" always crosses a DST
+// boundary relative to the reminder's stored instant. Under the correct
+// creator-timezone evaluation the re-armed reminder keeps 09:00 New York
+// wall-clock; a server-timezone (UTC) evaluation would keep the stored UTC
+// wall-clock instead, landing an hour off — which this test rejects year-round.
+func TestUnDoneReArmUsesCreatorTimezone(t *testing.T) {
+	db.LoadAndAssertFixtures(t)
+	s := db.NewSession()
+	defer s.Close()
+
+	u := &user.User{ID: 1}
+
+	nyLoc, err := time.LoadLocation("America/New_York")
+	require.NoError(t, err)
+
+	_, err = s.ID(1).Cols("timezone").Update(&user.User{Timezone: "America/New_York"})
+	require.NoError(t, err)
+
+	// Anchor in the opposite DST half of the year from now, so the next
+	// occurrence after now sits in a different UTC offset than the anchor.
+	fire := time.Date(2026, 1, 6, 9, 0, 0, 0, nyLoc) // Tuesday 09:00 EST
+	if !time.Now().In(nyLoc).IsDST() {
+		fire = time.Date(2026, 7, 7, 9, 0, 0, 0, nyLoc) // Tuesday 09:00 EDT
+	}
+
+	task := &Task{
+		Title:     "undone tz nudge",
+		ProjectID: 1,
+		Reminders: []*TaskReminder{
+			{Reminder: fire, RepeatRRule: "FREQ=WEEKLY;BYDAY=TU"},
+		},
+	}
+	require.NoError(t, task.Create(s, u))
+	require.NoError(t, s.Commit())
+
+	// Mark it done, carrying the reminder (a non-repeating task doesn't preserve
+	// reminders on done the way a repeating one does, so a client sending none
+	// would wipe them — mirror a real client that resends the full task).
+	doneTask := &Task{ID: task.ID, Done: true, Reminders: task.Reminders}
+	require.NoError(t, doneTask.Update(s, u))
+	require.NoError(t, s.Commit())
+
+	unDoneTask := &Task{ID: task.ID, Done: false}
+	require.NoError(t, unDoneTask.Update(s, u))
+	require.NoError(t, s.Commit())
+
+	reloaded := &Task{ID: task.ID}
+	require.NoError(t, reloaded.ReadOne(s, u))
+	require.Len(t, reloaded.Reminders, 1)
+
+	rearmedNY := reloaded.Reminders[0].Reminder.In(nyLoc)
+	assert.True(t, rearmedNY.After(time.Now()), "re-armed reminder must be after now, got %s", rearmedNY)
+	assert.Equal(t, time.Tuesday, rearmedNY.Weekday())
+	assert.Equal(t, 9, rearmedNY.Hour(),
+		"un-done re-arm must preserve 09:00 in the creator's timezone; a server-timezone eval lands an hour off (got %s)", rearmedNY)
+	assert.Equal(t, 0, rearmedNY.Minute())
+}
+
 func TestGetTaskUsersForTasks(t *testing.T) {
 	t.Run("task owner", func(t *testing.T) {
 		db.LoadAndAssertFixtures(t)
