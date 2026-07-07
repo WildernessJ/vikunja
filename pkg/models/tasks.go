@@ -61,6 +61,18 @@ func validateRepeatAfter(repeatAfter int64) error {
 	return nil
 }
 
+// MaxTaskEstimatedDurationSeconds caps estimated_duration at 90 days. This is
+// a typo/sanity bound only, not a real planning limit — a task estimated
+// beyond a quarter isn't an estimate.
+const MaxTaskEstimatedDurationSeconds int64 = 90 * 24 * 3600
+
+func validateEstimatedDuration(estimatedDuration int64) error {
+	if estimatedDuration < 0 || estimatedDuration > MaxTaskEstimatedDurationSeconds {
+		return ErrInvalidTaskEstimatedDuration{EstimatedDuration: estimatedDuration}
+	}
+	return nil
+}
+
 // Task represents a task in a project
 type Task struct {
 	// The unique, numeric id of this task.
@@ -103,6 +115,8 @@ type Task struct {
 	HexColor string `xorm:"varchar(6) null" json:"hex_color" valid:"runelength(0|7)" maxLength:"7" doc:"The task color as a hex string without the leading '#'."`
 	// Determines how far a task is left from being done
 	PercentDone float64 `xorm:"DOUBLE null" json:"percent_done" doc:"How far the task is from done, between 0 and 1."`
+	// A pure estimate in seconds, independent of time-tracking entries and dates. 0 = unset, max 90 days.
+	EstimatedDuration int64 `xorm:"bigint not null default 0" json:"estimated_duration" doc:"An estimate in seconds of how long this task will take. Independent of time-tracking entries, dates and repeat. 0 = unset, max 90 days (7776000 seconds)."`
 
 	// The task identifier, based on the project identifier and the task's index
 	Identifier string `xorm:"-" json:"identifier" readOnly:"true" doc:"The textual task identifier, derived from the project identifier and the task index (e.g. \"PROJ-12\")."`
@@ -926,6 +940,10 @@ func createTask(s *xorm.Session, t *Task, a web.Auth, updateAssignees bool, setB
 		return err
 	}
 
+	if err := validateEstimatedDuration(t.EstimatedDuration); err != nil {
+		return err
+	}
+
 	if t.RepeatMode == TaskRepeatModeRRule {
 		if err := validateTaskRRule(t.RepeatRRule); err != nil {
 			return err
@@ -1165,6 +1183,7 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 		"end_date",
 		"hex_color",
 		"percent_done",
+		"estimated_duration",
 		"project_id",
 		"bucket_id",
 		"repeat_mode",
@@ -1224,6 +1243,9 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 		if !fieldSet["percent_done"] {
 			t.PercentDone = ot.PercentDone
 		}
+		if !fieldSet["estimated_duration"] {
+			t.EstimatedDuration = ot.EstimatedDuration
+		}
 		if !fieldSet["project_id"] {
 			t.ProjectID = ot.ProjectID
 		}
@@ -1245,6 +1267,10 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 	}
 
 	if err := validateRepeatAfter(t.RepeatAfter); err != nil {
+		return err
+	}
+
+	if err := validateEstimatedDuration(t.EstimatedDuration); err != nil {
 		return err
 	}
 
@@ -1459,6 +1485,13 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 	// Percent Done
 	if t.PercentDone == 0 {
 		ot.PercentDone = 0
+	}
+	// Estimated Duration. Safe to reset here despite bulk-edit/repeat needing
+	// preservation: the fieldSet copy-back above runs first, so an omitted
+	// field already carries its old (non-zero) value into t and skips this
+	// guard. Only an explicitly-sent 0 (the clear action) reaches here as 0.
+	if t.EstimatedDuration == 0 {
+		ot.EstimatedDuration = 0
 	}
 	// Repeat from current date
 	if t.RepeatMode == TaskRepeatModeDefault {

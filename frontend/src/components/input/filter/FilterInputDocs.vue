@@ -23,6 +23,7 @@ const showDocs = ref(false)
 			<li><code>done</code>: {{ $t('filters.query.help.fields.done') }}</li>
 			<li><code>priority</code>: {{ $t('filters.query.help.fields.priority') }}</li>
 			<li><code>percentDone</code>: {{ $t('filters.query.help.fields.percentDone') }}</li>
+			<li><code>estimatedDuration</code>: {{ $t('filters.query.help.fields.estimatedDuration') }}</li>
 			<li><code>dueDate</code>: {{ $t('filters.query.help.fields.dueDate') }}</li>
 			<li><code>deadline</code>: {{ $t('filters.query.help.fields.deadline') }}</li>
 			<li><code>startDate</code>: {{ $t('filters.query.help.fields.startDate') }}</li>

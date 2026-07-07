@@ -108,6 +108,16 @@
 				>
 					<Icon icon="history" />
 				</span>
+				<span
+					v-if="task.estimatedDuration > 0"
+					v-tooltip="$t('task.attributes.estimatedDuration')"
+					class="estimated-duration"
+				>
+					<span class="icon">
+						<Icon :icon="['far', 'hourglass']" />
+					</span>
+					{{ formatDuration(task.estimatedDuration) }}
+				</span>
 				<CommentCount
 					:task="task"
 					class="project-task-icon"
@@ -146,6 +156,7 @@ import {SUPPORTED_IMAGE_SUFFIX} from '@/models/attachment'
 import AttachmentService, {PREVIEW_SIZE} from '@/services/attachment'
 
 import {formatDateLong, formatDisplayDate, formatISO} from '@/helpers/time/formatDate'
+import {formatDuration} from '@/helpers/time/duration'
 import {colorIsDark} from '@/helpers/color/colorIsDark'
 import {useTaskStore} from '@/stores/tasks'
 import AssigneeList from '@/components/tasks/partials/AssigneeList.vue'

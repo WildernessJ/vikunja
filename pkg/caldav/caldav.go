@@ -64,6 +64,7 @@ type Todo struct {
 	DueDate              time.Time
 	Deadline             time.Time
 	Duration             time.Duration
+	EstimatedDuration    int64 // seconds; a planning estimate, distinct from the iCal DURATION above
 	RepeatAfter          int64
 	RepeatMode           models.TaskRepeatMode
 	RepeatRRule          string
@@ -217,6 +218,13 @@ DUE:` + makeCalDavTimeFromTimeStamp(t.DueDate)
 			// from DUE; round-trip it via a non-standard X-property.
 			caldavtodos += `
 X-VIKUNJA-DEADLINE:` + makeCalDavTimeFromTimeStamp(t.Deadline)
+		}
+
+		if t.EstimatedDuration > 0 {
+			// A planning estimate has no standard VTODO property; round-trip it
+			// as integer seconds so a CalDAV edit doesn't silently drop it.
+			caldavtodos += `
+X-VIKUNJA-ESTIMATED-DURATION:` + strconv.FormatInt(t.EstimatedDuration, 10)
 		}
 
 		if t.Created.Unix() > 0 {
