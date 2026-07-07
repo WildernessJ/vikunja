@@ -9,6 +9,7 @@ describe('Filter Transformation', () => {
 		'done': 'done',
 		'priority': 'priority',
 		'percentDone': 'percent_done',
+		'estimatedDuration': 'estimated_duration',
 		'dueDate': 'due_date',
 		'startDate': 'start_date',
 		'endDate': 'end_date',
@@ -26,6 +27,16 @@ describe('Filter Transformation', () => {
 				expect(transformed).toBe(snakeCase + ' = ipsum')
 			})
 		}
+
+		it('should transform estimatedDuration with a numeric comparator to snake_case', () => {
+			const transformed = transformFilterStringForApi(
+				'estimatedDuration > 3600',
+				nullTitleToIdResolver,
+				nullTitleToIdResolver,
+			)
+
+			expect(transformed).toBe('estimated_duration > 3600')
+		})
 
 		it('should correctly resolve labels', () => {
 			const transformed = transformFilterStringForApi(
