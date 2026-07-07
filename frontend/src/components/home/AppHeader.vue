@@ -95,6 +95,9 @@
 				<DropdownItem :to="{ name: 'user.settings' }">
 					{{ $t('user.settings.title') }}
 				</DropdownItem>
+				<DropdownItem :to="{ name: 'user.stats' }">
+					{{ $t('user.stats.title') }}
+				</DropdownItem>
 				<DropdownItem
 					v-if="adminPanelEnabled && authStore.info?.isAdmin"
 					:to="{ name: 'admin.overview' }"

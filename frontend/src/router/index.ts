@@ -198,6 +198,11 @@ const router = createRouter({
 			],
 		},
 		{
+			path: '/user/stats',
+			name: 'user.stats',
+			component: () => import('@/views/user/UserStatistics.vue'),
+		},
+		{
 			path: '/user/export/download',
 			name: 'user.export.download',
 			component: () => import('@/views/user/DataExportDownload.vue'),
