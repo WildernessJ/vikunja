@@ -18,6 +18,7 @@ package models
 
 import (
 	"testing"
+	"time"
 
 	"code.vikunja.io/api/pkg/db"
 	"code.vikunja.io/api/pkg/files"
@@ -69,6 +70,30 @@ func TestTaskDuplicate(t *testing.T) {
 			Count(&TaskRelation{})
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), relationCount)
+	})
+
+	t.Run("copies deadline and estimated duration", func(t *testing.T) {
+		files.InitTestFileFixtures(t)
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		u := &user.User{ID: 1}
+
+		deadline := time.Date(2035, 8, 1, 17, 0, 0, 0, time.UTC)
+		_, err := s.ID(1).Cols("deadline", "estimated_duration").Update(&Task{
+			Deadline:          deadline,
+			EstimatedDuration: 5400,
+		})
+		require.NoError(t, err)
+
+		td := &TaskDuplicate{TaskID: 1}
+		require.NoError(t, td.Create(s, u))
+
+		dup := &Task{ID: td.Task.ID}
+		require.NoError(t, dup.ReadOne(s, u))
+		assert.Equal(t, int64(5400), dup.EstimatedDuration)
+		assert.True(t, deadline.Equal(dup.Deadline), "deadline should carry to the duplicate")
 	})
 
 	t.Run("no permission", func(t *testing.T) {
