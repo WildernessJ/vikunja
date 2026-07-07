@@ -23,37 +23,80 @@
 				:title="template.title"
 				class="template-card"
 			>
-				<p v-if="template.description">
-					{{ template.description }}
-				</p>
-				<p class="has-text-grey">
-					{{ $t('project.template.taskCount', {count: template.taskCount}) }}
-				</p>
-				<div class="buttons mbt-2">
-					<XButton
-						variant="secondary"
-						icon="pen"
-						@click="startRename(template)"
-					>
-						{{ $t('project.template.rename') }}
-					</XButton>
-					<XButton
-						variant="secondary"
-						icon="trash-alt"
-						class="has-text-danger"
-						@click="remove(template)"
-					>
-						{{ $t('misc.delete') }}
-					</XButton>
-				</div>
+				<template v-if="editingId === template.id">
+					<form @submit.prevent="submitRename()">
+						<FormField
+							v-model="editTitle"
+							v-focus
+							:label="$t('project.template.name')"
+							:placeholder="$t('project.template.namePlaceholder')"
+							type="text"
+							name="templateRename"
+						/>
+						<div class="buttons mbt-2">
+							<XButton
+								:loading="isLoading"
+								type="submit"
+							>
+								{{ $t('misc.save') }}
+							</XButton>
+							<XButton
+								variant="secondary"
+								@click="cancelRename()"
+							>
+								{{ $t('misc.cancel') }}
+							</XButton>
+						</div>
+					</form>
+				</template>
+				<template v-else>
+					<p v-if="template.description">
+						{{ template.description }}
+					</p>
+					<p class="has-text-grey">
+						{{ $t('project.template.taskCount', {count: template.taskCount}) }}
+					</p>
+					<div class="buttons mbt-2">
+						<XButton
+							variant="secondary"
+							icon="pen"
+							@click="startRename(template)"
+						>
+							{{ $t('project.template.rename') }}
+						</XButton>
+						<XButton
+							variant="secondary"
+							icon="trash-alt"
+							class="has-text-danger"
+							@click="startDelete(template)"
+						>
+							{{ $t('misc.delete') }}
+						</XButton>
+					</div>
+				</template>
 			</Card>
 		</div>
+
+		<Modal
+			:enabled="showDeleteModal"
+			@close="showDeleteModal = false"
+			@submit="confirmDelete()"
+		>
+			<template #header>
+				<span>{{ $t('project.template.deleteHeader') }}</span>
+			</template>
+			<template #text>
+				<p>{{ $t('project.template.deleteConfirm') }}</p>
+			</template>
+		</Modal>
 	</div>
 </template>
 
 <script setup lang="ts">
 import {ref, onMounted} from 'vue'
 import {useI18n} from 'vue-i18n'
+
+import FormField from '@/components/input/FormField.vue'
 
 import {success} from '@/message'
 import {useTitle} from '@/composables/useTitle'
@@ -66,6 +109,12 @@ useTitle(() => t('project.template.libraryTitle'))
 const templates = ref<ITemplate[]>([])
 const isLoading = ref(false)
 
+const editingId = ref<number | null>(null)
+const editTitle = ref('')
+
+const showDeleteModal = ref(false)
+const templateToDelete = ref<ITemplate | null>(null)
+
 async function load() {
 	isLoading.value = true
 	try {
@@ -77,22 +126,44 @@ async function load() {
 
 onMounted(load)
 
-async function startRename(template: ITemplate) {
-	const newName = window.prompt(t('project.template.renameTitle'), template.title)
-	if (newName === null || newName.trim() === '' || newName === template.title) {
-		return
-	}
-	await renameTemplate(template.id, newName.trim(), template.description)
-	success({message: t('project.template.renameSuccess')})
-	await load()
+function startRename(template: ITemplate) {
+	editingId.value = template.id
+	editTitle.value = template.title
 }
 
-async function remove(template: ITemplate) {
-	if (!window.confirm(t('project.template.deleteConfirm'))) {
+function cancelRename() {
+	editingId.value = null
+}
+
+async function submitRename() {
+	const template = templates.value.find(tpl => tpl.id === editingId.value)
+	if (!template || editTitle.value.trim() === '') {
 		return
 	}
-	await deleteTemplate(template.id)
+	isLoading.value = true
+	try {
+		await renameTemplate(template.id, editTitle.value.trim(), template.description)
+		success({message: t('project.template.renameSuccess')})
+		editingId.value = null
+		await load()
+	} finally {
+		isLoading.value = false
+	}
+}
+
+function startDelete(template: ITemplate) {
+	templateToDelete.value = template
+	showDeleteModal.value = true
+}
+
+async function confirmDelete() {
+	if (!templateToDelete.value) {
+		return
+	}
+	showDeleteModal.value = false
+	await deleteTemplate(templateToDelete.value.id)
 	success({message: t('project.template.deleteSuccess')})
+	templateToDelete.value = null
 	await load()
 }
 </script>
