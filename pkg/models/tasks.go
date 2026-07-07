@@ -1486,6 +1486,13 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 	if t.PercentDone == 0 {
 		ot.PercentDone = 0
 	}
+	// Estimated Duration. Safe to reset here despite bulk-edit/repeat needing
+	// preservation: the fieldSet copy-back above runs first, so an omitted
+	// field already carries its old (non-zero) value into t and skips this
+	// guard. Only an explicitly-sent 0 (the clear action) reaches here as 0.
+	if t.EstimatedDuration == 0 {
+		ot.EstimatedDuration = 0
+	}
 	// Repeat from current date
 	if t.RepeatMode == TaskRepeatModeDefault {
 		ot.RepeatMode = TaskRepeatModeDefault

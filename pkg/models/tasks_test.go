@@ -421,26 +421,35 @@ func TestTask_Update(t *testing.T) {
 		s := db.NewSession()
 		defer s.Close()
 
-		// Give task 28 an estimated duration before triggering the repeat.
+		// Give task 28 (repeat_after: 3600 in the fixtures) an estimated duration.
 		setup := &Task{ID: 28, EstimatedDuration: 3600}
 		err := setup.updateSingleTask(s, u, []string{"estimated_duration"})
 		require.NoError(t, err)
+		require.NoError(t, s.Commit())
 
-		// Mark the repeating task as done without naming estimated_duration at all.
-		task := &Task{
-			ID:          28,
-			Done:        true,
-			RepeatAfter: 3600,
-		}
-		err = task.Update(s, u)
-		require.NoError(t, err)
-		err = s.Commit()
-		require.NoError(t, err)
+		s2 := db.NewSession()
+		defer s2.Close()
 
+		// Mark done through a full-object update that carries the current
+		// estimated_duration, exactly as the client does (the done checkbox
+		// sends {...task, done: true}). A repeating task reopens itself, and the
+		// duration must ride along unchanged onto the next occurrence.
+		task := &Task{ID: 28}
+		require.NoError(t, task.ReadOne(s2, u))
+		require.Equal(t, int64(3600), task.EstimatedDuration)
+		task.Done = true
+		err = task.Update(s2, u)
+		require.NoError(t, err)
+		require.NoError(t, s2.Commit())
+
+		assert.False(t, task.Done, "repeating task reopens")
 		assert.Equal(t, int64(3600), task.EstimatedDuration, "estimated_duration must survive the repeat-driven update")
 
+		s3 := db.NewSession()
+		defer s3.Close()
+
 		updatedTask := &Task{ID: 28}
-		err = updatedTask.ReadOne(s, u)
+		err = updatedTask.ReadOne(s3, u)
 		require.NoError(t, err)
 		assert.Equal(t, int64(3600), updatedTask.EstimatedDuration, "estimated_duration must be persisted unchanged after repeat")
 	})
@@ -1420,6 +1429,36 @@ func TestTask_EstimatedDuration(t *testing.T) {
 		err := task.Update(s, usr)
 		require.Error(t, err)
 		assert.True(t, IsErrInvalidTaskEstimatedDuration(err))
+	})
+
+	t.Run("explicit clear to zero works and leaves other fields untouched", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		usr := &user.User{ID: 1}
+
+		dueDate := time.Date(2026, time.September, 1, 12, 0, 0, 0, time.UTC)
+		set := &Task{ID: 1, EstimatedDuration: 3600, DueDate: dueDate}
+		require.NoError(t, set.Update(s, usr))
+		require.NoError(t, s.Commit())
+
+		s2 := db.NewSession()
+		defer s2.Close()
+
+		// A full-object update that explicitly sends estimated_duration: 0 must
+		// clear it while preserving the previously-set due date.
+		cleared := &Task{ID: 1, EstimatedDuration: 0, DueDate: dueDate}
+		require.NoError(t, cleared.Update(s2, usr))
+		require.NoError(t, s2.Commit())
+
+		s3 := db.NewSession()
+		defer s3.Close()
+
+		got := &Task{ID: 1}
+		require.NoError(t, got.ReadOne(s3, usr))
+		assert.Equal(t, int64(0), got.EstimatedDuration, "estimated_duration must be cleared to 0")
+		assert.True(t, dueDate.Equal(got.DueDate), "due_date must be untouched by the clear")
 	})
 }
 
