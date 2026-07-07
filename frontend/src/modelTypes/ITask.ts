@@ -28,6 +28,7 @@ export interface ITask extends IAbstract {
 	assignees: IUser[]
 
 	dueDate: Date | null
+	deadline: Date | null
 	startDate: Date | null
 	endDate: Date | null
 	repeatAfter: number | IRepeatAfter

@@ -54,6 +54,19 @@
 						{{ formatDisplayDate(task.dueDate) }}
 					</time>
 				</span>
+				<span
+					v-if="task.deadline !== null && task.deadline.getTime() > 0"
+					v-tooltip="formatDateLong(task.deadline)"
+					class="deadline"
+					:class="{'is-overdue': isDeadlineOverdue}"
+				>
+					<span class="icon">
+						<Icon icon="flag-checkered" />
+					</span>
+					<time :datetime="formatISO(task.deadline)">
+						{{ formatDisplayDate(task.deadline) }}
+					</time>
+				</span>
 			</div>
 			
 			<h3>{{ task.title }}</h3>
@@ -180,6 +193,13 @@ const isOverdue = computed(() => (
 	props.task.dueDate.getTime() <= now.value.getTime()
 ))
 
+const isDeadlineOverdue = computed(() => (
+	!props.task.done &&
+	props.task.deadline !== null &&
+	props.task.deadline.getTime() > 0 &&
+	props.task.deadline.getTime() <= now.value.getTime()
+))
+
 async function toggleTaskDone(task: ITask) {
 	const isRecurringTask = task.repeatAfter.amount > 0 || task.repeatMode === TASK_REPEAT_MODES.REPEAT_MODE_MONTH
 	const wasBeingMarkedDone = !task.done
@@ -281,6 +301,28 @@ $task-background: var(--white);
 
 	&[data-is-overdue] .due-date {
 		color: var(--danger);
+	}
+
+	.deadline {
+		float: inline-end;
+		display: flex;
+		align-items: center;
+		padding: 0 .25rem;
+		font-size: .85rem;
+		color: var(--grey-500);
+
+		.icon {
+			margin-inline-end: .25rem;
+		}
+
+		// A passed deadline reads louder than an overdue due date (plain red text):
+		// a filled danger pill, since a deadline is a hard cutoff.
+		&.is-overdue {
+			color: var(--white);
+			background-color: var(--danger);
+			border-radius: 4px;
+			font-weight: 600;
+		}
 	}
 
 	.label-wrapper .tag {

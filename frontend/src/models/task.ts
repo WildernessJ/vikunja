@@ -68,6 +68,7 @@ export default class TaskModel extends AbstractModel<ITask> implements ITask {
 	assignees: IUser[] = []
 
 	dueDate: Date | null = 0
+	deadline: Date | null = 0
 	startDate: Date | null = 0
 	endDate: Date | null = 0
 	repeatAfter: number | IRepeatAfter = 0
@@ -118,6 +119,7 @@ export default class TaskModel extends AbstractModel<ITask> implements ITask {
 		})
 
 		this.dueDate = parseDateOrNull(this.dueDate)
+		this.deadline = parseDateOrNull(this.deadline)
 		this.startDate = parseDateOrNull(this.startDate)
 		this.endDate = parseDateOrNull(this.endDate)
 

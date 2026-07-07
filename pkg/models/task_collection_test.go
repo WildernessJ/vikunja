@@ -17,6 +17,7 @@
 package models
 
 import (
+	"fmt"
 	"sort"
 	"testing"
 	"time"
@@ -1883,6 +1884,73 @@ func TestTaskCollection_SubtaskRemainsAfterMove(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "subtask should be returned after moving to another project")
+}
+
+func TestTaskCollection_FilterByDeadlineWindow(t *testing.T) {
+	db.LoadAndAssertFixtures(t)
+	s := db.NewSession()
+	defer s.Close()
+
+	u := &user.User{ID: 1}
+
+	taskA := &Task{Title: "deadline in 3 days", ProjectID: 1, Deadline: time.Now().Add(3 * 24 * time.Hour)}
+	require.NoError(t, taskA.Create(s, u))
+	taskB := &Task{Title: "deadline in 30 days", ProjectID: 1, Deadline: time.Now().Add(30 * 24 * time.Hour)}
+	require.NoError(t, taskB.Create(s, u))
+	taskC := &Task{Title: "no deadline", ProjectID: 1}
+	require.NoError(t, taskC.Create(s, u))
+	require.NoError(t, s.Commit())
+
+	s2 := db.NewSession()
+	defer s2.Close()
+
+	c := &TaskCollection{
+		ProjectID: 1,
+		Filter:    "deadline < now+7d",
+	}
+	res, _, _, err := c.ReadAll(s2, u, "", 0, 50)
+	require.NoError(t, err)
+	tasks, ok := res.([]*Task)
+	require.True(t, ok)
+
+	gotIDs := make([]int64, 0, len(tasks))
+	for _, tsk := range tasks {
+		gotIDs = append(gotIDs, tsk.ID)
+	}
+	assert.Contains(t, gotIDs, taskA.ID)
+	assert.NotContains(t, gotIDs, taskB.ID)
+	assert.NotContains(t, gotIDs, taskC.ID)
+}
+
+func TestTaskCollection_SortByDeadline(t *testing.T) {
+	db.LoadAndAssertFixtures(t)
+	s := db.NewSession()
+	defer s.Close()
+
+	u := &user.User{ID: 1}
+
+	taskLater := &Task{Title: "later deadline", ProjectID: 1, Deadline: time.Now().Add(48 * time.Hour)}
+	require.NoError(t, taskLater.Create(s, u))
+	taskSooner := &Task{Title: "sooner deadline", ProjectID: 1, Deadline: time.Now().Add(24 * time.Hour)}
+	require.NoError(t, taskSooner.Create(s, u))
+	require.NoError(t, s.Commit())
+
+	s2 := db.NewSession()
+	defer s2.Close()
+
+	c := &TaskCollection{
+		ProjectID: 1,
+		SortBy:    []string{"deadline"},
+		OrderBy:   []string{"asc"},
+		Filter:    fmt.Sprintf("id in '%d,%d'", taskSooner.ID, taskLater.ID),
+	}
+	res, _, _, err := c.ReadAll(s2, u, "", 0, 50)
+	require.NoError(t, err)
+	tasks, ok := res.([]*Task)
+	require.True(t, ok)
+	require.Len(t, tasks, 2)
+	assert.Equal(t, taskSooner.ID, tasks[0].ID)
+	assert.Equal(t, taskLater.ID, tasks[1].ID)
 }
 
 func TestTaskSearchWithExpandSubtasks(t *testing.T) {

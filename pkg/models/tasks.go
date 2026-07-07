@@ -75,6 +75,8 @@ type Task struct {
 	DoneAt time.Time `xorm:"INDEX null 'done_at'" json:"done_at" readOnly:"true" doc:"When the task was marked as done. Set by the server; ignored on write."`
 	// The time when the task is due.
 	DueDate time.Time `xorm:"DATETIME INDEX null 'due_date'" json:"due_date"`
+	// A hard cutoff distinct from due_date ("when it must be done" vs "when I plan to work on it"). Independent of due_date, start_date and end_date.
+	Deadline time.Time `xorm:"DATETIME INDEX null 'deadline'" json:"deadline" doc:"A hard cutoff distinct from due_date. Independent of due_date, start_date and end_date; setting or clearing one does not affect the others."`
 	// An array of reminders that are associated with this task.
 	Reminders []*TaskReminder `xorm:"-" json:"reminders"`
 	// The project this task belongs to.
@@ -1156,6 +1158,7 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 		"description",
 		"done",
 		"due_date",
+		"deadline",
 		"repeat_after",
 		"priority",
 		"start_date",
@@ -1199,6 +1202,9 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 		}
 		if !fieldSet["due_date"] {
 			t.DueDate = ot.DueDate
+		}
+		if !fieldSet["deadline"] {
+			t.Deadline = ot.Deadline
 		}
 		if !fieldSet["repeat_after"] {
 			t.RepeatAfter = ot.RepeatAfter
@@ -1429,6 +1435,10 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 	// Due date
 	if t.DueDate.IsZero() {
 		ot.DueDate = time.Time{}
+	}
+	// Deadline
+	if t.Deadline.IsZero() {
+		ot.Deadline = time.Time{}
 	}
 	// Repeat after
 	if t.RepeatAfter == 0 {
@@ -1662,6 +1672,12 @@ func setTaskDatesDefault(oldTask, newTask *Task) {
 		newTask.EndDate = addRepeatIntervalToTime(now, oldTask.EndDate, repeatDuration)
 	}
 
+	// Deadline is independent of due/start/end; it advances off its own prior
+	// value with the same mechanism, never derived from the due date.
+	if !oldTask.Deadline.IsZero() {
+		newTask.Deadline = addRepeatIntervalToTime(now, oldTask.Deadline, repeatDuration)
+	}
+
 	newTask.Done = false
 }
 
@@ -1689,6 +1705,12 @@ func setTaskDatesMonthRepeat(oldTask, newTask *Task) {
 		if !oldTask.EndDate.IsZero() {
 			newTask.EndDate = addOneMonthToDate(oldTask.EndDate)
 		}
+	}
+
+	// Deadline is independent of due/start/end; it advances off its own prior
+	// value with the same mechanism, never derived from the due date.
+	if !oldTask.Deadline.IsZero() {
+		newTask.Deadline = addOneMonthToDate(oldTask.Deadline)
 	}
 
 	newTask.Done = false
@@ -1759,6 +1781,10 @@ func setTaskDatesRRuleRepeat(oldTask, newTask *Task) {
 		newTask.EndDate = oldTask.EndDate.Add(delta)
 	}
 
+	if !oldTask.Deadline.IsZero() {
+		newTask.Deadline = oldTask.Deadline.Add(delta)
+	}
+
 	newTask.Done = false
 }
 
@@ -1825,6 +1851,13 @@ func setTaskDatesFromCurrentDateRepeat(oldTask, newTask *Task) {
 			diff := oldTask.DueDate.Sub(oldTask.EndDate)
 			newTask.EndDate = newTask.DueDate.Add(-diff)
 		}
+	}
+
+	// Deadline deliberately does NOT use the diff-to-due-date mechanic above:
+	// it's independent of due_date, so it shifts by the same flat interval
+	// regardless of whether a due date is set.
+	if !oldTask.Deadline.IsZero() {
+		newTask.Deadline = now.Add(repeatDuration)
 	}
 
 	newTask.Done = false
@@ -1900,6 +1933,10 @@ func updateRelativeReminderDates(task *Task) (err error) {
 		case ReminderRelationEndDate:
 			if !task.EndDate.IsZero() {
 				reminder.Reminder = task.EndDate.Add(relativeDuration)
+			}
+		case ReminderRelationDeadline:
+			if !task.Deadline.IsZero() {
+				reminder.Reminder = task.Deadline.Add(relativeDuration)
 			}
 		default:
 			if reminder.RelativePeriod != 0 {

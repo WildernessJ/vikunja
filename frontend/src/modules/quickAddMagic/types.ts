@@ -21,6 +21,7 @@ export interface repeatParsedResult {
 export interface ParsedTaskText {
 	text: string,
 	date: Date | null,
+	deadline: Date | null,
 	labels: string[],
 	project: string | null,
 	priority: number | null,

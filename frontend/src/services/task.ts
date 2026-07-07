@@ -54,6 +54,7 @@ export default class TaskService extends AbstractService<ITask> {
 
 		// Convert dates into an iso string
 		model.dueDate = parseDate(model.dueDate)
+		model.deadline = parseDate(model.deadline)
 		model.startDate = parseDate(model.startDate)
 		model.endDate = parseDate(model.endDate)
 		model.doneAt = parseDate(model.doneAt)

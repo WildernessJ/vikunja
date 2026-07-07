@@ -24,6 +24,7 @@ const showDocs = ref(false)
 			<li><code>priority</code>: {{ $t('filters.query.help.fields.priority') }}</li>
 			<li><code>percentDone</code>: {{ $t('filters.query.help.fields.percentDone') }}</li>
 			<li><code>dueDate</code>: {{ $t('filters.query.help.fields.dueDate') }}</li>
+			<li><code>deadline</code>: {{ $t('filters.query.help.fields.deadline') }}</li>
 			<li><code>startDate</code>: {{ $t('filters.query.help.fields.startDate') }}</li>
 			<li><code>endDate</code>: {{ $t('filters.query.help.fields.endDate') }}</li>
 			<li><code>doneAt</code>: {{ $t('filters.query.help.fields.doneAt') }}</li>

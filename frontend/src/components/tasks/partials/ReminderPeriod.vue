@@ -61,6 +61,9 @@
 				<option :value="REMINDER_PERIOD_RELATIVE_TO_TYPES.ENDDATE">
 					{{ $t('task.attributes.endDate') }}
 				</option>
+				<option :value="REMINDER_PERIOD_RELATIVE_TO_TYPES.DEADLINE">
+					{{ $t('task.attributes.deadline') }}
+				</option>
 			</select>
 		</div>
 	</div>

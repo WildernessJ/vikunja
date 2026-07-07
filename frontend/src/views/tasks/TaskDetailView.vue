@@ -154,6 +154,42 @@
 							appear
 						>
 							<div
+								v-if="activeFields.deadline"
+								class="column"
+							>
+								<!-- Deadline -->
+								<div
+									class="detail-title"
+									:class="{'has-text-danger': isDeadlineOverdue}"
+								>
+									<Icon icon="flag-checkered" />
+									{{ $t('task.attributes.deadline') }}
+								</div>
+								<div class="date-input">
+									<Datepicker
+										:ref="e => setFieldRef('deadline', e)"
+										v-model="task.deadline"
+										:choose-date-label="$t('task.detail.chooseDeadline')"
+										:disabled="taskService.loading || !canWrite"
+										@closeOnChange="saveTask()"
+									/>
+									<BaseButton
+										v-if="task.deadline && canWrite"
+										class="remove"
+										@click="() => {task.deadline = null;saveTask()}"
+									>
+										<span class="icon is-small">
+											<Icon icon="times" />
+										</span>
+									</BaseButton>
+								</div>
+							</div>
+						</CustomTransition>
+						<CustomTransition
+							name="flash-background"
+							appear
+						>
+							<div
 								v-if="activeFields.percentDone"
 								class="column"
 							>
@@ -566,6 +602,13 @@
 						</XButton>
 						<XButton
 							variant="secondary"
+							icon="flag-checkered"
+							@click="setFieldActive('deadline')"
+						>
+							{{ $t('task.detail.actions.deadline') }}
+						</XButton>
+						<XButton
+							variant="secondary"
 							icon="play"
 							@click="setFieldActive('startDate')"
 						>
@@ -707,6 +750,7 @@ import {useConfigStore} from '@/stores/config'
 
 import {useTitle} from '@/composables/useTitle'
 import {useTaskDetailShortcuts} from '@/composables/useTaskDetailShortcuts'
+import {useGlobalNow} from '@/composables/useGlobalNow'
 
 import {success} from '@/message'
 import type {Action as MessageAction} from '@/message'
@@ -749,6 +793,14 @@ const remindersDefaultRelativeTo = computed(() => {
 const taskNotFound = ref(false)
 const taskTitle = computed(() => task.value.title)
 useTitle(taskTitle)
+
+const {now: globalNow} = useGlobalNow()
+const isDeadlineOverdue = computed(() => (
+	!task.value.done &&
+	task.value.deadline !== null &&
+	task.value.deadline.getTime() > 0 &&
+	task.value.deadline.getTime() <= globalNow.value.getTime()
+))
 
 const lastProject = computed(() => {
 	const backRoute = router.options.history.state?.back
@@ -986,6 +1038,7 @@ type FieldType =
 	| 'assignees'
 	| 'attachments'
 	| 'color'
+	| 'deadline'
 	| 'dueDate'
 	| 'endDate'
 	| 'labels'
@@ -1002,6 +1055,7 @@ const activeFields: { [type in FieldType]: boolean } = reactive({
 	assignees: false,
 	attachments: false,
 	color: false,
+	deadline: false,
 	dueDate: false,
 	endDate: false,
 	labels: false,
@@ -1025,6 +1079,7 @@ function setActiveFields() {
 	activeFields.attachments = task.value.attachments.length > 0
 	activeFields.timeTracking = (task.value.timeEntriesCount ?? 0) > 0
 	activeFields.dueDate = task.value.dueDate !== null
+	activeFields.deadline = task.value.deadline !== null
 	activeFields.endDate = task.value.endDate !== null
 	activeFields.labels = task.value.labels.length > 0
 	activeFields.percentDone = task.value.percentDone > 0
@@ -1039,6 +1094,7 @@ const activeFieldElements: { [id in FieldType]: HTMLElement | null } = reactive(
 	assignees: null,
 	attachments: null,
 	color: null,
+	deadline: null,
 	dueDate: null,
 	endDate: null,
 	labels: null,

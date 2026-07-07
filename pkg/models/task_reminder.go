@@ -40,6 +40,7 @@ const (
 	ReminderRelationDueDate   ReminderRelation = `due_date`
 	ReminderRelationStartDate ReminderRelation = `start_date`
 	ReminderRelationEndDate   ReminderRelation = `end_date`
+	ReminderRelationDeadline  ReminderRelation = `deadline`
 )
 
 // TaskReminder holds a reminder on a task.
