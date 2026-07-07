@@ -1953,6 +1953,76 @@ func TestTaskCollection_SortByDeadline(t *testing.T) {
 	assert.Equal(t, taskLater.ID, tasks[1].ID)
 }
 
+func TestTaskCollection_FilterByEstimatedDuration(t *testing.T) {
+	db.LoadAndAssertFixtures(t)
+	s := db.NewSession()
+	defer s.Close()
+
+	u := &user.User{ID: 1}
+
+	taskA := &Task{Title: "long estimate", ProjectID: 1, EstimatedDuration: 7200}
+	require.NoError(t, taskA.Create(s, u))
+	taskB := &Task{Title: "short estimate", ProjectID: 1, EstimatedDuration: 600}
+	require.NoError(t, taskB.Create(s, u))
+	taskC := &Task{Title: "no estimate", ProjectID: 1}
+	require.NoError(t, taskC.Create(s, u))
+	require.NoError(t, s.Commit())
+
+	s2 := db.NewSession()
+	defer s2.Close()
+
+	// The backend filter grammar takes snake_case field names; the frontend
+	// (objectToSnakeCase, frontend/src/helpers/case.ts) converts the
+	// user-facing camelCase "estimatedDuration" before it reaches this layer.
+	c := &TaskCollection{
+		ProjectID: 1,
+		Filter:    "estimated_duration > 3600",
+	}
+	res, _, _, err := c.ReadAll(s2, u, "", 0, 50)
+	require.NoError(t, err)
+	tasks, ok := res.([]*Task)
+	require.True(t, ok)
+
+	gotIDs := make([]int64, 0, len(tasks))
+	for _, tsk := range tasks {
+		gotIDs = append(gotIDs, tsk.ID)
+	}
+	assert.Contains(t, gotIDs, taskA.ID)
+	assert.NotContains(t, gotIDs, taskB.ID)
+	assert.NotContains(t, gotIDs, taskC.ID)
+}
+
+func TestTaskCollection_SortByEstimatedDuration(t *testing.T) {
+	db.LoadAndAssertFixtures(t)
+	s := db.NewSession()
+	defer s.Close()
+
+	u := &user.User{ID: 1}
+
+	taskLonger := &Task{Title: "longer estimate", ProjectID: 1, EstimatedDuration: 7200}
+	require.NoError(t, taskLonger.Create(s, u))
+	taskShorter := &Task{Title: "shorter estimate", ProjectID: 1, EstimatedDuration: 1800}
+	require.NoError(t, taskShorter.Create(s, u))
+	require.NoError(t, s.Commit())
+
+	s2 := db.NewSession()
+	defer s2.Close()
+
+	c := &TaskCollection{
+		ProjectID: 1,
+		SortBy:    []string{"estimated_duration"},
+		OrderBy:   []string{"asc"},
+		Filter:    fmt.Sprintf("id in '%d,%d'", taskShorter.ID, taskLonger.ID),
+	}
+	res, _, _, err := c.ReadAll(s2, u, "", 0, 50)
+	require.NoError(t, err)
+	tasks, ok := res.([]*Task)
+	require.True(t, ok)
+	require.Len(t, tasks, 2)
+	assert.Equal(t, taskShorter.ID, tasks[0].ID)
+	assert.Equal(t, taskLonger.ID, tasks[1].ID)
+}
+
 func TestTaskSearchWithExpandSubtasks(t *testing.T) {
 	db.LoadAndAssertFixtures(t)
 	s := db.NewSession()

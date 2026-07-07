@@ -645,6 +645,34 @@ func (err ErrInvalidTaskRepeatInterval) HTTPError() web.HTTPError {
 	}
 }
 
+// ErrInvalidTaskEstimatedDuration represents an error where the provided
+// task estimated duration is outside the allowed range.
+type ErrInvalidTaskEstimatedDuration struct {
+	EstimatedDuration int64
+}
+
+// IsErrInvalidTaskEstimatedDuration checks if an error is ErrInvalidTaskEstimatedDuration.
+func IsErrInvalidTaskEstimatedDuration(err error) bool {
+	_, ok := err.(ErrInvalidTaskEstimatedDuration)
+	return ok
+}
+
+func (err ErrInvalidTaskEstimatedDuration) Error() string {
+	return fmt.Sprintf("Invalid task estimated duration. [EstimatedDuration: %d]", err.EstimatedDuration)
+}
+
+// ErrCodeInvalidTaskEstimatedDuration holds the unique world-error code of this error.
+const ErrCodeInvalidTaskEstimatedDuration = 4031
+
+// HTTPError holds the http error description.
+func (err ErrInvalidTaskEstimatedDuration) HTTPError() web.HTTPError {
+	return web.HTTPError{
+		HTTPCode: http.StatusBadRequest,
+		Code:     ErrCodeInvalidTaskEstimatedDuration,
+		Message:  fmt.Sprintf("The task estimated duration must be between 0 and %d seconds (90 days).", MaxTaskEstimatedDurationSeconds),
+	}
+}
+
 // ErrInvalidTaskRepeatRRule represents an error where the provided
 // task repeat_rrule is not a valid or supported RFC 5545 RRULE.
 type ErrInvalidTaskRepeatRRule struct {

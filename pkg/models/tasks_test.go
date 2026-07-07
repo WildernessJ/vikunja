@@ -416,6 +416,34 @@ func TestTask_Update(t *testing.T) {
 		assert.False(t, updatedTask.Done)
 		assert.False(t, updatedTask.DoneAt.IsZero(), "done_at should be persisted in database for repeating tasks")
 	})
+	t.Run("repeating tasks preserve estimated_duration when marked done", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		// Give task 28 an estimated duration before triggering the repeat.
+		setup := &Task{ID: 28, EstimatedDuration: 3600}
+		err := setup.updateSingleTask(s, u, []string{"estimated_duration"})
+		require.NoError(t, err)
+
+		// Mark the repeating task as done without naming estimated_duration at all.
+		task := &Task{
+			ID:          28,
+			Done:        true,
+			RepeatAfter: 3600,
+		}
+		err = task.Update(s, u)
+		require.NoError(t, err)
+		err = s.Commit()
+		require.NoError(t, err)
+
+		assert.Equal(t, int64(3600), task.EstimatedDuration, "estimated_duration must survive the repeat-driven update")
+
+		updatedTask := &Task{ID: 28}
+		err = updatedTask.ReadOne(s, u)
+		require.NoError(t, err)
+		assert.Equal(t, int64(3600), updatedTask.EstimatedDuration, "estimated_duration must be persisted unchanged after repeat")
+	})
 	t.Run("repeating tasks marked done from a non-default bucket are moved to the default bucket", func(t *testing.T) {
 		db.LoadAndAssertFixtures(t)
 		s := db.NewSession()
@@ -750,6 +778,23 @@ func TestUpdateTasksHelper_DeadlineUntouchedOnBulkEdit(t *testing.T) {
 	require.Len(t, updated, 1)
 	assert.Equal(t, "bulk-edited", updated[0].Title)
 	assert.True(t, deadline.Equal(updated[0].Deadline), "deadline must be untouched by a bulk edit that doesn't include it")
+}
+
+func TestUpdateTasksHelper_EstimatedDurationUntouchedOnBulkEdit(t *testing.T) {
+	db.LoadAndAssertFixtures(t)
+	s := db.NewSession()
+	defer s.Close()
+
+	u := &user.User{ID: 1}
+
+	_, err := updateTasks(s, u, &Task{EstimatedDuration: 3600}, []int64{10}, []string{"estimated_duration"})
+	require.NoError(t, err)
+
+	updated, err := updateTasks(s, u, &Task{Title: "bulk-edited"}, []int64{10}, []string{"title"})
+	require.NoError(t, err)
+	require.Len(t, updated, 1)
+	assert.Equal(t, "bulk-edited", updated[0].Title)
+	assert.Equal(t, int64(3600), updated[0].EstimatedDuration, "estimated_duration must be untouched by a bulk edit that doesn't include it")
 }
 
 func TestUpdateDone(t *testing.T) {
@@ -1274,6 +1319,117 @@ func TestTask_RepeatAfterCap(t *testing.T) {
 		require.Error(t, err)
 		assert.True(t, IsErrInvalidTaskRepeatInterval(err))
 	})
+}
+
+func TestTask_EstimatedDuration(t *testing.T) {
+	const maxDuration int64 = 90 * 24 * 3600
+
+	t.Run("persists and reads back", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		usr := &user.User{ID: 1}
+		task := &Task{
+			ID:                1,
+			EstimatedDuration: 9000,
+		}
+		require.NoError(t, task.Update(s, usr))
+		require.NoError(t, s.Commit())
+
+		s2 := db.NewSession()
+		defer s2.Close()
+
+		got := &Task{ID: 1}
+		require.NoError(t, got.ReadOne(s2, usr))
+		assert.Equal(t, int64(9000), got.EstimatedDuration)
+	})
+
+	t.Run("create rejects negative estimated_duration", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		usr := &user.User{ID: 1, Username: "user1"}
+		task := &Task{
+			Title:             "nope",
+			ProjectID:         1,
+			EstimatedDuration: -60,
+		}
+		err := task.Create(s, usr)
+		require.Error(t, err)
+		assert.True(t, IsErrInvalidTaskEstimatedDuration(err))
+	})
+
+	t.Run("create rejects estimated_duration above cap", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		usr := &user.User{ID: 1, Username: "user1"}
+		task := &Task{
+			Title:             "nope",
+			ProjectID:         1,
+			EstimatedDuration: maxDuration + 1,
+		}
+		err := task.Create(s, usr)
+		require.Error(t, err)
+		assert.True(t, IsErrInvalidTaskEstimatedDuration(err))
+	})
+
+	t.Run("create accepts estimated_duration at cap", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		usr := &user.User{ID: 1, Username: "user1"}
+		task := &Task{
+			Title:             "ok",
+			ProjectID:         1,
+			EstimatedDuration: maxDuration,
+		}
+		require.NoError(t, task.Create(s, usr))
+		require.NoError(t, s.Commit())
+	})
+
+	t.Run("update rejects negative estimated_duration", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		usr := &user.User{ID: 1, Username: "user1"}
+		task := &Task{
+			ID:                1,
+			EstimatedDuration: -60,
+		}
+		err := task.Update(s, usr)
+		require.Error(t, err)
+		assert.True(t, IsErrInvalidTaskEstimatedDuration(err))
+	})
+
+	t.Run("update rejects estimated_duration above cap", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		usr := &user.User{ID: 1, Username: "user1"}
+		task := &Task{
+			ID:                1,
+			EstimatedDuration: maxDuration + 1,
+		}
+		err := task.Update(s, usr)
+		require.Error(t, err)
+		assert.True(t, IsErrInvalidTaskEstimatedDuration(err))
+	})
+}
+
+func TestErrInvalidTaskEstimatedDuration(t *testing.T) {
+	err := ErrInvalidTaskEstimatedDuration{EstimatedDuration: -60}
+	assert.True(t, IsErrInvalidTaskEstimatedDuration(err))
+	assert.False(t, IsErrInvalidTaskEstimatedDuration(ErrTaskCannotBeEmpty{}))
+	httpErr := err.HTTPError()
+	assert.Equal(t, 400, httpErr.HTTPCode)
+	assert.Equal(t, ErrCodeInvalidTaskEstimatedDuration, httpErr.Code)
 }
 
 func TestErrInvalidTaskRepeatInterval(t *testing.T) {
