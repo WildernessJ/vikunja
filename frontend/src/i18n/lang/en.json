@@ -59,6 +59,26 @@
     "text": "Please check your network connection and try again."
   },
   "user": {
+    "stats": {
+      "title": "Statistics",
+      "window": {
+        "label": "Time range",
+        "weeks": "{count} weeks"
+      },
+      "completedInProjects": "Completed in your projects",
+      "completedInProjectsHint": "Tasks completed in projects you can see, by anyone — the data has no \"completed by\" field.",
+      "createdByMe": "Created by you",
+      "open": "Open",
+      "overdue": "Overdue",
+      "completedInWindow": "Completed",
+      "chartAriaLabel": "Bar chart: {count} tasks completed in your projects per day over the selected range.",
+      "chartCaption": "Completed in your projects per day, {start} to {end}.",
+      "projectBreakdown": "By project",
+      "project": "Project",
+      "barTooltip": "{count} completed on {date}",
+      "noProjects": "No projects with activity in this range yet.",
+      "loadError": "Could not load your statistics. Please try again."
+    },
     "auth": {
       "username": "Username",
       "usernameEmail": "Username Or Email Address",

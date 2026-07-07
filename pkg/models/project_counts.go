@@ -100,19 +100,31 @@ func GetProjectTaskCounts(s *xorm.Session, a web.Auth) (map[int64]*ProjectTaskCo
 
 // startOfTomorrowInUserTimezone follows the same tz-resolution pattern as
 // getUndoneOverdueTasks (user's configured timezone, falling back to the
-// instance default when empty); the boundary it computes is unrelated.
+// instance default when empty); the boundary it computes is unrelated. Also
+// used by GetUserStats so the Statistics page's overdue total can never
+// disagree with this badge (spec personal-stats.md SC-003).
 func startOfTomorrowInUserTimezone(u *user.User) (time.Time, error) {
+	loc, err := userTimezoneLocation(u)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return startOfTomorrowAt(time.Now(), loc), nil
+}
+
+// userTimezoneLocation resolves a user's configured timezone, falling back to
+// the instance default when unset.
+func userTimezoneLocation(u *user.User) (*time.Location, error) {
 	tzName := u.Timezone
 	if tzName == "" {
 		tzName = config.GetTimeZone().String()
 	}
+	return time.LoadLocation(tzName)
+}
 
-	loc, err := time.LoadLocation(tzName)
-	if err != nil {
-		return time.Time{}, err
-	}
-
-	now := time.Now().In(loc)
-	startOfToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
-	return startOfToday.AddDate(0, 0, 1).UTC(), nil
+// startOfTomorrowAt returns start-of-tomorrow relative to now, in loc,
+// normalized to UTC so callers can compare it against stored UTC columns.
+func startOfTomorrowAt(now time.Time, loc *time.Location) time.Time {
+	local := now.In(loc)
+	startOfToday := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, loc)
+	return startOfToday.AddDate(0, 0, 1).UTC()
 }
