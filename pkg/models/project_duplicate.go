@@ -19,6 +19,7 @@ package models
 import (
 	"bytes"
 	"io"
+	"time"
 
 	"code.vikunja.io/api/pkg/files"
 	"code.vikunja.io/api/pkg/log"
@@ -40,6 +41,13 @@ type ProjectDuplicate struct {
 	// The copied project
 	Project *Project `json:"duplicated_project,omitempty" readOnly:"true" doc:"The newly created duplicate project, populated by the server in the response."`
 
+	// Template mode flags. Set only by the template endpoints, never bound from client JSON.
+	// AsTemplate marks the copy as a template (save-as-template); FromTemplate clears the flag
+	// and resets task done state (instantiate). Both suppress the " - duplicate" title suffix
+	// and force shares off so templates never carry outward-facing surfaces.
+	AsTemplate   bool `json:"-"`
+	FromTemplate bool `json:"-"`
+
 	web.Permissions `json:"-"`
 	web.CRUDable    `json:"-"`
 }
@@ -55,6 +63,16 @@ func (pd *ProjectDuplicate) CanCreate(s *xorm.Session, a web.Auth) (canCreate bo
 
 	if pd.ParentProjectID == 0 { // no parent project
 		return canRead, err
+	}
+
+	// A template can't be a parent: it's a hidden top-level snapshot, so placing
+	// a copy under it would orphan the copy at the top level.
+	targetParent, err := GetProjectSimpleByID(s, pd.ParentProjectID)
+	if err != nil {
+		return false, err
+	}
+	if targetParent.IsTemplate {
+		return false, ErrProjectIsTemplate{ProjectID: pd.ParentProjectID}
 	}
 
 	// Parent project exists + user has write access to is (-> can create new projects)
@@ -82,12 +100,23 @@ func (pd *ProjectDuplicate) Create(s *xorm.Session, doer web.Auth) (err error) {
 
 	log.Debugf("Duplicating project %d", pd.ProjectID)
 
+	isTemplateMode := pd.AsTemplate || pd.FromTemplate
+	if isTemplateMode {
+		// Templates must never carry link shares/team/user shares, regardless of client input.
+		pd.DuplicateShares = false
+	}
+
 	pd.Project.ID = 0
 	pd.Project.Identifier = "" // Reset the identifier to trigger regenerating a new one
 	pd.Project.ParentProjectID = pd.ParentProjectID
 	// Set the owner to the current user
 	pd.Project.OwnerID = doer.GetID()
-	pd.Project.Title += " - duplicate"
+	// AsTemplate: freeze as a template. FromTemplate/plain duplicate: a regular project.
+	pd.Project.IsTemplate = pd.AsTemplate
+	// Template modes keep the caller-supplied name; only plain duplication gets the suffix.
+	if !isTemplateMode {
+		pd.Project.Title += " - duplicate"
+	}
 	err = CreateProject(s, pd.Project, doer, false, false)
 	if err != nil {
 		// If there is no available unique project identifier, just reset it.
@@ -363,6 +392,11 @@ func duplicateTasks(s *xorm.Session, doer web.Auth, ld *ProjectDuplicate) (newTa
 		t.ID = 0
 		t.ProjectID = ld.Project.ID
 		t.UID = ""
+		// Instantiating from a template yields a fresh checklist: reset done state.
+		if ld.FromTemplate {
+			t.Done = false
+			t.DoneAt = time.Time{}
+		}
 		err = createTask(s, t, doer, false, false)
 		if err != nil {
 			return nil, err

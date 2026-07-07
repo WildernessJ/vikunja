@@ -58,6 +58,9 @@ type Project struct {
 	// Whether a project is archived.
 	IsArchived bool `xorm:"not null default false" json:"is_archived" query:"is_archived" doc:"Whether the project is archived. Archived projects are read-only."`
 
+	// Whether this project is a template. Templates are hidden from normal project listings and task collections; they are managed through the template endpoints.
+	IsTemplate bool `xorm:"not null default false index" json:"is_template" readOnly:"true" doc:"Whether this project is a template. Templates are hidden from normal listings and managed through the template endpoints. Set by the server."`
+
 	// The id of the file this project has set as background
 	BackgroundFileID int64 `xorm:"null" json:"-"`
 	// Holds extra information about the background set since some background providers require attribution or similar. If not null, the background can be accessed at /projects/{projectID}/background
@@ -544,15 +547,24 @@ type projectOptions struct {
 	page        int
 	perPage     int
 	getArchived bool
+	// includeTemplates keeps template projects in the result. Default false so
+	// templates stay hidden from every normal listing; only the data export sets it.
+	includeTemplates bool
 }
 
-func getUserProjectsStatement(userID int64, search string) *builder.Builder {
+func getUserProjectsStatement(userID int64, search string, includeTemplates bool) *builder.Builder {
 	conds := []builder.Cond{
 		builder.Or(
 			builder.Eq{"tm2.user_id": userID},
 			builder.Eq{"ul.user_id": userID},
 			builder.Eq{"l.owner_id": userID},
 		),
+	}
+
+	// Templates are top-level hidden roots with no snapshotted children, so
+	// filtering them out of the seed set keeps them out of the recursive CTE too.
+	if !includeTemplates {
+		conds = append(conds, builder.Eq{"l.is_template": false})
 	}
 
 	ids := []int64{}
@@ -598,7 +610,7 @@ func getUserProjectsStatement(userID int64, search string) *builder.Builder {
 	}
 
 	return builder.
-		Select("l.id, l.title, l.description, l.identifier, l.hex_color, l.owner_id, l.parent_project_id, l.is_archived, l.background_file_id, l.background_blur_hash, l.position, l.created, l.updated").
+		Select("l.id, l.title, l.description, l.identifier, l.hex_color, l.owner_id, l.parent_project_id, l.is_archived, l.is_template, l.background_file_id, l.background_blur_hash, l.position, l.created, l.updated").
 		From("projects", "l").
 		Join("LEFT", "team_projects tl", "tl.project_id = l.id").
 		Join("LEFT", "team_members tm2", "tm2.team_id = tl.team_id").
@@ -623,7 +635,7 @@ func accessibleProjectIDsSubquery(a web.Auth, column string) builder.Cond {
 	}
 
 	// Build the base query SQL from getUserProjectsStatement
-	baseQuery := getUserProjectsStatement(u.ID, "")
+	baseQuery := getUserProjectsStatement(u.ID, "", false)
 	baseSQLStr, baseArgs, err := baseQuery.Select("l.id").ToSQL()
 	if err != nil {
 		return builder.Expr("1 = 0")
@@ -649,7 +661,7 @@ func accessibleProjectIDsSubquery(a web.Auth, column string) builder.Cond {
 func getAllProjectsForUser(s *xorm.Session, userID int64, opts *projectOptions) (projects []*Project, totalCount int64, err error) {
 
 	limit, start := getLimitFromPageIndex(opts.page, opts.perPage)
-	query := getUserProjectsStatement(userID, opts.search)
+	query := getUserProjectsStatement(userID, opts.search, opts.includeTemplates)
 
 	querySQLString, args, err := query.ToSQL()
 	if err != nil {
@@ -663,7 +675,7 @@ func getAllProjectsForUser(s *xorm.Session, userID int64, opts *projectOptions) 
 
 	baseQuery := querySQLString + `
 UNION ALL
-SELECT p.id, p.title, p.description, p.identifier, p.hex_color, p.owner_id, p.parent_project_id, (ap.is_archived OR p.is_archived) AS is_archived, p.background_file_id, p.background_blur_hash, p.position, p.created, p.updated FROM projects p
+SELECT p.id, p.title, p.description, p.identifier, p.hex_color, p.owner_id, p.parent_project_id, (ap.is_archived OR p.is_archived) AS is_archived, p.is_template, p.background_file_id, p.background_blur_hash, p.position, p.created, p.updated FROM projects p
 INNER JOIN all_projects ap ON p.parent_project_id = ap.id`
 
 	columnStr := strings.Join([]string{
@@ -675,6 +687,7 @@ INNER JOIN all_projects ap ON p.parent_project_id = ap.id`
 		"all_projects.owner_id",
 		"CASE WHEN all_projects.parent_project_id IS NULL THEN 0 ELSE all_projects.parent_project_id END AS parent_project_id",
 		"MAX(CASE WHEN all_projects.is_archived THEN 1 ELSE 0 END) AS is_archived",
+		"all_projects.is_template",
 		"all_projects.background_file_id",
 		"all_projects.background_blur_hash",
 		"all_projects.position",
@@ -690,6 +703,7 @@ INNER JOIN all_projects ap ON p.parent_project_id = ap.id`
 		"all_projects.hex_color",
 		"all_projects.owner_id",
 		"all_projects.parent_project_id",
+		"all_projects.is_template",
 		"all_projects.background_file_id",
 		"all_projects.background_blur_hash",
 		"all_projects.position",

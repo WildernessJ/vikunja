@@ -74,6 +74,16 @@
 				</li>
 				<li>
 					<RouterLink
+						:to="{ name: 'templates.index'}"
+					>
+						<span class="menu-item-icon icon">
+							<Icon icon="copy" />
+						</span>
+						{{ $t('project.template.libraryTitle') }}
+					</RouterLink>
+				</li>
+				<li>
+					<RouterLink
 						v-shortcut="'KeyG KeyM'"
 						:to="{ name: 'teams.index'}"
 					>

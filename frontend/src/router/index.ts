@@ -307,6 +307,14 @@ const router = createRouter({
 			},
 		},
 		{
+			path: '/projects/:projectId/settings/save-template',
+			name: 'project.settings.saveTemplate',
+			component: () => import('@/views/project/settings/ProjectSettingsSaveTemplate.vue'),
+			meta: {
+				showAsModal: true,
+			},
+		},
+		{
 			path: '/projects/:projectId/settings/share',
 			name: 'project.settings.share',
 			component: () => import('@/views/project/settings/ProjectSettingsShare.vue'),
@@ -424,6 +432,11 @@ const router = createRouter({
 			path: '/labels',
 			name: 'labels.index',
 			component: () => import('@/views/labels/ListLabels.vue'),
+		},
+		{
+			path: '/templates',
+			name: 'templates.index',
+			component: () => import('@/views/templates/TemplateLibrary.vue'),
 		},
 		{
 			path: '/labels/new',

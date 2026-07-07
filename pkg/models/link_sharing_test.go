@@ -87,6 +87,22 @@ func TestLinkSharing_Create(t *testing.T) {
 			"sharing_type": SharingTypeWithPassword,
 		}, false)
 	})
+	t.Run("rejected on template project", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		_, err := s.ID(1).Cols("is_template").Update(&Project{IsTemplate: true})
+		require.NoError(t, err)
+
+		share := &LinkSharing{
+			ProjectID:  1,
+			Permission: PermissionRead,
+		}
+		err = share.Create(s, doer)
+		require.Error(t, err)
+		assert.True(t, IsErrProjectIsTemplate(err), "link share on a template must return ErrProjectIsTemplate")
+	})
 }
 
 func TestLinkSharing_ReadAll(t *testing.T) {

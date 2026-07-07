@@ -19,6 +19,28 @@
 			@keyup.esc="$router.back()"
 		/>
 		<FormField
+			v-if="templates.length > 0"
+			:label="$t('project.template.fromTemplate')"
+		>
+			<div class="select">
+				<select
+					v-model="selectedTemplateId"
+					name="template"
+				>
+					<option :value="0">
+						{{ $t('project.template.fromTemplateNone') }}
+					</option>
+					<option
+						v-for="template in templates"
+						:key="template.id"
+						:value="template.id"
+					>
+						{{ template.title }}
+					</option>
+				</select>
+			</div>
+		</FormField>
+		<FormField
 			v-if="projectStore.hasProjects"
 			:label="$t('project.parent')"
 		>
@@ -31,8 +53,9 @@
 </template>
 
 <script setup lang="ts">
-import {ref, reactive, shallowReactive, watch} from 'vue'
+import {ref, reactive, shallowReactive, watch, onMounted} from 'vue'
 import {useI18n} from 'vue-i18n'
+import {useRouter} from 'vue-router'
 
 import ProjectService from '@/services/project'
 import ProjectModel from '@/models/project'
@@ -43,14 +66,17 @@ import FormField from '@/components/input/FormField.vue'
 import {success} from '@/message'
 import {useTitle} from '@/composables/useTitle'
 import {useProjectStore} from '@/stores/projects'
+import {getTemplates, instantiateTemplate} from '@/services/template'
 import ProjectSearch from '@/components/tasks/partials/ProjectSearch.vue'
 import type {IProject} from '@/modelTypes/IProject'
+import type {ITemplate} from '@/modelTypes/ITemplate'
 
 const props = defineProps<{
 	parentProjectId?: number,
 }>()
 
 const {t} = useI18n({useScope: 'global'})
+const router = useRouter()
 
 useTitle(() => t('project.create.header'))
 
@@ -60,6 +86,13 @@ const projectService = shallowReactive(new ProjectService())
 const projectStore = useProjectStore()
 const parentProject = ref<IProject | null>(null)
 const isSubmitting = ref(false)
+
+const templates = ref<ITemplate[]>([])
+const selectedTemplateId = ref(0)
+
+onMounted(async () => {
+	templates.value = await getTemplates()
+})
 
 watch(
 	() => props.parentProjectId,
@@ -85,6 +118,13 @@ async function createProject() {
 	}
 
 	try {
+		if (selectedTemplateId.value > 0) {
+			const created = await instantiateTemplate(selectedTemplateId.value, project.title, project.parentProjectId)
+			projectStore.setProject(created)
+			success({message: t('project.template.instantiateSuccess')})
+			await router.push({name: 'project.index', params: {projectId: created.id}})
+			return
+		}
 		await projectStore.createProject(project)
 		success({message: t('project.create.createdSuccess')})
 	} finally {

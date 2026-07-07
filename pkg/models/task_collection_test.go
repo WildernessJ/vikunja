@@ -2295,3 +2295,47 @@ func TestTaskCollection_ExpandSubtasksFilterMatchesParentOnly(t *testing.T) {
 	assert.Equal(t, 1, ids[sub.ID], "subtask rides along exactly once, no duplication")
 	assert.Len(t, tasks, 2)
 }
+
+// TestTaskCollection_TemplateFilterExclusion pins the invariant that a template's
+// tasks never surface through a `project in <templateID>` saved-filter, even
+// though the user can reach the template by direct id. The candidate project set
+// (getRelevantProjectsFromCollection) excludes templates, so the filter matches
+// nothing.
+func TestTaskCollection_TemplateFilterExclusion(t *testing.T) {
+	db.LoadAndAssertFixtures(t)
+	s := db.NewSession()
+	defer s.Close()
+
+	// Project 1 is owned by user1 and has tasks; turn it into a template.
+	_, err := s.ID(1).Cols("is_template").Update(&Project{IsTemplate: true})
+	require.NoError(t, err)
+
+	u := &user.User{ID: 1}
+	// Task 1 lives in project 1 and is a favorite of user1 (favorites.yml), so it
+	// would otherwise leak through the favorites branch that bypasses project scope.
+
+	// 1. A `project in <templateID>` saved-filter must not surface template tasks.
+	filtered := &TaskCollection{
+		ProjectID: 0, // "all projects" / saved-filter scope
+		Filter:    "project in 1",
+	}
+	got, _, _, err := filtered.ReadAll(s, u, "", 0, 50)
+	require.NoError(t, err)
+	tasks, ok := got.([]*Task)
+	require.True(t, ok)
+	for _, task := range tasks {
+		assert.NotEqual(t, int64(1), task.ProjectID,
+			"tasks from template project 1 must not surface through a 'project in <templateID>' filter")
+	}
+
+	// 2. Nor may a favorited template task surface in an unfiltered all-projects collection.
+	all := &TaskCollection{ProjectID: 0}
+	gotAll, _, _, err := all.ReadAll(s, u, "", 0, 50)
+	require.NoError(t, err)
+	allTasks, ok := gotAll.([]*Task)
+	require.True(t, ok)
+	for _, task := range allTasks {
+		assert.NotEqual(t, int64(1), task.ProjectID,
+			"a favorited task inside a template must not leak into task collections")
+	}
+}
