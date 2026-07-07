@@ -100,4 +100,12 @@ func TestHumaTemplates(t *testing.T) {
 			`{"name":"nope"}`, token, "")
 		assert.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
 	})
+
+	t.Run("instantiate under a template parent is rejected", func(t *testing.T) {
+		// The template itself is a template project; using it as the parent must
+		// be rejected (a template can't hold children — the copy would orphan).
+		rec := humaRequest(t, e, http.MethodPost, "/api/v2/templates/"+strconv.FormatInt(templateID, 10)+"/instantiate",
+			`{"title":"orphan","parent_project_id":`+strconv.FormatInt(templateID, 10)+`}`, token, "")
+		assert.Equal(t, http.StatusPreconditionFailed, rec.Code, rec.Body.String())
+	})
 }

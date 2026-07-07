@@ -888,7 +888,11 @@ func TestProject_TemplateExclusion(t *testing.T) {
 			includeTemplates: true,
 		})
 		require.NoError(t, err)
-		assert.NotNil(t, findByID(projects, 1), "template project 1 must be included in the data export")
+		exported := findByID(projects, 1)
+		require.NotNil(t, exported, "template project 1 must be included in the data export")
+		// The is_template flag must survive export: if the listing CTE drops it,
+		// a backup→restore round-trip resurrects the template as a regular project.
+		assert.True(t, exported.IsTemplate, "exported project must retain is_template=true")
 	})
 }
 

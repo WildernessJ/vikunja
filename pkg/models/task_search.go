@@ -474,7 +474,15 @@ func (d *dbTaskSearcher) Search(opts *taskSearchOptions) (tasks []*Task, totalCo
 					builder.Eq{"kind": FavoriteKindTask},
 				))
 
-		favoritesCond = builder.In("tasks.id", favCond)
+		// The favorites branch bypasses the scoped project set, so it must
+		// exclude template projects itself — otherwise favoriting a task inside a
+		// template would leak it into task collections (Favorites, saved filters).
+		// Direct template access goes through projectIDCond, so it is unaffected.
+		favoritesCond = builder.And(
+			builder.In("tasks.id", favCond),
+			builder.NotIn("tasks.project_id",
+				builder.Select("id").From("projects").Where(builder.Eq{"is_template": true})),
+		)
 	}
 
 	limit, start := getLimitFromPageIndex(opts.page, opts.perPage)

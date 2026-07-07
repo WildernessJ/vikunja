@@ -69,23 +69,11 @@ func GetTemplatesForUser(s *xorm.Session, a web.Auth, search string, page, perPa
 		return nil, 0, err
 	}
 
-	// The listing CTE doesn't select is_template, so re-fetch the accessible ids
-	// that are templates to get fully-populated rows.
-	accessibleIDs := make([]int64, 0, len(all))
-	for _, p := range all {
-		if p.ID > 0 {
-			accessibleIDs = append(accessibleIDs, p.ID)
-		}
-	}
-
 	templateProjects := make([]*Project, 0)
 	ids := make([]int64, 0)
-	if len(accessibleIDs) > 0 {
-		err = s.In("id", accessibleIDs).And("is_template = ?", true).OrderBy("title").Find(&templateProjects)
-		if err != nil {
-			return nil, 0, err
-		}
-		for _, p := range templateProjects {
+	for _, p := range all {
+		if p.ID > 0 && p.IsTemplate {
+			templateProjects = append(templateProjects, p)
 			ids = append(ids, p.ID)
 		}
 	}

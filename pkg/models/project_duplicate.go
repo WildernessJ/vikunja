@@ -65,6 +65,16 @@ func (pd *ProjectDuplicate) CanCreate(s *xorm.Session, a web.Auth) (canCreate bo
 		return canRead, err
 	}
 
+	// A template can't be a parent: it's a hidden top-level snapshot, so placing
+	// a copy under it would orphan the copy at the top level.
+	targetParent, err := GetProjectSimpleByID(s, pd.ParentProjectID)
+	if err != nil {
+		return false, err
+	}
+	if targetParent.IsTemplate {
+		return false, ErrProjectIsTemplate{ProjectID: pd.ParentProjectID}
+	}
+
 	// Parent project exists + user has write access to is (-> can create new projects)
 	parent := &Project{ID: pd.ParentProjectID}
 	return parent.CanCreate(s, a)
