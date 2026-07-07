@@ -202,6 +202,37 @@ func TestUpdateDone_RRuleMode(t *testing.T) {
 		assert.True(t, originalReminder.Add(delta).Equal(newTask.Reminders[0].Reminder), "reminder should shift by the same delta as the due date")
 	})
 
+	t.Run("recurring reminder is exempt from the due-date-delta shift, plain reminder still shifted", func(t *testing.T) {
+		monday := nextOrSameWeekday(time.Now().AddDate(5, 0, 0), time.Monday)
+		due := time.Date(monday.Year(), monday.Month(), monday.Day(), 9, 0, 0, 0, time.UTC)
+		wantDue := due.AddDate(0, 0, 4) // next Friday in the BYDAY=MO,FR set, same week
+
+		plainReminderTime := due.Add(-24 * time.Hour)
+		rruleReminderTime := due.Add(-2 * time.Hour)
+		oldTask := &Task{
+			Done:        false,
+			RepeatMode:  TaskRepeatModeRRule,
+			RepeatRRule: "FREQ=WEEKLY;BYDAY=MO,FR",
+			DueDate:     due,
+			Reminders: []*TaskReminder{
+				{Reminder: plainReminderTime},
+				{Reminder: rruleReminderTime, RepeatRRule: "FREQ=WEEKLY;BYDAY=TU"},
+			},
+		}
+		newTask := &Task{Done: true}
+
+		updateDone(oldTask, newTask)
+
+		require.False(t, newTask.Done)
+		assert.True(t, wantDue.Equal(newTask.DueDate))
+
+		delta := wantDue.Sub(due)
+		require.Len(t, newTask.Reminders, 2)
+		assert.True(t, plainReminderTime.Add(delta).Equal(newTask.Reminders[0].Reminder), "plain reminder must be shifted by the due-date delta")
+		assert.True(t, rruleReminderTime.Equal(newTask.Reminders[1].Reminder), "recurring reminder must not be shifted by the task's due-date delta")
+		assert.Equal(t, "FREQ=WEEKLY;BYDAY=TU", newTask.Reminders[1].RepeatRRule)
+	})
+
 	t.Run("deadline shifts by the same delta as the due date", func(t *testing.T) {
 		monday := nextOrSameWeekday(time.Now().AddDate(5, 0, 0), time.Monday)
 		due := time.Date(monday.Year(), monday.Month(), monday.Day(), 9, 0, 0, 0, time.UTC)

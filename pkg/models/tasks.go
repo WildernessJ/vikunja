@@ -1378,6 +1378,13 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 		colsToUpdate = append(colsToUpdate, "done_at")
 	}
 
+	// Re-arming recurring reminders on un-done lives here, not in the session-less
+	// updateDone, because it must evaluate the rule in the task creator's timezone
+	// (resolved via the session) to stay consistent with the firing-path re-arm.
+	if ot.Done && !t.Done {
+		reArmRecurringRemindersOnUndone(&ot, t, reminderTimezoneForTask(s, &ot))
+	}
+
 	// Update the reminders
 	if err := ot.updateReminders(s, t); err != nil {
 		return err
@@ -1692,6 +1699,11 @@ func setTaskDatesDefault(oldTask, newTask *Task) {
 	// To make this easier, we sort them first because we can then rely on the fact the first is the smallest
 	if len(oldTask.Reminders) > 0 {
 		for in, r := range oldTask.Reminders {
+			// Reminders with their own recurrence rule advance only via that rule,
+			// not the task's repeat — exempt them from the bump.
+			if r.RepeatRRule != "" {
+				continue
+			}
 			newTask.Reminders[in].Reminder = addRepeatIntervalToTime(now, r.Reminder, repeatDuration)
 		}
 	}
@@ -1722,6 +1734,11 @@ func setTaskDatesMonthRepeat(oldTask, newTask *Task) {
 	newTask.Reminders = oldTask.Reminders
 	if len(oldTask.Reminders) > 0 {
 		for in, r := range oldTask.Reminders {
+			// Reminders with their own recurrence rule advance only via that rule,
+			// not the task's repeat — exempt them from the bump.
+			if r.RepeatRRule != "" {
+				continue
+			}
 			newTask.Reminders[in].Reminder = addOneMonthToDate(r.Reminder)
 		}
 	}
@@ -1802,6 +1819,11 @@ func setTaskDatesRRuleRepeat(oldTask, newTask *Task) {
 	newTask.Reminders = oldTask.Reminders
 	if len(oldTask.Reminders) > 0 {
 		for in, r := range oldTask.Reminders {
+			// Reminders with their own recurrence rule advance only via that rule,
+			// not the task's repeat — exempt them from the due-date-delta shift.
+			if r.RepeatRRule != "" {
+				continue
+			}
 			newTask.Reminders[in].Reminder = r.Reminder.Add(delta)
 		}
 	}
@@ -1845,6 +1867,11 @@ func setTaskDatesFromCurrentDateRepeat(oldTask, newTask *Task) {
 		})
 		first := oldTask.Reminders[0].Reminder
 		for in, r := range oldTask.Reminders {
+			// Reminders with their own recurrence rule advance only via that rule,
+			// not the task's repeat — exempt them from the bump.
+			if r.RepeatRRule != "" {
+				continue
+			}
 			diff := r.Reminder.Sub(first)
 			newTask.Reminders[in].Reminder = now.Add(repeatDuration + diff)
 		}
@@ -1947,6 +1974,46 @@ func updateDone(oldTask *Task, newTask *Task) (updateDoneAt bool) {
 	return doneStatusChanged
 }
 
+// reArmRecurringRemindersOnUndone re-arms a task's recurring reminders when the
+// task is reopened. A recurring reminder is suppressed while its task is done
+// (the cron excludes done tasks), so on un-done each one advances to its next
+// occurrence after now. It works off oldTask.Reminders — the DB-truth set —
+// because the client-supplied newTask.Reminders on a done-toggle is stale or
+// empty; assigning them across mirrors setTaskDatesDefault. Plain reminders are
+// left exactly as stored. When no recurring reminder is present nothing is
+// touched, so a plain un-done keeps its existing behavior.
+//
+// loc is the task creator's timezone (resolved by the caller via
+// reminderTimezoneForTask): the rule MUST be evaluated in the same zone as the
+// firing-path re-arm, otherwise a server/creator TZ mismatch across a DST
+// boundary shifts the occurrence permanently — the next firing anchors dtstart
+// on the wrong instant and BYDAY keeps the wrong wall-clock time forever.
+func reArmRecurringRemindersOnUndone(oldTask, newTask *Task, loc *time.Location) {
+	hasRecurring := false
+	for _, r := range oldTask.Reminders {
+		if r.RepeatRRule != "" {
+			hasRecurring = true
+			break
+		}
+	}
+	if !hasRecurring {
+		return
+	}
+
+	newTask.Reminders = oldTask.Reminders
+	now := time.Now()
+	for _, r := range newTask.Reminders {
+		if r.RepeatRRule == "" {
+			continue
+		}
+		// dtstart is the reminder's own time, carrying its time-of-day and phase;
+		// the cutoff is now, so it resumes at the first occurrence still ahead.
+		if next, ok := nextRRuleOccurrence(r.RepeatRRule, r.Reminder, now, loc); ok {
+			r.Reminder = next
+		}
+	}
+}
+
 // Set the absolute trigger dates for Reminders with relative period
 func updateRelativeReminderDates(task *Task) (err error) {
 	for _, reminder := range task.Reminders {
@@ -1989,6 +2056,18 @@ func updateRelativeReminderDates(task *Task) (err error) {
 // The parameter is a slice which holds the new reminders.
 func (t *Task) updateReminders(s *xorm.Session, task *Task) (err error) {
 
+	for _, reminder := range task.Reminders {
+		if reminder.RepeatRRule == "" {
+			continue
+		}
+		if reminder.RelativeTo != "" {
+			return ErrReminderRRuleRequiresAbsolute{TaskID: t.ID}
+		}
+		if err := validateTaskRRule(reminder.RepeatRRule); err != nil {
+			return ErrInvalidReminderRRule{RRule: reminder.RepeatRRule}
+		}
+	}
+
 	_, err = s.
 		Where("task_id = ?", t.ID).
 		Delete(&TaskReminder{})
@@ -2015,7 +2094,8 @@ func (t *Task) updateReminders(s *xorm.Session, task *Task) (err error) {
 			TaskID:         t.ID,
 			Reminder:       r.Reminder,
 			RelativePeriod: r.RelativePeriod,
-			RelativeTo:     r.RelativeTo}
+			RelativeTo:     r.RelativeTo,
+			RepeatRRule:    r.RepeatRRule}
 		_, err = s.Insert(taskReminder)
 		if err != nil {
 			return err

@@ -7,6 +7,7 @@ export default class TaskReminderModel extends AbstractModel<ITaskReminder> impl
 	reminder: Date | null
 	relativePeriod = 0
 	relativeTo: IReminderPeriodRelativeTo | null = null
+	repeatRrule = ''
 
 	constructor(data: Partial<ITaskReminder> = {}) {
 		super()
