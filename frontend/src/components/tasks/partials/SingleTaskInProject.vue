@@ -128,6 +128,17 @@
 					</time>
 				</BaseButton>
 
+				<span
+					v-if="task.estimatedDuration > 0"
+					v-tooltip="$t('task.attributes.estimatedDuration')"
+					class="estimated-duration"
+				>
+					<Icon :icon="['far', 'hourglass']" />
+					<span class="is-italic">
+						{{ formatDuration(task.estimatedDuration) }}
+					</span>
+				</span>
+
 				<span>
 					<span
 						v-if="task.attachments.length > 0"
@@ -244,6 +255,7 @@ import AssigneeList from '@/components/tasks/partials/AssigneeList.vue'
 import {useIntervalFn} from '@vueuse/core'
 import {playPopSound} from '@/helpers/playPop'
 import {isEditorContentEmpty} from '@/helpers/editorContentEmpty'
+import {formatDuration} from '@/helpers/time/duration'
 import {TASK_REPEAT_MODES} from '@/types/IRepeatMode'
 import {useGlobalNow} from '@/composables/useGlobalNow'
 

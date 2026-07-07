@@ -211,6 +211,27 @@
 							appear
 						>
 							<div
+								v-if="activeFields.estimatedDuration"
+								class="column"
+							>
+								<!-- Estimated Duration -->
+								<div class="detail-title">
+									<Icon :icon="['far', 'hourglass']" />
+									{{ $t('task.attributes.estimatedDuration') }}
+								</div>
+								<EditEstimatedDuration
+									:ref="e => setFieldRef('estimatedDuration', e)"
+									v-model="task.estimatedDuration"
+									:disabled="!canWrite"
+									@update:modelValue="setEstimatedDuration"
+								/>
+							</div>
+						</CustomTransition>
+						<CustomTransition
+							name="flash-background"
+							appear
+						>
+							<div
 								v-if="activeFields.startDate"
 								class="column"
 							>
@@ -637,6 +658,13 @@
 							{{ $t('task.detail.actions.repeatAfter') }}
 						</XButton>
 						<XButton
+							variant="secondary"
+							:icon="['far', 'hourglass']"
+							@click="setFieldActive('estimatedDuration')"
+						>
+							{{ $t('task.detail.actions.estimatedDuration') }}
+						</XButton>
+						<XButton
 							v-shortcut="deleteShortcut"
 							icon="trash-alt"
 							:shadow="false"
@@ -723,6 +751,7 @@ import EditLabels from '@/components/tasks/partials/EditLabels.vue'
 import Heading from '@/components/tasks/partials/Heading.vue'
 import ProjectSearch from '@/components/tasks/partials/ProjectSearch.vue'
 import PercentDoneSelect from '@/components/tasks/partials/PercentDoneSelect.vue'
+import EditEstimatedDuration from '@/components/tasks/partials/EditEstimatedDuration.vue'
 import PrioritySelect from '@/components/tasks/partials/PrioritySelect.vue'
 import RelatedTasks from '@/components/tasks/partials/RelatedTasks.vue'
 import Reminders from '@/components/tasks/partials/Reminders.vue'
@@ -1041,6 +1070,7 @@ type FieldType =
 	| 'deadline'
 	| 'dueDate'
 	| 'endDate'
+	| 'estimatedDuration'
 	| 'labels'
 	| 'moveProject'
 	| 'percentDone'
@@ -1058,6 +1088,7 @@ const activeFields: { [type in FieldType]: boolean } = reactive({
 	deadline: false,
 	dueDate: false,
 	endDate: false,
+	estimatedDuration: false,
 	labels: false,
 	moveProject: false,
 	percentDone: false,
@@ -1081,6 +1112,7 @@ function setActiveFields() {
 	activeFields.dueDate = task.value.dueDate !== null
 	activeFields.deadline = task.value.deadline !== null
 	activeFields.endDate = task.value.endDate !== null
+	activeFields.estimatedDuration = task.value.estimatedDuration > 0
 	activeFields.labels = task.value.labels.length > 0
 	activeFields.percentDone = task.value.percentDone > 0
 	activeFields.priority = task.value.priority !== PRIORITIES.UNSET
@@ -1097,6 +1129,7 @@ const activeFieldElements: { [id in FieldType]: HTMLElement | null } = reactive(
 	deadline: null,
 	dueDate: null,
 	endDate: null,
+	estimatedDuration: null,
 	labels: null,
 	moveProject: null,
 	percentDone: null,
@@ -1247,6 +1280,15 @@ async function setPercentDone(percentDone: number) {
 	const newTask: ITask = {
 		...task.value,
 		percentDone,
+	}
+
+	return saveTask(newTask)
+}
+
+async function setEstimatedDuration(estimatedDuration: number) {
+	const newTask: ITask = {
+		...task.value,
+		estimatedDuration,
 	}
 
 	return saveTask(newTask)

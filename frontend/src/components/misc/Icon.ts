@@ -94,6 +94,7 @@ import {
 	faCheckSquare,
 	faClock,
 	faComments,
+	faHourglass,
 	faSave,
 	faSquareCheck,
 	faStar,
@@ -139,6 +140,7 @@ library.add(faChevronDown)
 library.add(faCircleInfo)
 library.add(faCircleQuestion)
 library.add(faClock)
+library.add(faHourglass)
 library.add(faCloudDownloadAlt)
 library.add(faCloudUploadAlt)
 library.add(faCocktail)
