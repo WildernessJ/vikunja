@@ -2,9 +2,17 @@ import {test, expect} from '../../support/fixtures'
 import {ProjectFactory} from '../../factories/project'
 import {TaskFactory} from '../../factories/task'
 import {createDefaultViews} from './prepareProjects'
+import {updateUserSettings} from '../../support/updateUserSettings'
 
 test.describe('Project Templates', () => {
-	test('save as template, appears in library, instantiate into a new project', async ({authenticatedPage: page}) => {
+	test('save as template, appears in library, instantiate into a new project', async ({authenticatedPage: page, apiContext, userToken}) => {
+		// A duplicated/instantiated project's views are created in Go-map (random)
+		// order, so the default "first view" is non-deterministic. Pin the default
+		// to the List view by kind so the instantiated project reliably opens there.
+		await updateUserSettings(apiContext, userToken, {
+			frontendSettings: {defaultView: 'list'},
+		})
+
 		await ProjectFactory.create(1, {id: 1, title: 'Trip source'})
 		await createDefaultViews(1)
 		// Three tasks, the first one already done in the source.
@@ -33,8 +41,10 @@ test.describe('Project Templates', () => {
 		await page.locator('dialog[open] input[name="projectTitle"]').fill('Japan trip')
 		await page.locator('dialog[open]').getByRole('button', {name: 'Create'}).click()
 
-		// The new project opens as a normal project with all tasks reset to not-done.
+		// The new project opens on its List view as a normal project with all tasks
+		// reset to not-done.
 		await expect(page.locator('.project-title')).toContainText('Japan trip')
+		await expect(page.locator('.tasks .task').first()).toBeVisible()
 		await expect(page.locator('.tasks .task')).toHaveCount(3)
 		await expect(page.locator('.tasks .task.done')).toHaveCount(0)
 	})
