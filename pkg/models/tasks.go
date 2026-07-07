@@ -1962,9 +1962,45 @@ func updateDone(oldTask *Task, newTask *Task) (updateDoneAt bool) {
 	// When unmarking a task as done, reset the timestamp
 	if oldTask.Done && !newTask.Done {
 		newTask.DoneAt = time.Time{}
+		reArmRecurringRemindersOnUndone(oldTask, newTask)
 	}
 
 	return doneStatusChanged
+}
+
+// reArmRecurringRemindersOnUndone re-arms a task's recurring reminders when the
+// task is reopened. A recurring reminder is suppressed while its task is done
+// (the cron excludes done tasks), so on un-done each one advances to its next
+// occurrence after now. It works off oldTask.Reminders — the DB-truth set —
+// because the client-supplied newTask.Reminders on a done-toggle is stale or
+// empty; assigning them across mirrors setTaskDatesDefault. Plain reminders are
+// left exactly as stored. When no recurring reminder is present nothing is
+// touched, so a plain un-done keeps its existing behavior.
+func reArmRecurringRemindersOnUndone(oldTask, newTask *Task) {
+	hasRecurring := false
+	for _, r := range oldTask.Reminders {
+		if r.RepeatRRule != "" {
+			hasRecurring = true
+			break
+		}
+	}
+	if !hasRecurring {
+		return
+	}
+
+	newTask.Reminders = oldTask.Reminders
+	now := time.Now()
+	for _, r := range newTask.Reminders {
+		if r.RepeatRRule == "" {
+			continue
+		}
+		// dtstart is the reminder's own time, carrying its time-of-day and phase;
+		// the cutoff is now, so it resumes at the first occurrence still ahead.
+		// Server timezone matches the other repeat-mode date helpers.
+		if next, ok := nextRRuleOccurrence(r.RepeatRRule, r.Reminder, now, config.GetTimeZone()); ok {
+			r.Reminder = next
+		}
+	}
 }
 
 // Set the absolute trigger dates for Reminders with relative period

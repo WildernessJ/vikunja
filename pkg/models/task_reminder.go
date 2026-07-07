@@ -17,6 +17,7 @@
 package models
 
 import (
+	"fmt"
 	"time"
 
 	"code.vikunja.io/api/pkg/config"
@@ -388,28 +389,25 @@ func RegisterReminderCron() {
 
 		log.Debugf("[Task Reminder Cron] Sending %d reminders", len(reminders))
 
+		// A single reminder can appear once per recipient (creator, assignees,
+		// subscribers). Group by reminder ID so each is sent to every recipient
+		// but re-armed exactly once — re-arming per recipient would advance a
+		// recurring reminder several occurrences in one tick.
+		byReminder := map[int64][]*ReminderDueNotification{}
+		order := []int64{}
 		for _, n := range reminders {
-			if emailEnabled && n.User.EmailRemindersEnabled {
-				err = notifications.Notify(n.User, n, s)
-				if err != nil {
-					log.Errorf("[Task Reminder Cron] Could not notify user %d: %s", n.User.ID, err)
-					return
-				}
+			id := n.TaskReminder.ID
+			if _, seen := byReminder[id]; !seen {
+				order = append(order, id)
 			}
+			byReminder[id] = append(byReminder[id], n)
+		}
 
-			if webhookEnabled {
-				err = events.Dispatch(&TaskReminderFiredEvent{
-					Task:     n.Task,
-					User:     n.User,
-					Project:  n.Project,
-					Reminder: n.TaskReminder,
-				})
-				if err != nil {
-					log.Errorf("[Task Reminder Cron] Could not dispatch reminder event for task %d: %s", n.Task.ID, err)
-				}
+		for _, id := range order {
+			if err := dispatchReminder(s, byReminder[id], emailEnabled, webhookEnabled); err != nil {
+				log.Errorf("[Task Reminder Cron] Could not dispatch reminder %d: %s", id, err)
+				return
 			}
-
-			log.Debugf("[Task Reminder Cron] Sent reminder for task %d to user %d", n.Task.ID, n.User.ID)
 		}
 
 		if err := s.Commit(); err != nil {
@@ -419,4 +417,97 @@ func RegisterReminderCron() {
 	if err != nil {
 		log.Fatalf("Could not register reminder cron: %s", err)
 	}
+}
+
+// dispatchReminder delivers one reminder to every recipient and, when the
+// reminder carries a recurrence rule, re-arms it to its next occurrence.
+//
+// Delivery is best-effort and NOT transactional: notification/webhook I/O
+// happens here, before the caller commits, and cannot be rolled back. The
+// re-arm row update is written to the same session and committed by the caller,
+// so a commit failure after a successful send may drop the next occurrence —
+// acceptable per spec, but real.
+func dispatchReminder(s *xorm.Session, recipients []*ReminderDueNotification, emailEnabled, webhookEnabled bool) error {
+	if len(recipients) == 0 {
+		return nil
+	}
+
+	for _, n := range recipients {
+		if emailEnabled && n.User.EmailRemindersEnabled {
+			if err := notifications.Notify(n.User, n, s); err != nil {
+				return err
+			}
+		}
+
+		if webhookEnabled {
+			// Webhook dispatch failures are logged, not fatal: they must not block
+			// the other recipients' delivery or the re-arm.
+			if err := events.Dispatch(&TaskReminderFiredEvent{
+				Task:     n.Task,
+				User:     n.User,
+				Project:  n.Project,
+				Reminder: n.TaskReminder,
+			}); err != nil {
+				log.Errorf("[Task Reminder Cron] Could not dispatch reminder event for task %d: %s", n.Task.ID, err)
+			}
+		}
+
+		log.Debugf("[Task Reminder Cron] Sent reminder for task %d to user %d", n.Task.ID, n.User.ID)
+	}
+
+	return reArmRecurringReminder(s, recipients[0].TaskReminder, recipients[0].Task)
+}
+
+// reArmRecurringReminder advances a recurring reminder to its next occurrence
+// after firing. The next time is computed from the reminder's *scheduled* time
+// (its current value), never from time.Now(), so a slow cron tick cannot drift
+// the schedule. A plain (non-recurring) reminder is left untouched: the cron's
+// exact-minute fire window means it will not be selected again once its minute
+// has passed. When the rule is exhausted (UNTIL in the past) the reminder is
+// likewise left at its past time, making it one-shot-complete.
+func reArmRecurringReminder(s *xorm.Session, reminder *TaskReminder, task *Task) error {
+	if reminder == nil || reminder.RepeatRRule == "" {
+		return nil
+	}
+
+	loc := reminderTimezoneForTask(s, task)
+
+	// Anchor both dtstart and the cutoff at the scheduled fire time: dtstart
+	// fixes the rule's time-of-day and interval phase, the cutoff skips to the
+	// following occurrence. Each scheduled time is itself an on-schedule
+	// occurrence, so re-anchoring on it preserves phase across firings.
+	next, ok := nextRRuleOccurrence(reminder.RepeatRRule, reminder.Reminder, reminder.Reminder, loc)
+	if !ok {
+		return nil
+	}
+
+	reminder.Reminder = next
+	if _, err := s.ID(reminder.ID).Cols("reminder").Update(&TaskReminder{Reminder: next}); err != nil {
+		return fmt.Errorf("could not re-arm recurring reminder %d: %w", reminder.ID, err)
+	}
+	return nil
+}
+
+// reminderTimezoneForTask resolves the timezone a recurring reminder's rule is
+// evaluated in: the task creator's, giving one canonical schedule regardless of
+// how many recipients view it in other zones. Falls back to the server timezone
+// when the creator is unknown or has none set. The creator is looked up directly
+// rather than pulled from the recipient pool, which merges creator/assignees/
+// subscribers with nothing marking which is the creator.
+func reminderTimezoneForTask(s *xorm.Session, task *Task) *time.Location {
+	loc := config.GetTimeZone()
+	if task == nil || task.CreatedByID == 0 {
+		return loc
+	}
+
+	creator, err := user.GetUserByID(s, task.CreatedByID)
+	if err != nil || creator.Timezone == "" {
+		return loc
+	}
+
+	tz, err := time.LoadLocation(creator.Timezone)
+	if err != nil {
+		return loc
+	}
+	return tz
 }

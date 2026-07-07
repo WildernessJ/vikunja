@@ -148,6 +148,156 @@ func TestReminderRepeatRRuleSurvivesTaskEdit(t *testing.T) {
 	assert.Equal(t, "FREQ=WEEKLY;BYDAY=TU", reloaded.Reminders[0].RepeatRRule)
 }
 
+func TestDispatchReminder(t *testing.T) {
+	u := &user.User{ID: 1}
+
+	t.Run("recurring reminder re-arms from the scheduled time without drift", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		task := &Task{
+			Title:     "weekly nudge",
+			ProjectID: 1,
+			Reminders: []*TaskReminder{
+				{Reminder: time.Date(2026, 7, 7, 9, 0, 0, 0, time.UTC), RepeatRRule: "FREQ=WEEKLY;BYDAY=TU"},
+			},
+		}
+		require.NoError(t, task.Create(s, u))
+		require.Len(t, task.Reminders, 1)
+
+		n := &ReminderDueNotification{User: u, Task: task, TaskReminder: task.Reminders[0]}
+
+		// Three simulated firings. The next fire time is always derived from the
+		// reminder's scheduled time, never from the (possibly delayed) delivery
+		// time, so the schedule stays exactly on its weekly Tuesday 09:00 cadence.
+		want := []time.Time{
+			time.Date(2026, 7, 14, 9, 0, 0, 0, time.UTC),
+			time.Date(2026, 7, 21, 9, 0, 0, 0, time.UTC),
+			time.Date(2026, 7, 28, 9, 0, 0, 0, time.UTC),
+		}
+		for i, w := range want {
+			require.NoError(t, dispatchReminder(s, []*ReminderDueNotification{n}, false, false))
+			assert.True(t, w.Equal(task.Reminders[0].Reminder), "firing %d: want %s, got %s", i+1, w, task.Reminders[0].Reminder)
+
+			stored := &TaskReminder{}
+			has, err := s.ID(task.Reminders[0].ID).Get(stored)
+			require.NoError(t, err)
+			require.True(t, has)
+			assert.True(t, w.Equal(stored.Reminder), "firing %d: DB row must be re-armed in the same session", i+1)
+		}
+	})
+
+	t.Run("multiple recipients re-arm the reminder only once", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		task := &Task{
+			Title:     "shared nudge",
+			ProjectID: 1,
+			Reminders: []*TaskReminder{
+				{Reminder: time.Date(2026, 7, 7, 9, 0, 0, 0, time.UTC), RepeatRRule: "FREQ=WEEKLY;BYDAY=TU"},
+			},
+		}
+		require.NoError(t, task.Create(s, u))
+		reminder := task.Reminders[0]
+
+		// Two recipients sharing the same reminder pointer, as the cron produces
+		// for a task with a creator plus a subscriber.
+		recipients := []*ReminderDueNotification{
+			{User: u, Task: task, TaskReminder: reminder},
+			{User: &user.User{ID: 2}, Task: task, TaskReminder: reminder},
+		}
+		require.NoError(t, dispatchReminder(s, recipients, false, false))
+
+		// Advanced by exactly one week, not two.
+		assert.True(t, time.Date(2026, 7, 14, 9, 0, 0, 0, time.UTC).Equal(reminder.Reminder),
+			"reminder must advance one occurrence regardless of recipient count, got %s", reminder.Reminder)
+	})
+
+	t.Run("plain reminder is left untouched", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		fire := time.Date(2026, 7, 7, 9, 0, 0, 0, time.UTC)
+		task := &Task{
+			Title:     "one-shot",
+			ProjectID: 1,
+			Reminders: []*TaskReminder{
+				{Reminder: fire},
+			},
+		}
+		require.NoError(t, task.Create(s, u))
+
+		n := &ReminderDueNotification{User: u, Task: task, TaskReminder: task.Reminders[0]}
+		require.NoError(t, dispatchReminder(s, []*ReminderDueNotification{n}, false, false))
+
+		assert.True(t, fire.Equal(task.Reminders[0].Reminder), "plain reminder must not be re-armed")
+	})
+
+	t.Run("exhausted UNTIL rule becomes one-shot-complete", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		fire := time.Date(2026, 7, 7, 9, 0, 0, 0, time.UTC) // a Tuesday
+		task := &Task{
+			Title:     "expiring nudge",
+			ProjectID: 1,
+			Reminders: []*TaskReminder{
+				// UNTIL falls before the next Tuesday (Jul 14), so after firing on
+				// Jul 7 there is no further occurrence.
+				{Reminder: fire, RepeatRRule: "FREQ=WEEKLY;BYDAY=TU;UNTIL=20260709T000000Z"},
+			},
+		}
+		require.NoError(t, task.Create(s, u))
+		n := &ReminderDueNotification{User: u, Task: task, TaskReminder: task.Reminders[0]}
+
+		require.NoError(t, dispatchReminder(s, []*ReminderDueNotification{n}, false, false))
+		assert.True(t, fire.Equal(task.Reminders[0].Reminder), "exhausted rule must leave the reminder at its last fire time")
+
+		// Firing again is a no-op: the exact-minute cron window means a past time
+		// is never selected again, so the row stays put.
+		require.NoError(t, dispatchReminder(s, []*ReminderDueNotification{n}, false, false))
+		assert.True(t, fire.Equal(task.Reminders[0].Reminder), "an exhausted reminder must never advance")
+	})
+
+	t.Run("rrule is evaluated in the task creator's timezone", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		nyLoc, err := time.LoadLocation("America/New_York")
+		require.NoError(t, err)
+
+		_, err = s.ID(1).Cols("timezone").Update(&user.User{Timezone: "America/New_York"})
+		require.NoError(t, err)
+
+		// Tuesday 09:00 New York, one week before the autumn DST transition. The
+		// next Tuesday 09:00 New York is one hour further from UTC. Evaluating the
+		// rule in UTC instead would land on 08:00 New York — a different instant,
+		// which this assertion rejects.
+		fire := time.Date(2026, 10, 27, 9, 0, 0, 0, nyLoc)
+		wantNext := time.Date(2026, 11, 3, 9, 0, 0, 0, nyLoc)
+
+		task := &Task{
+			Title:     "tz nudge",
+			ProjectID: 1,
+			Reminders: []*TaskReminder{
+				{Reminder: fire, RepeatRRule: "FREQ=WEEKLY;BYDAY=TU"},
+			},
+		}
+		require.NoError(t, task.Create(s, u))
+		n := &ReminderDueNotification{User: u, Task: task, TaskReminder: task.Reminders[0]}
+
+		require.NoError(t, dispatchReminder(s, []*ReminderDueNotification{n}, false, false))
+		assert.True(t, wantNext.Equal(task.Reminders[0].Reminder),
+			"reminder must re-arm to 09:00 in the creator's timezone (want %s, got %s)", wantNext, task.Reminders[0].Reminder)
+	})
+}
+
 func TestGetTaskUsersForTasks(t *testing.T) {
 	t.Run("task owner", func(t *testing.T) {
 		db.LoadAndAssertFixtures(t)

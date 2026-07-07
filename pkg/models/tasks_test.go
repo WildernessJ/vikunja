@@ -827,6 +827,46 @@ func TestUpdateDone(t *testing.T) {
 		updateDone(oldTask, newTask)
 		assert.Equal(t, time.Time{}, newTask.DoneAt)
 	})
+	t.Run("un-done re-arms recurring reminders, leaves plain reminders", func(t *testing.T) {
+		pastFire := time.Date(2020, 1, 7, 9, 0, 0, 0, time.UTC)
+		plainFire := pastFire.Add(-time.Hour)
+		oldTask := &Task{
+			Done: true,
+			Reminders: []*TaskReminder{
+				{Reminder: pastFire, RepeatRRule: "FREQ=WEEKLY;BYDAY=TU"},
+				{Reminder: plainFire},
+			},
+		}
+		newTask := &Task{Done: false}
+
+		before := time.Now()
+		updateDone(oldTask, newTask)
+
+		require.Len(t, newTask.Reminders, 2)
+
+		rearmed := newTask.Reminders[0].Reminder.In(time.UTC)
+		assert.True(t, rearmed.After(before), "recurring reminder must be re-armed to after now, got %s", rearmed)
+		assert.Equal(t, time.Tuesday, rearmed.Weekday(), "re-armed reminder must land on the rule's weekday")
+		assert.Equal(t, 9, rearmed.Hour(), "re-armed reminder must keep its 09:00 time-of-day")
+		assert.Equal(t, 0, rearmed.Minute())
+
+		assert.True(t, plainFire.Equal(newTask.Reminders[1].Reminder), "plain reminder must be left untouched")
+	})
+	t.Run("un-done without recurring reminders leaves reminders untouched", func(t *testing.T) {
+		plainFire := time.Date(2020, 1, 7, 9, 0, 0, 0, time.UTC)
+		oldTask := &Task{
+			Done: true,
+			Reminders: []*TaskReminder{
+				{Reminder: plainFire},
+			},
+		}
+		newTask := &Task{Done: false}
+		updateDone(oldTask, newTask)
+
+		// The client-supplied (nil) reminder set is not overwritten when there is
+		// nothing recurring to re-arm.
+		assert.Nil(t, newTask.Reminders)
+	})
 	t.Run("no interval set, default repeat mode", func(t *testing.T) {
 		dueDate := time.Unix(1550000000, 0)
 		oldTask := &Task{
