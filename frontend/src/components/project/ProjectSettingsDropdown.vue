@@ -82,6 +82,13 @@
 				{{ $t('menu.duplicate') }}
 			</DropdownItem>
 			<DropdownItem
+				v-if="(project.maxPermission ?? PERMISSIONS.READ) >= PERMISSIONS.READ_WRITE"
+				:to="{ name: 'project.settings.saveTemplate', params: { projectId: project.id } }"
+				icon="copy"
+			>
+				{{ $t('menu.saveAsTemplate') }}
+			</DropdownItem>
+			<DropdownItem
 				v-tooltip="isDefaultProject ? $t('menu.cantArchiveIsDefault') : ''"
 				:to="{ name: 'project.settings.archive', params: { projectId: project.id } }"
 				icon="archive"
