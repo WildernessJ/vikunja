@@ -306,12 +306,15 @@ func getTasksWithRemindersDueAndTheirUsers(s *xorm.Session, now time.Time, cond 
 
 		for _, u := range usersPerTask[r.TaskID] {
 
-			// This ensures we send each reminder only once to each user
-			if seen[r.TaskID] == nil {
-				seen[r.TaskID] = make(map[int64]bool)
+			// Dedup per reminder (not per task): a user in multiple roles
+			// (creator + assignee + subscriber) must get a given reminder only
+			// once, but two distinct reminders due in the same minute must each
+			// be delivered AND re-armed — keying by task would strand the second.
+			if seen[r.ID] == nil {
+				seen[r.ID] = make(map[int64]bool)
 			}
 
-			if _, exists := seen[r.TaskID][u.User.ID]; exists {
+			if _, exists := seen[r.ID][u.User.ID]; exists {
 				continue
 			}
 
@@ -331,7 +334,7 @@ func getTasksWithRemindersDueAndTheirUsers(s *xorm.Session, now time.Time, cond 
 
 			actualReminder := r.Reminder.In(tz)
 			if (actualReminder.After(now) && actualReminder.Before(now.Add(time.Minute))) || actualReminder.Equal(now) {
-				seen[r.TaskID][u.User.ID] = true
+				seen[r.ID][u.User.ID] = true
 
 				reminderNotifications = append(reminderNotifications, &ReminderDueNotification{
 					User:         u.User,

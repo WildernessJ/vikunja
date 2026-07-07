@@ -55,6 +55,43 @@ func TestReminderGetTasksInTheNextMinute(t *testing.T) {
 	})
 }
 
+func TestReminderCronDoesNotStrandSameMinuteReminders(t *testing.T) {
+	db.LoadAndAssertFixtures(t)
+	s := db.NewSession()
+	defer s.Close()
+
+	u := &user.User{ID: 1}
+
+	// The creator must have email reminders enabled to be a notification recipient.
+	_, err := s.ID(1).Cols("email_reminders_enabled").Update(&user.User{EmailRemindersEnabled: true})
+	require.NoError(t, err)
+
+	// Two reminders in the same minute but different seconds: the save-time dedup
+	// only collapses identical seconds, so both persist. Keying the cron dedup by
+	// task (the old bug) would deliver+re-arm only the first and strand the second.
+	task := &Task{
+		Title:     "two same-minute reminders",
+		ProjectID: 1,
+		Reminders: []*TaskReminder{
+			{Reminder: time.Date(2035, 1, 2, 9, 0, 0, 0, time.UTC)},
+			{Reminder: time.Date(2035, 1, 2, 9, 0, 30, 0, time.UTC)},
+		},
+	}
+	require.NoError(t, task.Create(s, u))
+
+	now := time.Date(2035, 1, 2, 9, 0, 0, 0, time.UTC)
+	notifications, err := getTasksWithRemindersDueAndTheirUsers(s, now, builder.Eq{"users.email_reminders_enabled": true})
+	require.NoError(t, err)
+
+	count := 0
+	for _, n := range notifications {
+		if n.Task.ID == task.ID {
+			count++
+		}
+	}
+	assert.Equal(t, 2, count, "both same-minute reminders must be returned, not deduped by task")
+}
+
 func TestReminderRepeatRRuleValidation(t *testing.T) {
 	u := &user.User{ID: 1}
 
