@@ -63,6 +63,12 @@
 				{{ $t('menu.views') }}
 			</DropdownItem>
 			<DropdownItem
+				:to="{ name: 'project.activity', params: { projectId: project.id } }"
+				icon="history"
+			>
+				{{ $t('project.activity.title') }}
+			</DropdownItem>
+			<DropdownItem
 				v-if="backgroundsEnabled"
 				:to="{ name: 'project.settings.background', params: { projectId: project.id } }"
 				icon="image"

@@ -613,6 +613,28 @@
       "deleteSuccess": "The view was deleted successfully.",
       "onlyAdminsCanEdit": "Only project admins can edit views.",
       "updateSuccess": "The view was updated successfully."
+    },
+    "activity": {
+      "title": "Activity",
+      "empty": "No activity yet.",
+      "loadMore": "Load more",
+      "allActors": "Everyone",
+      "allActions": "All actions",
+      "filterActor": "Person",
+      "filterVerb": "Action",
+      "verbs": {
+        "task_created": "created a task",
+        "task_updated": "updated a task",
+        "task_completed": "completed a task",
+        "task_reopened": "reopened a task",
+        "task_deleted": "deleted a task",
+        "assignee_added": "added an assignee",
+        "assignee_removed": "removed an assignee",
+        "comment_created": "commented",
+        "attachment_added": "added an attachment",
+        "relation_added": "added a relation",
+        "project_updated": "updated the project"
+      }
     }
   },
   "filters": {

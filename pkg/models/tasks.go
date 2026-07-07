@@ -1156,6 +1156,13 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 		t.ProjectID = ot.ProjectID
 	}
 
+	// Capture the done transition from the caller's intent, before updateDone
+	// resets t.Done back to false for repeating tasks further down. The
+	// dedicated TaskDoneChangedEvent is dispatched (on commit) below because
+	// TaskUpdatedEvent carries only post-state.
+	doneChanged := t.Done != ot.Done
+	doneAfter := t.Done
+
 	// Get the stored reminders
 	reminders, err := getRemindersForTasks(s, []int64{t.ID})
 	if err != nil {
@@ -1534,6 +1541,14 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 		Task: t,
 		Doer: doerFromAuth(s, a),
 	})
+
+	if doneChanged {
+		events.DispatchOnCommit(s, &TaskDoneChangedEvent{
+			Task: t,
+			Doer: doerFromAuth(s, a),
+			Done: doneAfter,
+		})
+	}
 
 	return updateProjectLastUpdated(s, &Project{ID: t.ProjectID})
 }
@@ -2204,6 +2219,12 @@ func (t *Task) Delete(s *xorm.Session, a web.Auth) (err error) {
 
 	// Delete all bucket relations
 	_, err = s.Where("task_id = ?", t.ID).Delete(&TaskBucket{})
+	if err != nil {
+		return
+	}
+
+	// Delete activity feed entries (no DB-level FK cascade in this codebase)
+	_, err = s.Where("task_id = ?", t.ID).Delete(&Activity{})
 	if err != nil {
 		return
 	}

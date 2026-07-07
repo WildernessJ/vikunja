@@ -44,6 +44,12 @@ type TaskBucket struct {
 
 	web.Permissions `xorm:"-" json:"-"`
 	web.CRUDable    `xorm:"-" json:"-"`
+
+	// Carries the done transition out of updateTaskBucket so the Kanban entry
+	// point (Update) can dispatch TaskDoneChangedEvent. Set only on an actual
+	// transition; the internal task-flow callers ignore these.
+	doneChanged bool
+	doneAfter   bool
 }
 
 func (b *TaskBucket) TableName() string {
@@ -212,6 +218,10 @@ func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 	if view.DoneBucketID != 0 {
 		if view.DoneBucketID == b.BucketID && !task.Done {
 			doneChanged = true
+			// Captured before updateDone resets a repeating task's Done back to
+			// false; drives TaskDoneChangedEvent dispatched in Update.
+			b.doneChanged = true
+			b.doneAfter = true
 			task.Done = true
 			if task.isRepeating() {
 				oldTask := *task
@@ -235,6 +245,8 @@ func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 
 		if oldTaskBucket.BucketID == view.DoneBucketID && task.Done && b.BucketID != view.DoneBucketID {
 			doneChanged = true
+			b.doneChanged = true
+			b.doneAfter = false
 			task.Done = false
 		}
 	}
@@ -326,6 +338,14 @@ func (b *TaskBucket) Update(s *xorm.Session, a web.Auth) (err error) {
 			Task: b.Task,
 			Doer: doerFromAuth(s, a),
 		})
+
+		if b.doneChanged {
+			events.DispatchOnCommit(s, &TaskDoneChangedEvent{
+				Task: b.Task,
+				Doer: doerFromAuth(s, a),
+				Done: b.doneAfter,
+			})
+		}
 	}
 	return nil
 }

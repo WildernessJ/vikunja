@@ -402,6 +402,12 @@ const router = createRouter({
 			},
 		},
 		{
+			path: '/projects/:projectId/activity',
+			name: 'project.activity',
+			component: () => import('@/components/project/ProjectActivity.vue'),
+			props: route => ({projectId: parseInt(route.params.projectId as string)}),
+		},
+		{
 			path: '/projects/:projectId/:viewId',
 			name: 'project.view',
 			component: () => import('@/views/project/ProjectView.vue'),

@@ -162,6 +162,11 @@
                     "key": "trustedproxies",
                     "default_value": "",
                     "comment": "Comma-separated list of CIDR ranges for trusted reverse proxies. Only used when service.ipextractionmethod is 'xff' or 'realip'. X-Forwarded-For / X-Real-IP headers are only trusted from these addresses. Example: '127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12'"
+                },
+                {
+                    "key": "activityretentiondays",
+                    "default_value": "90",
+                    "comment": "How many days of project activity feed entries to keep. A daily cron prunes entries older than this. Set to 0 to disable pruning and keep activity forever."
                 }
             ]
         },
