@@ -56,6 +56,11 @@ type TaskReminder struct {
 	RelativePeriod int64 `xorm:"bigint null" json:"relative_period"`
 	// The name of the date field to which the relative period refers to.
 	RelativeTo ReminderRelation `xorm:"varchar(50) null" json:"relative_to"`
+	// An RFC 5545 RRULE string. When set, the reminder re-arms to the rule's next
+	// occurrence after firing instead of being one-shot. Absolute reminders only —
+	// RelativeTo must be empty. Canonical "no rule" is the empty string; NULL and ""
+	// are equivalent on read.
+	RepeatRRule string `xorm:"TEXT null 'repeat_rrule'" json:"repeat_rrule"`
 }
 
 // TableName returns a pretty table name

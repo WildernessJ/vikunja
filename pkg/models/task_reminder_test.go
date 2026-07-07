@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"code.vikunja.io/api/pkg/db"
+	"code.vikunja.io/api/pkg/user"
 
 	"xorm.io/builder"
 
@@ -52,6 +53,99 @@ func TestReminderGetTasksInTheNextMinute(t *testing.T) {
 		require.NoError(t, err)
 		assert.Empty(t, taskIDs)
 	})
+}
+
+func TestReminderRepeatRRuleValidation(t *testing.T) {
+	u := &user.User{ID: 1}
+
+	t.Run("rejects rrule on a relative reminder", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		task := &Task{
+			ID:        1,
+			Title:     "test",
+			ProjectID: 1,
+			DueDate:   time.Date(2026, time.July, 7, 9, 0, 0, 0, time.UTC),
+			Reminders: []*TaskReminder{
+				{
+					RelativeTo:     ReminderRelationDueDate,
+					RelativePeriod: 0,
+					RepeatRRule:    "FREQ=WEEKLY;BYDAY=TU",
+				},
+			},
+		}
+		err := task.Update(s, u)
+		require.Error(t, err)
+		assert.True(t, IsErrReminderRRuleRequiresAbsolute(err))
+	})
+
+	t.Run("rejects an invalid rrule", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		task := &Task{
+			ID:        1,
+			Title:     "test",
+			ProjectID: 1,
+			Reminders: []*TaskReminder{
+				{
+					Reminder:    time.Date(2026, time.July, 7, 9, 0, 0, 0, time.UTC),
+					RepeatRRule: "not a valid rrule",
+				},
+			},
+		}
+		err := task.Update(s, u)
+		require.Error(t, err)
+		assert.True(t, IsErrInvalidReminderRRule(err))
+	})
+}
+
+func TestReminderRepeatRRuleSurvivesTaskEdit(t *testing.T) {
+	u := &user.User{ID: 1}
+
+	db.LoadAndAssertFixtures(t)
+	s := db.NewSession()
+	defer s.Close()
+
+	task := &Task{
+		ID:        1,
+		Title:     "test",
+		ProjectID: 1,
+		Reminders: []*TaskReminder{
+			{
+				Reminder:    time.Date(2026, time.July, 7, 9, 0, 0, 0, time.UTC),
+				RepeatRRule: "FREQ=WEEKLY;BYDAY=TU",
+			},
+		},
+	}
+	err := task.Update(s, u)
+	require.NoError(t, err)
+	require.Len(t, task.Reminders, 1)
+	assert.Equal(t, "FREQ=WEEKLY;BYDAY=TU", task.Reminders[0].RepeatRRule)
+	require.NoError(t, s.Commit())
+
+	// Editing an unrelated field (title) must resend and preserve the reminder's rrule,
+	// since updateReminders rebuilds every reminder from the client-supplied set.
+	editTask := &Task{
+		ID:        1,
+		Title:     "renamed",
+		ProjectID: 1,
+		Reminders: task.Reminders,
+	}
+	err = editTask.Update(s, u)
+	require.NoError(t, err)
+	require.Len(t, editTask.Reminders, 1)
+	assert.Equal(t, "FREQ=WEEKLY;BYDAY=TU", editTask.Reminders[0].RepeatRRule)
+	require.NoError(t, s.Commit())
+
+	reloaded := &Task{ID: 1}
+	err = reloaded.ReadOne(s, u)
+	require.NoError(t, err)
+	require.Len(t, reloaded.Reminders, 1)
+	assert.Equal(t, "FREQ=WEEKLY;BYDAY=TU", reloaded.Reminders[0].RepeatRRule)
 }
 
 func TestGetTaskUsersForTasks(t *testing.T) {

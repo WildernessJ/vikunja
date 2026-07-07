@@ -1692,6 +1692,11 @@ func setTaskDatesDefault(oldTask, newTask *Task) {
 	// To make this easier, we sort them first because we can then rely on the fact the first is the smallest
 	if len(oldTask.Reminders) > 0 {
 		for in, r := range oldTask.Reminders {
+			// Reminders with their own recurrence rule advance only via that rule,
+			// not the task's repeat — exempt them from the bump.
+			if r.RepeatRRule != "" {
+				continue
+			}
 			newTask.Reminders[in].Reminder = addRepeatIntervalToTime(now, r.Reminder, repeatDuration)
 		}
 	}
@@ -1722,6 +1727,11 @@ func setTaskDatesMonthRepeat(oldTask, newTask *Task) {
 	newTask.Reminders = oldTask.Reminders
 	if len(oldTask.Reminders) > 0 {
 		for in, r := range oldTask.Reminders {
+			// Reminders with their own recurrence rule advance only via that rule,
+			// not the task's repeat — exempt them from the bump.
+			if r.RepeatRRule != "" {
+				continue
+			}
 			newTask.Reminders[in].Reminder = addOneMonthToDate(r.Reminder)
 		}
 	}
@@ -1802,6 +1812,11 @@ func setTaskDatesRRuleRepeat(oldTask, newTask *Task) {
 	newTask.Reminders = oldTask.Reminders
 	if len(oldTask.Reminders) > 0 {
 		for in, r := range oldTask.Reminders {
+			// Reminders with their own recurrence rule advance only via that rule,
+			// not the task's repeat — exempt them from the due-date-delta shift.
+			if r.RepeatRRule != "" {
+				continue
+			}
 			newTask.Reminders[in].Reminder = r.Reminder.Add(delta)
 		}
 	}
@@ -1845,6 +1860,11 @@ func setTaskDatesFromCurrentDateRepeat(oldTask, newTask *Task) {
 		})
 		first := oldTask.Reminders[0].Reminder
 		for in, r := range oldTask.Reminders {
+			// Reminders with their own recurrence rule advance only via that rule,
+			// not the task's repeat — exempt them from the bump.
+			if r.RepeatRRule != "" {
+				continue
+			}
 			diff := r.Reminder.Sub(first)
 			newTask.Reminders[in].Reminder = now.Add(repeatDuration + diff)
 		}
@@ -1989,6 +2009,18 @@ func updateRelativeReminderDates(task *Task) (err error) {
 // The parameter is a slice which holds the new reminders.
 func (t *Task) updateReminders(s *xorm.Session, task *Task) (err error) {
 
+	for _, reminder := range task.Reminders {
+		if reminder.RepeatRRule == "" {
+			continue
+		}
+		if reminder.RelativeTo != "" {
+			return ErrReminderRRuleRequiresAbsolute{TaskID: t.ID}
+		}
+		if err := validateTaskRRule(reminder.RepeatRRule); err != nil {
+			return ErrInvalidReminderRRule{RRule: reminder.RepeatRRule}
+		}
+	}
+
 	_, err = s.
 		Where("task_id = ?", t.ID).
 		Delete(&TaskReminder{})
@@ -2015,7 +2047,8 @@ func (t *Task) updateReminders(s *xorm.Session, task *Task) (err error) {
 			TaskID:         t.ID,
 			Reminder:       r.Reminder,
 			RelativePeriod: r.RelativePeriod,
-			RelativeTo:     r.RelativeTo}
+			RelativeTo:     r.RelativeTo,
+			RepeatRRule:    r.RepeatRRule}
 		_, err = s.Insert(taskReminder)
 		if err != nil {
 			return err

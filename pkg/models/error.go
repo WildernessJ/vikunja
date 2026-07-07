@@ -1267,6 +1267,63 @@ func (err ErrReminderRelativeToMissing) HTTPError() web.HTTPError {
 	}
 }
 
+// ErrInvalidReminderRRule represents an error where a reminder's repeat_rrule
+// is not a valid or supported RFC 5545 RRULE.
+type ErrInvalidReminderRRule struct {
+	RRule string
+}
+
+// IsErrInvalidReminderRRule checks if an error is ErrInvalidReminderRRule.
+func IsErrInvalidReminderRRule(err error) bool {
+	_, ok := err.(ErrInvalidReminderRRule)
+	return ok
+}
+
+func (err ErrInvalidReminderRRule) Error() string {
+	return fmt.Sprintf("Invalid reminder repeat rrule. [RRule: %s]", err.RRule)
+}
+
+// ErrCodeInvalidReminderRRule holds the unique world-error code of this error.
+const ErrCodeInvalidReminderRRule = 4032
+
+// HTTPError holds the http error description.
+func (err ErrInvalidReminderRRule) HTTPError() web.HTTPError {
+	return web.HTTPError{
+		HTTPCode: http.StatusBadRequest,
+		Code:     ErrCodeInvalidReminderRRule,
+		Message:  fmt.Sprintf("The reminder repeat rrule %q is not a valid or supported recurrence rule.", err.RRule),
+	}
+}
+
+// ErrReminderRRuleRequiresAbsolute represents an error where a relative
+// reminder (relative_to set) also carries a repeat_rrule. Recurrence is
+// only supported for absolute reminders.
+type ErrReminderRRuleRequiresAbsolute struct {
+	TaskID int64
+}
+
+// IsErrReminderRRuleRequiresAbsolute checks if an error is ErrReminderRRuleRequiresAbsolute.
+func IsErrReminderRRuleRequiresAbsolute(err error) bool {
+	_, ok := err.(ErrReminderRRuleRequiresAbsolute)
+	return ok
+}
+
+func (err ErrReminderRRuleRequiresAbsolute) Error() string {
+	return fmt.Sprintf("Task [TaskID: %v] has a relative reminder with a repeat rrule", err.TaskID)
+}
+
+// ErrCodeReminderRRuleRequiresAbsolute holds the unique world-error code of this error.
+const ErrCodeReminderRRuleRequiresAbsolute = 4033
+
+// HTTPError holds the http error description.
+func (err ErrReminderRRuleRequiresAbsolute) HTTPError() web.HTTPError {
+	return web.HTTPError{
+		HTTPCode: http.StatusBadRequest,
+		Code:     ErrCodeReminderRRuleRequiresAbsolute,
+		Message:  "A reminder with relative_to set cannot also have a repeat rrule; recurrence is only supported for absolute reminders.",
+	}
+}
+
 // ErrTaskRelationCycle represents an error where the user tries to create an already existing relation
 type ErrTaskRelationCycle struct {
 	Kind        RelationKind

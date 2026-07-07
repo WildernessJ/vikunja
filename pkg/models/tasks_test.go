@@ -910,6 +910,35 @@ func TestUpdateDone(t *testing.T) {
 			assert.Equal(t, expected2, newTask.Reminders[1].Reminder)
 			assert.False(t, newTask.Done)
 		})
+		t.Run("recurring reminder is exempt from the repeat bump, plain reminder still bumped", func(t *testing.T) {
+			plainReminderTime := time.Unix(1550000000, 0)
+			rruleReminderTime := time.Unix(1555000000, 0)
+			oldTask := &Task{
+				Done:        false,
+				RepeatAfter: 8600,
+				Reminders: []*TaskReminder{
+					{
+						Reminder: plainReminderTime,
+					},
+					{
+						Reminder:    rruleReminderTime,
+						RepeatRRule: "FREQ=WEEKLY;BYDAY=TU",
+					},
+				},
+			}
+			newTask := &Task{
+				Done: true,
+			}
+			updateDone(oldTask, newTask)
+
+			expectedPlain := addRepeatIntervalToTime(time.Now(), plainReminderTime, time.Duration(oldTask.RepeatAfter)*time.Second)
+
+			require.Len(t, newTask.Reminders, 2)
+			assert.Equal(t, expectedPlain, newTask.Reminders[0].Reminder, "plain reminder must be bumped exactly as today")
+			assert.Equal(t, rruleReminderTime, newTask.Reminders[1].Reminder, "recurring reminder must be left untouched by the task's repeat")
+			assert.Equal(t, "FREQ=WEEKLY;BYDAY=TU", newTask.Reminders[1].RepeatRRule)
+			assert.False(t, newTask.Done)
+		})
 		t.Run("update start date", func(t *testing.T) {
 			oldTask := &Task{
 				Done:        false,
