@@ -51,10 +51,18 @@
 						:lock-relative-to="lockedRelativeTo"
 					/>
 
-					<DatepickerInline
-						v-else-if="activeForm === 'absolute'"
-						v-model="reminderDate"
-					/>
+					<template v-else-if="activeForm === 'absolute'">
+						<DatepickerInline v-model="reminderDate" />
+						<div class="reminder-repeat">
+							<label class="reminder-repeat__label">
+								{{ $t('task.reminder.repeat') }}
+							</label>
+							<RecurrencePatternPicker
+								v-model="reminder.repeatRrule"
+								id-prefix="reminder-recurrence"
+							/>
+						</div>
+					</template>
 
 					<XButton
 						v-if="activeForm !== null"
@@ -83,6 +91,7 @@ import {formatDisplayDate} from '@/helpers/time/formatDate'
 
 import DatepickerInline from '@/components/input/DatepickerInline.vue'
 import ReminderPeriod from '@/components/tasks/partials/ReminderPeriod.vue'
+import RecurrencePatternPicker from '@/components/misc/RecurrencePatternPicker.vue'
 import Popup from '@/components/misc/Popup.vue'
 
 import TaskReminderModel from '@/models/taskReminder'
@@ -142,7 +151,10 @@ const reminderText = computed(() => {
 	}
 
 	if (reminder.value.reminder !== null) {
-		return formatDisplayDate(reminder.value.reminder)
+		const formatted = formatDisplayDate(reminder.value.reminder)
+		return reminder.value.repeatRrule !== ''
+			? t('task.reminder.repeatsAt', {date: formatted})
+			: formatted
 	}
 
 	return t('task.addReminder')
@@ -167,6 +179,12 @@ watch(
 )
 
 function updateData() {
+	// Recurrence is absolute-only; the backend rejects a relative reminder that
+	// carries a rule with a 400, so drop it before emitting.
+	if (reminder.value.relativeTo !== null) {
+		reminder.value.repeatRrule = ''
+	}
+
 	emit('update:modelValue', reminder.value)
 
 	if (props.clearAfterUpdate) {
@@ -307,5 +325,17 @@ function translateUnit(amount: number, unit: PeriodUnit): string {
 
 .currently-active {
 	color: var(--primary);
+}
+
+.reminder-repeat {
+	padding: .5rem;
+	border-block-start: 1px solid var(--grey-100);
+}
+
+.reminder-repeat__label {
+	display: block;
+	font-size: .85rem;
+	font-weight: bold;
+	margin-block-end: .5rem;
 }
 </style>

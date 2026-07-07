@@ -5,4 +5,5 @@ export interface ITaskReminder extends IAbstract {
 	reminder: Date | null
 	relativePeriod: number
 	relativeTo: IReminderPeriodRelativeTo | null
+	repeatRrule: string
 }
