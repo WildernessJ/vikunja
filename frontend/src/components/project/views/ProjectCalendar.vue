@@ -112,6 +112,7 @@
 							>
 								<AddTask
 									v-if="canWrite && quickCreateKey === day.key"
+									:ref="el => quickAddRef = el as ComponentPublicInstance | null"
 									class="calendar-quick-add"
 									@taskAdded="task => onQuickTaskAdded(day, task)"
 									@click.stop
@@ -158,8 +159,9 @@
 </template>
 
 <script setup lang="ts">
-import {computed, ref, watch, shallowReactive} from 'vue'
+import {computed, ref, watch, shallowReactive, type ComponentPublicInstance} from 'vue'
 import {useRouter} from 'vue-router'
+import {onClickOutside} from '@vueuse/core'
 import {klona} from 'klona/lite'
 
 import ProjectWrapper from '@/components/project/ProjectWrapper.vue'
@@ -574,6 +576,14 @@ function replaceTask(task: ITask) {
 }
 
 const quickCreateKey = ref<DateKebab | null>(null)
+const quickAddRef = ref<ComponentPublicInstance | null>(null)
+
+// Dismiss the inline quick-create when clicking anywhere outside it. onClickOutside
+// resolves quickAddRef to the AddTask root element; a null ref (nothing open) makes
+// the handler a no-op, so opening a day cell isn't cancelled by its own click.
+onClickOutside(quickAddRef, () => {
+	quickCreateKey.value = null
+})
 
 function openQuickCreate(day: CalendarDay) {
 	if (!canWrite.value) {
