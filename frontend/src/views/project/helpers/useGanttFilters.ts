@@ -4,6 +4,7 @@ import type {RouteLocationNormalized, RouteLocationRaw, LocationQueryRaw} from '
 import {useViewFiltersStore} from '@/stores/viewFilters'
 
 import {isoToKebabDate} from '@/helpers/time/isoToKebabDate'
+import {buildDateWindowFilterQuery} from '@/helpers/time/dateWindowFilterQuery'
 import {parseDateProp} from '@/helpers/time/parseDateProp'
 import {parseBooleanProp} from '@/helpers/time/parseBooleanProp'
 import {useRouteFilters, type UseRouteFiltersReturn} from '@/composables/useRouteFilters'
@@ -93,12 +94,7 @@ function ganttFiltersToApiParams(filters: GanttFilters): TaskFilterParams {
 	return {
 		sort_by: ['start_date', 'done', 'id'],
 		order_by: ['asc', 'asc', 'desc'],
-		filter: '(' +
-			'(start_date >= "' + dateFrom + '" && start_date <= "' + dateTo + '") || ' +
-			'(end_date >= "' + dateFrom + '" && end_date <= "' + dateTo + '") || ' +
-			'(due_date >= "' + dateFrom + '" && due_date <= "' + dateTo + '") || ' +
-			'(start_date <= "' + dateFrom + '" && end_date >= "' + dateTo + '")' +
-			')',
+		filter: buildDateWindowFilterQuery(dateFrom, dateTo),
 		filter_include_nulls: filters.showTasksWithoutDates,
 		expand: 'subtasks',
 	}
