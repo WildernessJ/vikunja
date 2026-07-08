@@ -26,6 +26,13 @@ export const useProjectStore = defineStore('project', () => {
 
 	const isLoading = ref(false)
 
+	// The project currently being dragged in the sidebar, or null. Mirrors
+	// taskStore.draggedTask; drives the nest drop-zones in the navigation.
+	const draggedProjectId = ref<IProject['id'] | null>(null)
+	function setDraggedProjectId(id: IProject['id'] | null) {
+		draggedProjectId.value = id
+	}
+
 	// The projects are stored as an object which has the project ids as keys.
 	const projects = ref<{ [id: IProject['id']]: IProject }>({})
 	const projectsArray = computed(() => Object.values(projects.value)
@@ -320,6 +327,8 @@ export const useProjectStore = defineStore('project', () => {
 	
 	return {
 		isLoading: readonly(isLoading),
+		draggedProjectId: readonly(draggedProjectId),
+		setDraggedProjectId,
 		projects: readonly(projects),
 		projectsArray: readonly(projectsArray),
 		notArchivedRootProjects: readonly(notArchivedRootProjects),

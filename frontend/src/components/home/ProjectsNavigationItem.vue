@@ -87,6 +87,17 @@
 			:can-edit-order="true"
 			:can-collapse="canCollapse"
 		/>
+		<template v-if="isNestTarget">
+			<ProjectsNavigation
+				:drop-zone="true"
+				:model-value="[]"
+				:can-edit-order="true"
+				:can-collapse="canCollapse"
+			/>
+			<div class="nest-drop-hint">
+				{{ $t('navigation.nestHere', {project: getProjectTitle(project)}) }}
+			</div>
+		</template>
 	</li>
 </template>
 
@@ -118,7 +129,23 @@ const props = defineProps<{
 }>()
 
 const taskStore = useTaskStore()
+const projectStore = useProjectStore()
 const isHoveredDuringDrag = ref(false)
+
+// A project drag reveals a dedicated nest drop-zone under every eligible project.
+// projectDragActive MUST gate isNestTarget — without it the zone would render at
+// rest and break the resting sidebar layout.
+const projectDragActive = computed(() => projectStore.draggedProjectId !== null)
+const isNestTarget = computed(() =>
+	projectDragActive.value
+	&& props.project.id > 0
+	&& props.project.maxPermission !== null
+	&& props.project.maxPermission > PERMISSIONS.READ
+	&& !isSavedFilter(props.project)
+	// getAncestors() includes the project itself, so this also excludes the dragged
+	// project's own row — no separate self-check needed.
+	&& !projectStore.getAncestors(props.project).some(a => a.id === projectStore.draggedProjectId),
+)
 
 // Track mouse position during drag to detect hover (mouseenter doesn't fire during drag)
 function handleMouseMove(e: MouseEvent) {
@@ -166,7 +193,6 @@ const isDropTarget = computed(() => {
 		&& props.project.maxPermission > PERMISSIONS.READ
 })
 
-const projectStore = useProjectStore()
 const baseStore = useBaseStore()
 const currentProject = computed(() => baseStore.currentProject)
 
@@ -332,5 +358,22 @@ const canToggleFavorite = computed(() => {
 		box-shadow: inset 0 0 0 2px var(--primary);
 		border-radius: $radius;
 	}
+}
+
+// The dedicated nest drop-zone (a <ProjectsNavigation :drop-zone>) is a direct child
+// of the <li data-project-id> so saveProjectPosition's e.to.parentNode lookup resolves
+// to this project — do not wrap it. Its box styling lives in ProjectsNavigation.
+.nest-drop-hint {
+	// Pull the label up over the zone without wrapping it in a positioned parent.
+	margin-block-start: -2rem;
+	block-size: 2rem;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: .7rem;
+	color: var(--primary);
+	pointer-events: none;
+	padding-inline: .5rem;
+	text-align: center;
 }
 </style>
