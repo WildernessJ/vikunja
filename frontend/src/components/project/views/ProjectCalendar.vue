@@ -373,9 +373,18 @@ function mergeTasks(fetched: ITask[], keepDateless: boolean) {
 	taskById.value = next
 }
 
+// This component is reused (not remounted) across project/view navigation, since
+// the router keeps the same route component and only swaps params — see
+// ProjectView.vue. Each loader below is guarded by its own sequence number,
+// bumped every time its watcher fires, so a response that lands after a newer
+// request has already started (project switch, or rapid window/project nav)
+// is discarded instead of being merged into the wrong project's state.
+let unscheduledLoadSeq = 0
+let windowLoadSeq = 0
+
 // The grid: one windowed request for the tasks intersecting the visible days,
 // with include_nulls OFF so dateless tasks never compete for its page budget.
-async function loadWindowTasks() {
+async function loadWindowTasks(seq: number, projectId: number, viewId: IProjectView['id']) {
 	const params: TaskFilterParams = {
 		sort_by: ['due_date', 'start_date', 'id'],
 		order_by: ['asc', 'asc', 'asc'],
@@ -385,10 +394,10 @@ async function loadWindowTasks() {
 		s: '',
 		per_page: 250,
 	}
-	const loaded = await windowTaskService.getAll(
-		{projectId: props.projectId, viewId: props.viewId},
-		params,
-	) as ITask[]
+	const loaded = await windowTaskService.getAll({projectId, viewId}, params) as ITask[]
+	if (seq !== windowLoadSeq || projectId !== props.projectId || viewId !== props.viewId) {
+		return
+	}
 	windowTruncated.value = windowTaskService.totalPages > 1
 	// keepDateless: preserve the unscheduled set, replace the windowed one.
 	mergeTasks(loaded, true)
@@ -396,7 +405,7 @@ async function loadWindowTasks() {
 
 // The panel: a separate, window-independent request returning only fully-dateless
 // tasks (due AND start AND end all null). Refetched only on project/view change.
-async function loadUnscheduledTasks() {
+async function loadUnscheduledTasks(seq: number, projectId: number, viewId: IProjectView['id']) {
 	const params: TaskFilterParams = {
 		sort_by: ['id'],
 		order_by: ['asc'],
@@ -406,35 +415,46 @@ async function loadUnscheduledTasks() {
 		s: '',
 		per_page: 250,
 	}
-	const loaded = await unscheduledTaskService.getAll(
-		{projectId: props.projectId, viewId: props.viewId},
-		params,
-	) as ITask[]
+	const loaded = await unscheduledTaskService.getAll({projectId, viewId}, params) as ITask[]
+	if (seq !== unscheduledLoadSeq || projectId !== props.projectId || viewId !== props.viewId) {
+		return
+	}
 	unscheduledTruncated.value = unscheduledTaskService.totalPages > 1
 	// keepDateless false: preserve the windowed set, replace the unscheduled one.
 	mergeTasks(loaded, false)
 }
 
-// Window-independent panel fetch — only on project/view change.
+// Window-independent panel fetch — only on project/view change. This is the
+// single place taskById gets reset: it fires exactly once per navigation
+// (unlike the windowed watcher below, which also refires on window-only
+// changes), so resetting here can't race a second reset from the other watcher.
 watch(
 	() => [props.projectId, props.viewId],
 	() => {
+		unscheduledLoadSeq += 1
+		taskById.value = new Map()
+		windowTruncated.value = false
+		unscheduledTruncated.value = false
 		if (!props.projectId || !props.viewId) {
 			return
 		}
-		void loadUnscheduledTasks()
+		void loadUnscheduledTasks(unscheduledLoadSeq, props.projectId, props.viewId)
 	},
 	{immediate: true},
 )
 
-// Windowed grid fetch — also refires as the visible date range changes.
+// Windowed grid fetch — also refires as the visible date range changes. Bumps
+// its own sequence on every trigger (project/view change *or* window nav) so
+// rapid window navigation within the same project is guarded too, not just
+// project switches.
 watch(
 	() => [props.projectId, props.viewId, windowFrom.value, windowTo.value],
 	() => {
+		windowLoadSeq += 1
 		if (!props.projectId || !props.viewId) {
 			return
 		}
-		void loadWindowTasks()
+		void loadWindowTasks(windowLoadSeq, props.projectId, props.viewId)
 	},
 	{immediate: true},
 )
