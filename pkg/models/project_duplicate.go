@@ -75,9 +75,8 @@ func (pd *ProjectDuplicate) CanCreate(s *xorm.Session, a web.Auth) (canCreate bo
 		return false, ErrProjectIsTemplate{ProjectID: pd.ParentProjectID}
 	}
 
-	// Parent project exists + user has write access to is (-> can create new projects)
-	parent := &Project{ID: pd.ParentProjectID}
-	return parent.CanCreate(s, a)
+	// The user must be able to write to the parent to nest a copy under it.
+	return targetParent.CanWrite(s, a)
 }
 
 // Create duplicates a project
@@ -206,9 +205,12 @@ func (pd *ProjectDuplicate) Create(s *xorm.Session, doer web.Auth) (err error) {
 }
 
 func duplicateViews(s *xorm.Session, pd *ProjectDuplicate, doer web.Auth, taskMap map[int64]int64) (err error) {
-	// Duplicate Views
-	views := make(map[int64]*ProjectView)
-	err = s.Where("project_id = ?", pd.ProjectID).Find(&views)
+	// Duplicate Views in a stable order. Views without an explicit position fall back
+	// to an ID-based position in createProjectView, so copying them in Go map order
+	// would assign the new IDs — and thus positions — at random, making the frontend's
+	// default-view redirect nondeterministic after a duplicate.
+	views := []*ProjectView{}
+	err = s.Where("project_id = ?", pd.ProjectID).OrderBy("position asc, id asc").Find(&views)
 	if err != nil {
 		return
 	}

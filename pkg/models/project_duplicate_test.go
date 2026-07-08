@@ -76,6 +76,70 @@ func TestProjectDuplicate(t *testing.T) {
 	})
 }
 
+// TestProjectDuplicate_ViewOrderIsDeterministic guards against the copied views
+// landing in a random order. Project 2's views carry no explicit position, so the
+// copy relies on calculateDefaultPosition's ID-based fallback. If the source views
+// are iterated in Go map order, the new IDs (and thus positions) come out shuffled,
+// making the frontend's default-view redirect nondeterministic. The loop makes the
+// map-order randomness observable.
+func TestProjectDuplicate_ViewOrderIsDeterministic(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		files.InitTestFileFixtures(t)
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+
+		u := &user.User{ID: 3}
+		l := &ProjectDuplicate{ProjectID: 2}
+		can, err := l.CanCreate(s, u)
+		require.NoError(t, err)
+		require.True(t, can)
+		require.NoError(t, l.Create(s, u))
+
+		var originalViews, duplicatedViews []*ProjectView
+		require.NoError(t, s.Where("project_id = ?", 2).OrderBy("position asc, id asc").Find(&originalViews))
+		require.NoError(t, s.Where("project_id = ?", l.Project.ID).OrderBy("position asc, id asc").Find(&duplicatedViews))
+		require.Len(t, duplicatedViews, len(originalViews))
+
+		for j := range originalViews {
+			assert.Equalf(t, originalViews[j].ViewKind, duplicatedViews[j].ViewKind,
+				"run %d: duplicated view order diverges from source at position %d", i, j)
+			assert.NotZerof(t, duplicatedViews[j].Position,
+				"run %d: duplicated view %q has a zero position", i, duplicatedViews[j].Title)
+		}
+		s.Close()
+	}
+}
+
+func TestProjectDuplicate_ParentWriteAccess(t *testing.T) {
+	// User 1 has read-only access to project 3 (shared), no access to project 2, and
+	// admin access to project 11.
+	t.Run("denies nesting under a parent the user cannot write to", func(t *testing.T) {
+		files.InitTestFileFixtures(t)
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		u := &user.User{ID: 1}
+		pd := &ProjectDuplicate{ProjectID: 3, ParentProjectID: 2}
+		can, err := pd.CanCreate(s, u)
+		require.NoError(t, err)
+		assert.False(t, can, "must not duplicate into a parent the user cannot write to")
+	})
+
+	t.Run("allows nesting under a writable parent", func(t *testing.T) {
+		files.InitTestFileFixtures(t)
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		u := &user.User{ID: 1}
+		pd := &ProjectDuplicate{ProjectID: 3, ParentProjectID: 11}
+		can, err := pd.CanCreate(s, u)
+		require.NoError(t, err)
+		assert.True(t, can, "must allow duplicating into a parent the user can write to")
+	})
+}
+
 func TestProjectDuplicate_TemplateModes(t *testing.T) {
 	t.Run("save as template freezes snapshot, sets flag, no suffix", func(t *testing.T) {
 		files.InitTestFileFixtures(t)
