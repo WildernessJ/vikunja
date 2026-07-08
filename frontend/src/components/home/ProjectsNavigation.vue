@@ -14,10 +14,10 @@
 			name: !drag ? 'flip-list' : null,
 			class: [
 				'menu-list can-be-hidden',
-				{ 'dragging-disabled': !canEditOrder }
+				{ 'dragging-disabled': !canEditOrder, 'nest-drop-zone': dropZone }
 			],
 		}"
-		@start="() => drag = true"
+		@start="onDragStart"
 		@end="saveProjectPosition"
 	>
 		<template #item="{element: project}">
@@ -49,6 +49,9 @@ const props = defineProps<{
 	modelValue?: IProject[],
 	canEditOrder: boolean,
 	canCollapse?: boolean,
+	// When true this list is an empty nest drop-zone: give it a visible, droppable
+	// min-height + affordance so a project can be dropped onto an otherwise 0px list.
+	dropZone?: boolean,
 }>()
 const emit = defineEmits<{
 	(e: 'update:modelValue', projects: IProject[]): void
@@ -71,8 +74,17 @@ watch(
 
 const projectUpdating = ref<{ [id: IProject['id']]: boolean }>({})
 
+function onDragStart(e: SortableEvent) {
+	drag.value = true
+	const id = e.item.dataset.projectId
+	projectStore.setDraggedProjectId(id ? parseInt(id) : null)
+}
+
 async function saveProjectPosition(e: SortableEvent) {
 	drag.value = false
+	// Clear before the early-return below so a cancelled drag never leaves the
+	// nest drop-zones stuck visible.
+	projectStore.setDraggedProjectId(null)
 	if (!e.newIndex && e.newIndex !== 0) return
 
 	const projectsActive = availableProjects.value
@@ -119,3 +131,14 @@ async function saveProjectPosition(e: SortableEvent) {
 	}
 }
 </script>
+
+<style lang="scss" scoped>
+// An empty nest drop-zone needs a real drop area — a 0px list can't receive a drop.
+.nest-drop-zone {
+	min-block-size: 2rem;
+	margin-block: .15rem;
+	border: 2px dashed hsla(var(--primary-hsl), 0.4);
+	border-radius: $radius;
+	background-color: hsla(var(--primary-hsl), 0.08);
+}
+</style>

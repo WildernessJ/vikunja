@@ -833,7 +833,8 @@
     "imprint": "Imprint",
     "privacy": "Privacy Policy",
     "closeSidebar": "Close sidebar",
-    "home": "Vikunja home"
+    "home": "Vikunja home",
+    "nestHere": "Drop here to nest under {project}"
   },
   "misc": {
     "loading": "Loading…",
