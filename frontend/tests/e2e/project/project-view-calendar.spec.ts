@@ -71,6 +71,14 @@ test.describe('Project View Calendar', () => {
 			start_date: noonUTC(2026, 7, 13),
 			end_date: noonUTC(2026, 7, 15),
 		})
+
+		// The unscheduled fetch is the request whose filter carries the
+		// never-matching 9999 sentinel; capture its response body.
+		const unscheduledResponse = page.waitForResponse(response =>
+			response.url().includes('/tasks') &&
+			response.url().includes('9999-12-31') &&
+			response.request().method() === 'GET',
+		)
 		await page.goto(`/projects/${project.id}/1`)
 
 		for (const day of ['2026-07-13', '2026-07-14', '2026-07-15']) {
@@ -79,9 +87,13 @@ test.describe('Project View Calendar', () => {
 			).toContainText(tasks[0].title)
 		}
 
-		// A start/end task has a null due_date, so the unscheduled fetch
-		// (due_date IS NULL) returns it — the client-side "all dates null" guard
-		// must still keep it out of the panel.
+		// Server-side proof: a start/end task (null due_date, but start/end set)
+		// must NOT be returned by the unscheduled fetch at all — the three-field
+		// null filter excludes it before the client guard ever runs.
+		const body = await (await unscheduledResponse).json() as Array<{id: number}>
+		expect(body.some(task => task.id === tasks[0].id)).toBe(false)
+
+		// And it's absent from the panel.
 		await expect(page.locator('.calendar-unscheduled')).not.toContainText(tasks[0].title)
 	})
 

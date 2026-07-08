@@ -191,9 +191,11 @@ const props = defineProps<{
 const MONTH_GRID_DAYS = 42
 const WEEK_GRID_DAYS = 7
 const DAY_MS = 86_400_000
-// A date no task can be on or after; paired with filter_include_nulls it selects
-// exactly the rows whose due_date IS NULL (Vikunja's filter language has no IS NULL).
-const NEVER_MATCHING_DATE_FILTER = 'due_date > "9999-12-31"'
+// Vikunja's filter language has no IS NULL operator, so we pair a clause no task
+// can satisfy with filter_include_nulls: getFilterCond wraps each referenced field
+// as `(field > "9999-12-31" OR field IS NULL)`, and AND-ing all three yields
+// exactly the fully-dateless tasks (due AND start AND end all null).
+const UNSCHEDULED_FILTER = 'due_date > "9999-12-31" && start_date > "9999-12-31" && end_date > "9999-12-31"'
 
 const router = useRouter()
 const baseStore = useBaseStore()
@@ -354,9 +356,26 @@ const unscheduledTasks = computed<ITask[]>(() =>
 	allTasks.value.filter(task => taskAnchorDate(task) === null),
 )
 
+// Merge one fetched set into taskById while preserving the other set. We classify
+// existing entries by their dates (dateless = unscheduled, dated = windowed) so a
+// refetch of one set only replaces its own category and never wipes the other —
+// and the two watchers below can run independently without clobbering each other.
+function mergeTasks(fetched: ITask[], keepDateless: boolean) {
+	const next = new Map<ITask['id'], ITask>()
+	for (const task of taskById.value.values()) {
+		if ((taskAnchorDate(task) === null) === keepDateless) {
+			next.set(task.id, task)
+		}
+	}
+	for (const task of fetched) {
+		next.set(task.id, task)
+	}
+	taskById.value = next
+}
+
 // The grid: one windowed request for the tasks intersecting the visible days,
 // with include_nulls OFF so dateless tasks never compete for its page budget.
-async function loadWindowTasks(): Promise<ITask[]> {
+async function loadWindowTasks() {
 	const params: TaskFilterParams = {
 		sort_by: ['due_date', 'start_date', 'id'],
 		order_by: ['asc', 'asc', 'asc'],
@@ -371,15 +390,17 @@ async function loadWindowTasks(): Promise<ITask[]> {
 		params,
 	) as ITask[]
 	windowTruncated.value = windowTaskService.totalPages > 1
-	return loaded
+	// keepDateless: preserve the unscheduled set, replace the windowed one.
+	mergeTasks(loaded, true)
 }
 
-// The panel: a separate request returning only tasks whose due_date IS NULL.
-async function loadUnscheduledTasks(): Promise<ITask[]> {
+// The panel: a separate, window-independent request returning only fully-dateless
+// tasks (due AND start AND end all null). Refetched only on project/view change.
+async function loadUnscheduledTasks() {
 	const params: TaskFilterParams = {
 		sort_by: ['id'],
 		order_by: ['asc'],
-		filter: NEVER_MATCHING_DATE_FILTER,
+		filter: UNSCHEDULED_FILTER,
 		filter_include_nulls: true,
 		filter_timezone: authStore.settings.timezone,
 		s: '',
@@ -390,33 +411,30 @@ async function loadUnscheduledTasks(): Promise<ITask[]> {
 		params,
 	) as ITask[]
 	unscheduledTruncated.value = unscheduledTaskService.totalPages > 1
-	return loaded
+	// keepDateless false: preserve the windowed set, replace the unscheduled one.
+	mergeTasks(loaded, false)
 }
 
-async function loadTasks() {
-	const [windowTasks, unscheduled] = await Promise.all([
-		loadWindowTasks(),
-		loadUnscheduledTasks(),
-	])
-	// Union by id: a task legitimately appears in only one set, and the windowed
-	// copy wins if both somehow return it.
-	const map = new Map<ITask['id'], ITask>()
-	for (const task of unscheduled) {
-		map.set(task.id, task)
-	}
-	for (const task of windowTasks) {
-		map.set(task.id, task)
-	}
-	taskById.value = map
-}
+// Window-independent panel fetch — only on project/view change.
+watch(
+	() => [props.projectId, props.viewId],
+	() => {
+		if (!props.projectId || !props.viewId) {
+			return
+		}
+		void loadUnscheduledTasks()
+	},
+	{immediate: true},
+)
 
+// Windowed grid fetch — also refires as the visible date range changes.
 watch(
 	() => [props.projectId, props.viewId, windowFrom.value, windowTo.value],
 	() => {
 		if (!props.projectId || !props.viewId) {
 			return
 		}
-		void loadTasks()
+		void loadWindowTasks()
 	},
 	{immediate: true},
 )
