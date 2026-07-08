@@ -376,4 +376,188 @@ test.describe('Project View Calendar', () => {
 		await page.waitForTimeout(2500)
 		await expect(page.locator('.calendar-layout')).not.toContainText('Bleed Guard Race A')
 	})
+
+	// SC-002: opening a calendar view must issue exactly one bounded windowed
+	// fetch plus one bounded unscheduled fetch — never an unbounded full-project
+	// task pull. This invariant previously had only manual verification.
+	test('Opens with exactly one windowed fetch and one unscheduled fetch, both bounded', async ({authenticatedPage: page}) => {
+		const project = await createCalendarProject()
+
+		// Every request to the tasks collection ({...}/tasks), regardless of the
+		// two route shapes (with/without viewId).
+		const taskRequests: URL[] = []
+		page.on('request', request => {
+			if (request.method() !== 'GET') {
+				return
+			}
+			const url = new URL(request.url())
+			if (url.pathname.endsWith('/tasks')) {
+				taskRequests.push(url)
+			}
+		})
+
+		const windowResponse = page.waitForResponse(r =>
+			r.url().includes('/tasks') &&
+			new URL(r.url()).searchParams.get('filter_include_nulls') === 'false' &&
+			r.request().method() === 'GET',
+		)
+		const unscheduledResponse = page.waitForResponse(r =>
+			r.url().includes('/tasks') &&
+			r.url().includes('9999-12-31') &&
+			r.request().method() === 'GET',
+		)
+		await page.goto(`/projects/${project.id}/1`)
+		await expect(page.locator('.project-calendar')).toBeVisible()
+		await windowResponse
+		await unscheduledResponse
+
+		const isWindowed = (u: URL) =>
+			u.searchParams.get('filter_include_nulls') === 'false' &&
+			// The 4-clause window filter's distinctive spanning clause.
+			(u.searchParams.get('filter') ?? '').includes('start_date <= ') &&
+			(u.searchParams.get('filter') ?? '').includes('end_date >= ')
+		const isUnscheduled = (u: URL) =>
+			u.searchParams.get('filter_include_nulls') === 'true' &&
+			(u.searchParams.get('filter') ?? '').includes('9999-12-31')
+
+		const windowed = taskRequests.filter(isWindowed)
+		const unscheduled = taskRequests.filter(isUnscheduled)
+
+		expect(windowed).toHaveLength(1)
+		expect(unscheduled).toHaveLength(1)
+
+		// No task-collection GET may be unbounded: every one must be either the
+		// windowed or the unscheduled request (i.e. carry a date filter), and
+		// none may pull the whole project via a missing/huge per_page.
+		for (const u of taskRequests) {
+			expect(isWindowed(u) || isUnscheduled(u)).toBe(true)
+			expect(Number(u.searchParams.get('per_page'))).toBeGreaterThan(0)
+			expect(Number(u.searchParams.get('per_page'))).toBeLessThanOrEqual(250)
+		}
+	})
+
+	// The truncation banners are driven by totalPages > 1, which the frontend
+	// reads from the x-pagination-total-pages response header
+	// (abstractService.ts). Real fixtures never paginate, so force the header.
+	test('Shows the unscheduled truncation banner when that fetch is paginated', async ({authenticatedPage: page}) => {
+		const project = await createCalendarProject()
+
+		await page.route(`**/projects/${project.id}/views/1/tasks**`, async route => {
+			if (!route.request().url().includes('9999-12-31')) {
+				await route.continue()
+				return
+			}
+			const response = await route.fetch()
+			await route.fulfill({
+				response,
+				headers: {
+					...response.headers(),
+					'x-pagination-total-pages': '2',
+				},
+			})
+		})
+
+		await page.goto(`/projects/${project.id}/1`)
+
+		await expect(
+			page.locator('.calendar-unscheduled .calendar-truncation-notice'),
+		).toBeVisible()
+	})
+
+	test('Shows the window truncation banner when the windowed fetch is paginated', async ({authenticatedPage: page}) => {
+		const project = await createCalendarProject()
+
+		await page.route(`**/projects/${project.id}/views/1/tasks**`, async route => {
+			if (route.request().url().includes('9999-12-31')) {
+				await route.continue()
+				return
+			}
+			const response = await route.fetch()
+			await route.fulfill({
+				response,
+				headers: {
+					...response.headers(),
+					'x-pagination-total-pages': '2',
+				},
+			})
+		})
+
+		await page.goto(`/projects/${project.id}/1`)
+
+		await expect(
+			page.locator('.calendar-main .calendar-truncation-notice'),
+		).toBeVisible()
+	})
+
+	// The e2e backend runs in GMT, so day-boundary bugs for non-UTC users are
+	// structurally invisible to every test above. Overriding the browser
+	// timezone to UTC+12 exercises the real client-side local-day placement
+	// (dayKey/calendarDayDelta use local Date parts, not UTC).
+	test.describe('Non-UTC timezone (Pacific/Auckland, UTC+12)', () => {
+		test.use({timezoneId: 'Pacific/Auckland'})
+
+		test('Places a task on its LOCAL day cell, not its GMT day', async ({authenticatedPage: page}) => {
+			const project = await createCalendarProject()
+			// 23:00Z on Jul 20 is 11:00 on Jul 21 in Auckland: GMT day 20, local day 21.
+			const tasks = await TaskFactory.create(1, {
+				project_id: project.id,
+				due_date: new Date(Date.UTC(2026, 6, 20, 23, 0, 0)).toISOString(),
+			})
+
+			await page.goto(`/projects/${project.id}/1`)
+			await expect(page.locator('.project-calendar')).toBeVisible()
+
+			// Proof the override is live and the two calendar days genuinely differ:
+			// the same instant reads as day 21 locally but day 20 in UTC.
+			const [localDay, utcDay, tz] = await page.evaluate(() => {
+				const d = new Date('2026-07-20T23:00:00Z')
+				return [d.getDate(), d.getUTCDate(), Intl.DateTimeFormat().resolvedOptions().timeZone] as const
+			})
+			expect(tz).toBe('Pacific/Auckland')
+			expect(localDay).toBe(21)
+			expect(utcDay).toBe(20)
+
+			// The chip must sit on the LOCAL day (21), never the GMT day (20).
+			await expect(
+				page.locator('.calendar-day[data-date="2026-07-21"] .calendar-task'),
+			).toContainText(tasks[0].title)
+			await expect(
+				page.locator('.calendar-day[data-date="2026-07-20"]'),
+			).not.toContainText(tasks[0].title)
+		})
+
+		test('Drag-reschedule lands on the intended local day and persists it', async ({authenticatedPage: page}) => {
+			const project = await createCalendarProject()
+			const tasks = await TaskFactory.create(1, {
+				project_id: project.id,
+				due_date: new Date(Date.UTC(2026, 6, 20, 23, 0, 0)).toISOString(),
+			})
+
+			await page.goto(`/projects/${project.id}/1`)
+			const chip = page.locator('.calendar-day[data-date="2026-07-21"] .calendar-task', {hasText: tasks[0].title})
+			const target = page.locator('.calendar-day[data-date="2026-07-25"]')
+			await expect(chip).toBeVisible()
+
+			const updatePromise = page.waitForResponse(response =>
+				response.url().includes('/tasks/') && response.request().method() === 'POST',
+			)
+			await html5DragTo(page, chip, target)
+			const updateResponse = await updatePromise
+
+			// Lands on the intended local cell...
+			await expect(
+				page.locator('.calendar-day[data-date="2026-07-25"] .calendar-task'),
+			).toContainText(tasks[0].title)
+
+			// ...and the persisted due_date is the same local day (noon local =
+			// 00:00Z the same date under UTC+12), proving the whole-day delta math
+			// held under a non-UTC offset.
+			const saved = await updateResponse.json() as {due_date: string}
+			const savedLocalDay = await page.evaluate(
+				iso => new Date(iso).getDate(),
+				saved.due_date,
+			)
+			expect(savedLocalDay).toBe(25)
+		})
+	})
 })
