@@ -251,6 +251,23 @@
 	</Card>
 
 	<Card
+		:title="$t('user.settings.navVisibility.title')"
+		class="general-settings section-block"
+		:loading="loading"
+	>
+		<div class="field-group">
+			<FormCheckbox
+				v-for="item in TOGGLEABLE_NAV_ITEMS"
+				:key="item.key"
+				v-cy="`navVisibility-${item.key}`"
+				:model-value="isNavItemVisible(item.key)"
+				:label="$t(item.labelKey)"
+				@update:modelValue="(visible) => setNavItemVisible(item.key, visible)"
+			/>
+		</div>
+	</Card>
+
+	<Card
 		v-if="isDesktop"
 		:title="$t('user.settings.sections.desktop')"
 		class="general-settings section-block"
@@ -338,6 +355,7 @@ import {isDesktopApp} from '@/helpers/desktopAuth'
 import ShortcutRecorder from '@/components/misc/ShortcutRecorder.vue'
 import Reminders from '@/components/tasks/partials/Reminders.vue'
 import {REMINDER_PERIOD_RELATIVE_TO_TYPES} from '@/types/IReminderPeriodRelativeTo'
+import {TOGGLEABLE_NAV_ITEMS, normalizeHiddenNavItems, type ToggleableNavKey} from '@/components/home/navigationItems'
 
 defineOptions({name: 'UserSettingsGeneral'})
 
@@ -446,6 +464,7 @@ const settings = ref<IUserSettings>({
 		// Clone to escape the store's readonly array type.
 		quickAddDefaultReminders: [...(authStore.settings.frontendSettings.quickAddDefaultReminders ?? [])],
 		timeTrackingDefaultStart: authStore.settings.frontendSettings.timeTrackingDefaultStart ?? '09:00',
+		hiddenNavItems: normalizeHiddenNavItems(authStore.settings.frontendSettings.hiddenNavItems),
 	},
 })
 
@@ -481,6 +500,20 @@ watch(
 	},
 	{deep: true},
 )
+
+function isNavItemVisible(key: ToggleableNavKey) {
+	return !normalizeHiddenNavItems(settings.value.frontendSettings.hiddenNavItems).includes(key)
+}
+
+function setNavItemVisible(key: ToggleableNavKey, visible: boolean) {
+	const hidden = new Set(normalizeHiddenNavItems(settings.value.frontendSettings.hiddenNavItems))
+	if (visible) {
+		hidden.delete(key)
+	} else {
+		hidden.add(key)
+	}
+	settings.value.frontendSettings.hiddenNavItems = [...hidden]
+}
 
 function enforceBackgroundBrightnessBounds() {
 	const value = Number(settings.value.frontendSettings.backgroundBrightness)
@@ -575,6 +608,7 @@ watch(
 			frontendSettings: {
 				...authStore.settings.frontendSettings,
 				quickAddDefaultReminders: [...(authStore.settings.frontendSettings.quickAddDefaultReminders ?? [])],
+				hiddenNavItems: normalizeHiddenNavItems(authStore.settings.frontendSettings.hiddenNavItems),
 			},
 		}
 	},

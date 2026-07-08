@@ -39,6 +39,7 @@ export default class UserSettingsModel extends AbstractModel<IUserSettings> impl
 		commentSortOrder: 'asc',
 		desktopQuickEntryShortcut: 'CmdOrCtrl+Shift+A',
 		quickAddDefaultReminders: [],
+		hiddenNavItems: [],
 	}
 	extraSettingsLinks = {}
 

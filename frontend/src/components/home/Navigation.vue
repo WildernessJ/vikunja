@@ -27,7 +27,7 @@
 						{{ $t('navigation.overview') }}
 					</RouterLink>
 				</li>
-				<li>
+				<li v-if="isNavItemVisible('upcoming')">
 					<RouterLink
 						v-shortcut="'KeyG KeyU'"
 						:to="{ name: 'tasks.range'}"
@@ -38,7 +38,7 @@
 						{{ $t('navigation.upcoming') }}
 					</RouterLink>
 				</li>
-				<li>
+				<li v-if="isNavItemVisible('today')">
 					<RouterLink
 						v-shortcut="'KeyG KeyT'"
 						:to="{ name: 'tasks.today'}"
@@ -50,7 +50,7 @@
 						<CountBadge :count="projectCountsStore.todayTotal" />
 					</RouterLink>
 				</li>
-				<li>
+				<li v-if="isNavItemVisible('projects')">
 					<RouterLink
 						v-shortcut="'KeyG KeyP'"
 						:to="{ name: 'projects.index'}"
@@ -61,7 +61,7 @@
 						{{ $t('project.projects') }}
 					</RouterLink>
 				</li>
-				<li>
+				<li v-if="isNavItemVisible('labels')">
 					<RouterLink
 						v-shortcut="'KeyG KeyA'"
 						:to="{ name: 'labels.index'}"
@@ -72,7 +72,7 @@
 						{{ $t('label.title') }}
 					</RouterLink>
 				</li>
-				<li>
+				<li v-if="isNavItemVisible('templates')">
 					<RouterLink
 						:to="{ name: 'templates.index'}"
 					>
@@ -82,7 +82,7 @@
 						{{ $t('project.template.libraryTitle') }}
 					</RouterLink>
 				</li>
-				<li>
+				<li v-if="isNavItemVisible('teams')">
 					<RouterLink
 						v-shortcut="'KeyG KeyM'"
 						:to="{ name: 'teams.index'}"
@@ -164,15 +164,18 @@ import CountBadge from '@/components/misc/CountBadge.vue'
 
 import {useBaseStore} from '@/stores/base'
 import {useProjectStore} from '@/stores/projects'
+import {useAuthStore} from '@/stores/auth'
 import {useConfigStore} from '@/stores/config'
 import {useProjectCountsStore} from '@/stores/projectCounts'
 import {PRO_FEATURE} from '@/constants/proFeatures'
 import ProjectsNavigation from '@/components/home/ProjectsNavigation.vue'
+import {normalizeHiddenNavItems, type ToggleableNavKey} from '@/components/home/navigationItems'
 import type {IProject} from '@/modelTypes/IProject'
 import {useSidebarResize} from '@/composables/useSidebarResize'
 
 const baseStore = useBaseStore()
 const projectStore = useProjectStore()
+const authStore = useAuthStore()
 const configStore = useConfigStore()
 const projectCountsStore = useProjectCountsStore()
 
@@ -181,6 +184,12 @@ onMounted(() => {
 })
 
 const timeTrackingEnabled = computed(() => configStore.isProFeatureEnabled(PRO_FEATURE.TIME_TRACKING))
+
+// undefined for real/e2e users until they've saved this setting at least once
+const hiddenNavItems = computed(() => new Set(normalizeHiddenNavItems(authStore.settings.frontendSettings.hiddenNavItems)))
+function isNavItemVisible(key: ToggleableNavKey) {
+	return !hiddenNavItems.value.has(key)
+}
 
 const {sidebarWidth, isResizing, startResize, isMobile} = useSidebarResize()
 
