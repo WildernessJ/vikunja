@@ -39,6 +39,8 @@ func (p *ProjectViewKind) MarshalJSON() ([]byte, error) {
 		return []byte(`"table"`), nil
 	case ProjectViewKindKanban:
 		return []byte(`"kanban"`), nil
+	case ProjectViewKindCalendar:
+		return []byte(`"calendar"`), nil
 	}
 
 	return []byte(`null`), nil
@@ -60,6 +62,8 @@ func (p *ProjectViewKind) UnmarshalJSON(bytes []byte) error {
 		*p = ProjectViewKindTable
 	case "kanban":
 		*p = ProjectViewKindKanban
+	case "calendar":
+		*p = ProjectViewKindCalendar
 	default:
 		return fmt.Errorf("unknown project view kind: %s", value)
 	}
@@ -74,7 +78,7 @@ func (p *ProjectViewKind) UnmarshalJSON(bytes []byte) error {
 func (*ProjectViewKind) Schema(_ huma.Registry) *huma.Schema {
 	return &huma.Schema{
 		Type: "string",
-		Enum: []any{"list", "gantt", "table", "kanban"},
+		Enum: []any{"list", "gantt", "table", "kanban", "calendar"},
 	}
 }
 
@@ -87,6 +91,7 @@ const (
 	ProjectViewKindGantt
 	ProjectViewKindTable
 	ProjectViewKindKanban
+	ProjectViewKindCalendar
 )
 
 type BucketConfigurationModeKind int
@@ -156,8 +161,8 @@ type ProjectView struct {
 	Title string `xorm:"varchar(255) not null" json:"title" valid:"required,runelength(1|250)" minLength:"1" maxLength:"250" doc:"The title of this view."`
 	// The project this view belongs to
 	ProjectID int64 `xorm:"not null index" json:"project_id" param:"project" readOnly:"true" doc:"The project this view belongs to. Taken from the URL path; ignored on write."`
-	// The kind of this view. Can be `list`, `gantt`, `table` or `kanban`.
-	ViewKind ProjectViewKind `xorm:"not null" json:"view_kind" swaggertype:"string" enums:"list,gantt,table,kanban" doc:"The kind of this view. One of list, gantt, table or kanban."`
+	// The kind of this view. Can be `list`, `gantt`, `table`, `kanban` or `calendar`.
+	ViewKind ProjectViewKind `xorm:"not null" json:"view_kind" swaggertype:"string" enums:"list,gantt,table,kanban,calendar" doc:"The kind of this view. One of list, gantt, table, kanban or calendar."`
 
 	// The filter query to match tasks by. Check out https://vikunja.io/docs/filters for a full explanation.
 	Filter *TaskCollection `xorm:"json null default null" query:"filter" json:"filter" doc:"The filter query used to match tasks shown in this view. See https://vikunja.io/docs/filters."`

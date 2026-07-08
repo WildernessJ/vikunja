@@ -192,6 +192,19 @@ func TestProjectView(t *testing.T) {
 			// ownership: the parent project from the URL wins.
 			assert.Contains(t, rec.Body.String(), `"project_id":1`)
 		})
+		t.Run("Calendar kind", func(t *testing.T) {
+			rec, err := owned.testCreateWithUser(nil, nil, `{"title":"New calendar","view_kind":"calendar"}`)
+			require.NoError(t, err)
+			assert.Equal(t, http.StatusCreated, rec.Code)
+			assert.Contains(t, rec.Body.String(), `"view_kind":"calendar"`)
+		})
+		t.Run("Unknown kind", func(t *testing.T) {
+			// "month" isn't a valid ProjectViewKind; Huma's Schema Enum check
+			// rejects it before the model sees it.
+			_, err := owned.testCreateWithUser(nil, nil, `{"title":"Bad kind","view_kind":"month"}`)
+			require.Error(t, err)
+			assert.Equal(t, http.StatusUnprocessableEntity, getHTTPErrorCode(err))
+		})
 		t.Run("Admin share can create", func(t *testing.T) {
 			// project 11 admin share clears Project.IsAdmin → CanCreate passes.
 			rec, err := adminShared.testCreateWithUser(nil, nil, `{"title":"Admin made","view_kind":"list"}`)

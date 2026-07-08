@@ -146,7 +146,8 @@ const isFullWidth = computed(() => {
 	const view = projectStore.projects[Number(projectId)]?.views.find(v => v.id === Number(viewId))
 
 	return view?.viewKind === PROJECT_VIEW_KINDS.KANBAN ||
-		view?.viewKind === PROJECT_VIEW_KINDS.GANTT
+		view?.viewKind === PROJECT_VIEW_KINDS.GANTT ||
+		view?.viewKind === PROJECT_VIEW_KINDS.CALENDAR
 })
 </script>
 
