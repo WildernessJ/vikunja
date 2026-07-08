@@ -37,6 +37,32 @@ async function createCalendarProject() {
 	return projects[0]
 }
 
+// Two projects, each with its own calendar view (ids 1 and 2), so the same
+// ProjectCalendar.vue instance gets reused (not remounted) when navigating
+// between them client-side — see project.view route in router/index.ts.
+async function createTwoCalendarProjects() {
+	const projects = await ProjectFactory.create(2, {
+		title: i => `Calendar Bleed Project ${i}`,
+	})
+	for (let i = 0; i < projects.length; i++) {
+		await ProjectViewFactory.create(1, {
+			id: i + 1,
+			project_id: projects[i].id,
+			view_kind: VIEW_KIND_CALENDAR,
+		}, i === 0)
+	}
+	return projects
+}
+
+// A pure client-side router-link click — unlike page.goto(), this reuses the
+// existing route component instance instead of remounting it, which is the
+// precondition for the cross-project data-bleed bug this file guards against.
+async function navigateViaSidebar(page: Page, projectTitle: string) {
+	await page.locator('.menu-list .list-menu-link', {
+		has: page.locator('.project-menu-title', {hasText: new RegExp(`^${projectTitle}$`)}),
+	}).first().click()
+}
+
 test.describe('Project View Calendar', () => {
 	test.beforeEach(async ({page}) => {
 		// Pin "today" to July 2026 so month navigation is deterministic.
@@ -258,5 +284,96 @@ test.describe('Project View Calendar', () => {
 			page.locator('.calendar-day[data-date="2026-07-10"] .calendar-task'),
 		).toContainText(tasks[0].title)
 		await expect(page.locator('.calendar-task[draggable="true"]')).toHaveCount(0)
+	})
+
+	// ProjectView.vue renders ProjectCalendar behind `v-if="currentView?.viewKind
+	// === 'calendar'"`. The first time a project is visited, its full project+views
+	// payload hasn't loaded into projectStore yet, so that v-if transiently goes
+	// false and Vue remounts a fresh ProjectCalendar instance — which accidentally
+	// clears taskById regardless of any bug. To exercise the actual reuse path (the
+	// one the router-has-no-:key bug report is about), both projects must already
+	// be cached in the store *before* the navigation under test, so currentView
+	// resolves synchronously and the component instance is never unmounted.
+	async function primeCalendarProjectsCache(page: Page, projectA: {id: number, title: string}, projectB: {id: number, title: string}) {
+		await page.goto(`/projects/${projectA.id}/1`)
+		await expect(page.locator('.project-calendar')).toBeVisible()
+		await navigateViaSidebar(page, projectB.title)
+		await expect(page.locator('.project-calendar')).toBeVisible()
+		await navigateViaSidebar(page, projectA.title)
+		await expect(page.locator('.project-calendar')).toBeVisible()
+	}
+
+	test('Switching projects via the sidebar does not leak the previous project\'s tasks', async ({authenticatedPage: page}) => {
+		const [projectA, projectB] = await createTwoCalendarProjects()
+		await TaskFactory.create(2, {
+			id: '{increment}',
+			project_id: i => (i === 1 ? projectA.id : projectB.id),
+			title: i => (i === 1 ? 'Bleed Guard Unscheduled A' : 'Bleed Guard Unscheduled B'),
+			due_date: null,
+			start_date: null,
+			end_date: null,
+		})
+
+		// Cache both projects first so the upcoming A → B hop reuses the live
+		// component instance instead of remounting it.
+		await primeCalendarProjectsCache(page, projectA, projectB)
+		await expect(page.locator('.calendar-unscheduled')).toContainText('Bleed Guard Unscheduled A')
+
+		// Delay B's task fetches so any stale A data would stay visible long
+		// enough to observe — this is the reused-instance hop under test.
+		await page.route(`**/projects/${projectB.id}/views/2/tasks**`, async route => {
+			await new Promise(resolve => setTimeout(resolve, 1500))
+			await route.continue()
+		})
+
+		await navigateViaSidebar(page, projectB.title)
+		await expect(page).toHaveURL(new RegExp(`/projects/${projectB.id}/`))
+
+		// Checked immediately, well before B's delayed fetches resolve: A's task
+		// must already be gone. Without the fix, taskById is never reset on
+		// navigation, so A's task would still be showing at this point.
+		await expect(page.locator('.calendar-layout')).not.toContainText('Bleed Guard Unscheduled A', {timeout: 400})
+
+		// Once B's fetches finally resolve, its own task must be present and
+		// A's must still never have reappeared.
+		await expect(page.locator('.calendar-unscheduled')).toContainText('Bleed Guard Unscheduled B')
+		await expect(page.locator('.calendar-layout')).not.toContainText('Bleed Guard Unscheduled A')
+	})
+
+	test('A slow response from the previous project does not overwrite the new project once it finally resolves', async ({authenticatedPage: page}) => {
+		const [projectA, projectB] = await createTwoCalendarProjects()
+		await TaskFactory.create(2, {
+			id: '{increment}',
+			project_id: i => (i === 1 ? projectA.id : projectB.id),
+			title: i => (i === 1 ? 'Bleed Guard Race A' : 'Bleed Guard Race B'),
+			due_date: null,
+			start_date: null,
+			end_date: null,
+		})
+
+		// Cache both projects first so every hop below reuses the live component
+		// instance — required for the out-of-order response to have anywhere to leak into.
+		await primeCalendarProjectsCache(page, projectA, projectB)
+		await navigateViaSidebar(page, projectB.title)
+		await expect(page.locator('.calendar-unscheduled')).toContainText('Bleed Guard Race B')
+
+		// Delay every task fetch for project A's calendar view (both the windowed
+		// and unscheduled requests share this path) so it resolves only after
+		// we've already navigated away to project B again — reproducing the
+		// out-of-order async overwrite the sequence guard defends against.
+		await page.route(`**/projects/${projectA.id}/views/1/tasks**`, async route => {
+			await new Promise(resolve => setTimeout(resolve, 1500))
+			await route.continue()
+		})
+
+		await navigateViaSidebar(page, projectA.title)
+		// Navigate away immediately, without waiting for A's (delayed) tasks to load.
+		await navigateViaSidebar(page, projectB.title)
+		await expect(page).toHaveURL(new RegExp(`/projects/${projectB.id}/`))
+		await expect(page.locator('.calendar-unscheduled')).toContainText('Bleed Guard Race B')
+
+		// Give A's delayed response time to resolve and attempt (and fail) to merge.
+		await page.waitForTimeout(2500)
+		await expect(page.locator('.calendar-layout')).not.toContainText('Bleed Guard Race A')
 	})
 })
