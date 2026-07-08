@@ -20,10 +20,15 @@ import (
 	"code.vikunja.io/api/pkg/config"
 	"code.vikunja.io/api/pkg/db"
 	"code.vikunja.io/api/pkg/events"
+	"code.vikunja.io/api/pkg/log"
 	"code.vikunja.io/api/pkg/user"
 
 	"xorm.io/xorm"
 )
+
+// reloadUserAfterCreate is the post-commit reload, wired as a variable so tests can
+// force a reload failure and assert the account and its events survive it.
+var reloadUserAfterCreate = user.GetUserByID
 
 // CreateUserBody wraps user.APIUserPassword with admin-only fields.
 type CreateUserBody struct {
@@ -67,6 +72,11 @@ func CreateUserAsAdmin(s *xorm.Session, doer *user.User, body *CreateUserBody) (
 			return nil, err
 		}
 		newUser.Status = user.StatusActive
+	} else {
+		// RegisterUser already persisted StatusEmailConfirmationRequired but returned
+		// the pre-update in-memory copy (still StatusActive). Sync it so the fallback
+		// below reports the real status if the post-commit reload fails.
+		newUser.Status = user.StatusEmailConfirmationRequired
 	}
 
 	// Queued alongside the user.created event RegisterUser dispatched; both
@@ -77,9 +87,18 @@ func CreateUserAsAdmin(s *xorm.Session, doer *user.User, body *CreateUserBody) (
 		return nil, err
 	}
 
-	// Reload on a fresh session so the returned status reflects what was actually
-	// persisted (e.g. StatusEmailConfirmationRequired on mail-enabled instances).
+	// The account is durably created now. Reload on a fresh session so the returned
+	// status reflects what was actually persisted, but a failed reload must not report
+	// failure — that would make the caller roll back (a no-op) and drop the queued
+	// user.created/admin.user.created events for an account that already exists,
+	// leaving it unaudited and unannounced and a retry blocked on a duplicate username.
+	// Fall back to the in-memory user, whose status was synced above.
 	rs := db.NewSession()
 	defer rs.Close()
-	return user.GetUserByID(rs, newUser.ID)
+	reloaded, err := reloadUserAfterCreate(rs, newUser.ID)
+	if err != nil {
+		log.Errorf("User %d created by admin %d but post-commit reload failed; returning in-memory copy: %s", newUser.ID, doer.ID, err)
+		return newUser, nil
+	}
+	return reloaded, nil
 }

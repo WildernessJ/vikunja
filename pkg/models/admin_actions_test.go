@@ -18,6 +18,7 @@ package models
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -27,6 +28,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"xorm.io/xorm"
 )
 
 // The admin model actions dispatch their audit events on commit; these tests
@@ -325,5 +327,43 @@ func TestCreateUserAsAdmin_Events(t *testing.T) {
 		events.CleanupPending(s)
 
 		assert.Zero(t, events.CountDispatchedEvents((&AdminUserCreatedEvent{}).Name()))
+	})
+
+	// A reload failure happens after the commit, so the account is durable. The
+	// create must report success and keep its events; otherwise the caller rolls
+	// back (a no-op) and drops the events, leaving the account unaudited and a
+	// retry blocked on the duplicate username. Regression test for issue #13.
+	t.Run("post-commit reload failure keeps the user and its events", func(t *testing.T) {
+		adminActionsSetup(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		original := reloadUserAfterCreate
+		reloadUserAfterCreate = func(_ *xorm.Session, _ int64) (*user.User, error) {
+			return nil, errors.New("transient reload failure")
+		}
+		defer func() { reloadUserAfterCreate = original }()
+
+		newUser, err := CreateUserAsAdmin(s, doer, &CreateUserBody{
+			APIUserPassword: user.APIUserPassword{
+				Username: "admin-created-reload-fail",
+				Password: "averyl0ngpassword",
+				Email:    "admin-created-reload-fail@example.com",
+			},
+		})
+		require.NoError(t, err, "a committed account must not be reported as failed")
+		require.NotNil(t, newUser)
+		assert.NotZero(t, newUser.ID, "the in-memory fallback must carry the persisted ID")
+
+		events.DispatchPending(context.Background(), s)
+		evt := singleDispatchedEvent[*AdminUserCreatedEvent](t)
+		assert.Equal(t, newUser.ID, evt.User.ID)
+		events.AssertDispatched(t, &user.CreatedEvent{})
+
+		vs := db.NewSession()
+		defer vs.Close()
+		persisted, err := user.GetUserByID(vs, newUser.ID)
+		require.NoError(t, err, "the account must be durably committed")
+		assert.Equal(t, "admin-created-reload-fail", persisted.Username)
 	})
 }
