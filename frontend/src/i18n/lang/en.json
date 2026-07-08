@@ -582,7 +582,6 @@
       "next": "Next",
       "unscheduled": "Unscheduled",
       "unscheduledEmpty": "No unscheduled tasks",
-      "addTaskPlaceholder": "Enter the new task title…",
       "windowTruncated": "This period has more tasks than can be shown at once. Some tasks are not displayed — narrow the date range to see them all.",
       "unscheduledTruncated": "Showing only the first page of unscheduled tasks. Some are not listed."
     },
