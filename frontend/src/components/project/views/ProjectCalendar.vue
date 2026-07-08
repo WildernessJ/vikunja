@@ -23,14 +23,14 @@
 								:aria-label="$t('project.calendar.previous')"
 								@click="goPrevious"
 							>
-								<Icon icon="chevron-left" />
+								<Icon icon="angle-left" />
 							</BaseButton>
 							<BaseButton
 								class="calendar-next"
 								:aria-label="$t('project.calendar.next')"
 								@click="goNext"
 							>
-								<Icon icon="chevron-right" />
+								<Icon icon="angle-right" />
 							</BaseButton>
 							<span class="calendar-period-label">{{ periodLabel }}</span>
 						</div>

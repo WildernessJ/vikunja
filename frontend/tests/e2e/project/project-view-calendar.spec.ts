@@ -52,6 +52,54 @@ test.describe('Project View Calendar', () => {
 		await expect(page.locator('.calendar-day[data-date="2026-07-08"]')).toBeVisible()
 	})
 
+	test('Month prev/next/today navigation is visible and changes the month', async ({authenticatedPage: page}) => {
+		const project = await createCalendarProject()
+		// A July-only task so we can prove the visible window actually moves.
+		const julyTask = await TaskFactory.create(1, {
+			project_id: project.id,
+			due_date: noonUTC(2026, 7, 10),
+		})
+		await page.goto(`/projects/${project.id}/1`)
+
+		// The nav icons must actually render — an unregistered FontAwesome icon
+		// produces no svg, which is exactly the regression this guards.
+		await expect(page.locator('.calendar-prev svg')).toBeVisible()
+		await expect(page.locator('.calendar-next svg')).toBeVisible()
+		await expect(page.locator('.calendar-period-label')).toContainText('July 2026')
+		await expect(page.locator('.calendar-day[data-date="2026-07-10"] .calendar-task')).toContainText(julyTask[0].title)
+
+		// Next → August: July's task leaves the visible window.
+		await page.locator('.calendar-next').click()
+		await expect(page.locator('.calendar-period-label')).toContainText('August 2026')
+		await expect(page.locator('.calendar-grid')).not.toContainText(julyTask[0].title)
+
+		// Prev twice → June.
+		await page.locator('.calendar-prev').click()
+		await page.locator('.calendar-prev').click()
+		await expect(page.locator('.calendar-period-label')).toContainText('June 2026')
+
+		// Today → back to July, task visible again.
+		await page.locator('.calendar-today').click()
+		await expect(page.locator('.calendar-period-label')).toContainText('July 2026')
+		await expect(page.locator('.calendar-day[data-date="2026-07-10"] .calendar-task')).toContainText(julyTask[0].title)
+	})
+
+	test('Week mode next advances the range by seven days', async ({authenticatedPage: page}) => {
+		const project = await createCalendarProject()
+		await page.goto(`/projects/${project.id}/1`)
+
+		await page.locator('.calendar-mode-week').click()
+		await expect(page.locator('.calendar-grid.is-week .calendar-day')).toHaveCount(7)
+
+		// 2026-07-08 is a Wednesday; the default (Sunday-start) week is Jul 5–11.
+		await expect(page.locator('.calendar-day[data-date="2026-07-08"]')).toBeVisible()
+
+		await page.locator('.calendar-next').click()
+		// Next week: Jul 12–18. The prior week's Wednesday cell is gone; the new one is present.
+		await expect(page.locator('.calendar-day[data-date="2026-07-15"]')).toBeVisible()
+		await expect(page.locator('.calendar-day[data-date="2026-07-08"]')).toHaveCount(0)
+	})
+
 	test('Places a task on its due-date cell', async ({authenticatedPage: page}) => {
 		const project = await createCalendarProject()
 		const tasks = await TaskFactory.create(1, {
