@@ -112,7 +112,7 @@
 							>
 								<AddTask
 									v-if="canWrite && quickCreateKey === day.key"
-									:ref="el => quickAddRef = el as ComponentPublicInstance | null"
+									:ref="setQuickAddRef"
 									class="calendar-quick-add"
 									@taskAdded="task => onQuickTaskAdded(day, task)"
 									@click.stop
@@ -577,6 +577,11 @@ function replaceTask(task: ITask) {
 
 const quickCreateKey = ref<DateKebab | null>(null)
 const quickAddRef = ref<ComponentPublicInstance | null>(null)
+// Kept out of the template: a `| null` union in a template ref expression trips
+// eslint's vue/no-deprecated-filter (it reads the `|` as a Vue 2 filter pipe).
+function setQuickAddRef(el: Element | ComponentPublicInstance | null) {
+	quickAddRef.value = el as ComponentPublicInstance | null
+}
 
 // Dismiss the inline quick-create when clicking anywhere outside it. onClickOutside
 // resolves quickAddRef to the AddTask root element; a null ref (nothing open) makes
