@@ -52,6 +52,14 @@
 						</div>
 					</div>
 
+					<Message
+						v-if="windowTruncated"
+						variant="warning"
+						class="calendar-truncation-notice mbe-2"
+					>
+						{{ $t('project.calendar.windowTruncated') }}
+					</Message>
+
 					<div class="calendar-weekdays">
 						<div
 							v-for="label in weekdayLabels"
@@ -117,6 +125,13 @@
 					<h3 class="calendar-unscheduled-title">
 						{{ $t('project.calendar.unscheduled') }}
 					</h3>
+					<Message
+						v-if="unscheduledTruncated"
+						variant="warning"
+						class="calendar-truncation-notice mbe-2"
+					>
+						{{ $t('project.calendar.unscheduledTruncated') }}
+					</Message>
 					<p
 						v-if="unscheduledTasks.length === 0"
 						class="calendar-unscheduled-empty"
@@ -151,6 +166,7 @@ import ProjectWrapper from '@/components/project/ProjectWrapper.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
 import XButton from '@/components/input/Button.vue'
 import AddTask from '@/components/tasks/AddTask.vue'
+import Message from '@/components/misc/Message.vue'
 
 import {useBaseStore} from '@/stores/base'
 import {useAuthStore} from '@/stores/auth'
@@ -175,18 +191,25 @@ const props = defineProps<{
 const MONTH_GRID_DAYS = 42
 const WEEK_GRID_DAYS = 7
 const DAY_MS = 86_400_000
+// A date no task can be on or after; paired with filter_include_nulls it selects
+// exactly the rows whose due_date IS NULL (Vikunja's filter language has no IS NULL).
+const NEVER_MATCHING_DATE_FILTER = 'due_date > "9999-12-31"'
 
 const router = useRouter()
 const baseStore = useBaseStore()
 const authStore = useAuthStore()
 const taskStore = useTaskStore()
 
-const taskCollectionService = shallowReactive(new TaskCollectionService())
+// Two decoupled services so each keeps its own totalPages for the truncation guard.
+const windowTaskService = shallowReactive(new TaskCollectionService())
+const unscheduledTaskService = shallowReactive(new TaskCollectionService())
 
 const mode = ref<'month' | 'week'>('month')
 const anchor = ref<Date>(startOfDay(new Date()))
-const tasks = ref<ITask[]>([])
-const loading = computed(() => taskCollectionService.loading)
+const taskById = ref<Map<ITask['id'], ITask>>(new Map())
+const windowTruncated = ref(false)
+const unscheduledTruncated = ref(false)
+const loading = computed(() => windowTaskService.loading || unscheduledTaskService.loading)
 
 const canWrite = computed(() => (baseStore.currentProject?.maxPermission ?? PERMISSIONS.READ) > PERMISSIONS.READ)
 const weekStart = computed<number>(() => authStore.settings.weekStart ?? 0)
@@ -307,9 +330,11 @@ function taskDayKeys(task: ITask): DateKebab[] {
 	return anchorDate ? [dayKey(anchorDate)] : []
 }
 
+const allTasks = computed<ITask[]>(() => [...taskById.value.values()])
+
 const tasksByDay = computed<Map<DateKebab, ITask[]>>(() => {
 	const map = new Map<DateKebab, ITask[]>()
-	for (const task of tasks.value) {
+	for (const task of allTasks.value) {
 		for (const key of taskDayKeys(task)) {
 			const bucket = map.get(key)
 			if (bucket) {
@@ -322,26 +347,67 @@ const tasksByDay = computed<Map<DateKebab, ITask[]>>(() => {
 	return map
 })
 
+// Only fully-dateless tasks belong in the panel. The server fetch keys on due_date
+// being null, so a task with a start/end but no due_date would leak in — this
+// predicate is the authoritative filter, never the server response alone.
 const unscheduledTasks = computed<ITask[]>(() =>
-	tasks.value.filter(task => taskAnchorDate(task) === null),
+	allTasks.value.filter(task => taskAnchorDate(task) === null),
 )
 
-async function loadTasks() {
+// The grid: one windowed request for the tasks intersecting the visible days,
+// with include_nulls OFF so dateless tasks never compete for its page budget.
+async function loadWindowTasks(): Promise<ITask[]> {
 	const params: TaskFilterParams = {
 		sort_by: ['due_date', 'start_date', 'id'],
 		order_by: ['asc', 'asc', 'asc'],
 		filter: buildDateWindowFilterQuery(windowFrom.value, windowTo.value),
+		filter_include_nulls: false,
+		filter_timezone: authStore.settings.timezone,
+		s: '',
+		per_page: 250,
+	}
+	const loaded = await windowTaskService.getAll(
+		{projectId: props.projectId, viewId: props.viewId},
+		params,
+	) as ITask[]
+	windowTruncated.value = windowTaskService.totalPages > 1
+	return loaded
+}
+
+// The panel: a separate request returning only tasks whose due_date IS NULL.
+async function loadUnscheduledTasks(): Promise<ITask[]> {
+	const params: TaskFilterParams = {
+		sort_by: ['id'],
+		order_by: ['asc'],
+		filter: NEVER_MATCHING_DATE_FILTER,
 		filter_include_nulls: true,
 		filter_timezone: authStore.settings.timezone,
 		s: '',
 		per_page: 250,
 	}
-
-	const loaded = await taskCollectionService.getAll(
+	const loaded = await unscheduledTaskService.getAll(
 		{projectId: props.projectId, viewId: props.viewId},
 		params,
 	) as ITask[]
-	tasks.value = loaded
+	unscheduledTruncated.value = unscheduledTaskService.totalPages > 1
+	return loaded
+}
+
+async function loadTasks() {
+	const [windowTasks, unscheduled] = await Promise.all([
+		loadWindowTasks(),
+		loadUnscheduledTasks(),
+	])
+	// Union by id: a task legitimately appears in only one set, and the windowed
+	// copy wins if both somehow return it.
+	const map = new Map<ITask['id'], ITask>()
+	for (const task of unscheduled) {
+		map.set(task.id, task)
+	}
+	for (const task of windowTasks) {
+		map.set(task.id, task)
+	}
+	taskById.value = map
 }
 
 watch(
@@ -464,14 +530,9 @@ async function rescheduleTask(task: ITask, targetDay: Date) {
 }
 
 function replaceTask(task: ITask) {
-	const index = tasks.value.findIndex(t => t.id === task.id)
-	if (index === -1) {
-		tasks.value = [...tasks.value, task]
-		return
-	}
-	const next = [...tasks.value]
-	next[index] = task
-	tasks.value = next
+	const next = new Map(taskById.value)
+	next.set(task.id, task)
+	taskById.value = next
 }
 
 const quickCreateKey = ref<DateKebab | null>(null)

@@ -78,6 +78,11 @@ test.describe('Project View Calendar', () => {
 				page.locator(`.calendar-day[data-date="${day}"] .calendar-task`),
 			).toContainText(tasks[0].title)
 		}
+
+		// A start/end task has a null due_date, so the unscheduled fetch
+		// (due_date IS NULL) returns it — the client-side "all dates null" guard
+		// must still keep it out of the panel.
+		await expect(page.locator('.calendar-unscheduled')).not.toContainText(tasks[0].title)
 	})
 
 	test('Lists dateless tasks in the unscheduled panel', async ({authenticatedPage: page}) => {
