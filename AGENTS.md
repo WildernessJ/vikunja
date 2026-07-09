@@ -303,6 +303,16 @@ The license system in `pkg/license/` funds Vikunja's ongoing development. Vikunj
 - CORS settings in backend must allow frontend domain
 - API tokens have different scopes - check permissions carefully
 
-## Harness
+## Workflow (v2 — adopted 2026-07-09, replaced the spec/plan/build/verify harness)
 
-This project uses the harness. Always read `.harness.yaml` before any spec/plan/build/verify operation.
+Follows the global **Coding Workflow (v2)** section in `~/.claude/CLAUDE.md`. Per-repo
+config is `.workflow.yaml` at repo root (local-only, git-excluded): mage-based build/test
+commands (plain `go test` does NOT work — see Essential Commands), frontend typecheck,
+and the `pending_verify` key the Stop hook enforces.
+
+Flow: worktree (`mage dev:prepare-worktree` still works; pass `""` for the plan arg) →
+spec ONLY for a real feature (30–60 lines in `specs/`, local-only) → implement with
+`/tdd` → suite + `/code-review` + live-verify in the browser → merge. ADRs in
+`docs/adr/` (see its README for the threshold). Legacy `specs/`, `plans/`, `.verified/`
+are frozen history — no new plan files, no fat specs. `.harness.yaml.archived` preserves
+the old feature queue (NOTE: `email-to-task` was still pending there).
