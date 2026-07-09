@@ -249,6 +249,7 @@ import {useAuthStore} from '@/stores/auth'
 import Reactions from '@/components/input/Reactions.vue'
 import {useCopyToClipboard} from '@/composables/useCopyToClipboard'
 import {commentReplyContextKey, scrollAndHighlightComment} from '@/components/tasks/partials/commentReplyContext'
+import {normalizeHiddenNavItems} from '@/components/home/navigationItems'
 
 const props = withDefaults(defineProps<{
 	taskId: number,
@@ -435,6 +436,7 @@ async function toggleSortOrder() {
 					...authStore.settings.frontendSettings,
 					commentSortOrder: newOrder,
 					quickAddDefaultReminders: [...(authStore.settings.frontendSettings.quickAddDefaultReminders ?? [])],
+					hiddenNavItems: normalizeHiddenNavItems(authStore.settings.frontendSettings.hiddenNavItems),
 				},
 			},
 			showMessage: false,
