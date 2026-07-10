@@ -56,6 +56,16 @@
 					:options="minimumPriorityOptions"
 				/>
 			</FormField>
+			<div class="field">
+				<label class="label">{{ $t('user.settings.general.overviewProjects') }}</label>
+				<p class="help">
+					{{ $t('user.settings.general.overviewProjectsDescription') }}
+				</p>
+				<ProjectSearchMultiple
+					v-model="overviewProjects"
+					data-cy="overviewProjects"
+				/>
+			</div>
 			<FormField
 				v-if="hasFilters"
 				:label="$t('user.settings.general.filterUsedOnOverview')"
@@ -327,6 +337,7 @@ import isEqual from 'fast-deep-equal'
 import {PrefixMode} from '@/modules/quickAddMagic'
 
 import ProjectSearch from '@/components/tasks/partials/ProjectSearch.vue'
+import ProjectSearchMultiple from '@/components/tasks/partials/ProjectSearchMultiple.vue'
 import Multiselect from '@/components/input/Multiselect.vue'
 import CustomTransition from '@/components/misc/CustomTransition.vue'
 import FormField from '@/components/input/FormField.vue'
@@ -344,7 +355,9 @@ import {useProjectStore} from '@/stores/projects'
 import {useAuthStore} from '@/stores/auth'
 import {useConfigStore} from '@/stores/config'
 import type {IUserSettings} from '@/modelTypes/IUserSettings'
+import type {IProject} from '@/modelTypes/IProject'
 import {isSavedFilter} from '@/services/savedFilter'
+import {normalizeOverviewProjectIds} from '@/helpers/overviewTaskFilter'
 import {DEFAULT_PROJECT_VIEW_SETTINGS} from '@/modelTypes/IProjectView'
 import {PRIORITIES} from '@/constants/priorities'
 import {DATE_DISPLAY} from '@/constants/dateDisplay'
@@ -465,6 +478,7 @@ const settings = ref<IUserSettings>({
 		quickAddDefaultReminders: [...(authStore.settings.frontendSettings.quickAddDefaultReminders ?? [])],
 		timeTrackingDefaultStart: authStore.settings.frontendSettings.timeTrackingDefaultStart ?? '09:00',
 		hiddenNavItems: normalizeHiddenNavItems(authStore.settings.frontendSettings.hiddenNavItems),
+		overviewProjectIds: normalizeOverviewProjectIds(authStore.settings.frontendSettings.overviewProjectIds),
 	},
 })
 
@@ -609,6 +623,7 @@ watch(
 				...authStore.settings.frontendSettings,
 				quickAddDefaultReminders: [...(authStore.settings.frontendSettings.quickAddDefaultReminders ?? [])],
 				hiddenNavItems: normalizeHiddenNavItems(authStore.settings.frontendSettings.hiddenNavItems),
+				overviewProjectIds: normalizeOverviewProjectIds(authStore.settings.frontendSettings.overviewProjectIds),
 			},
 		}
 	},
@@ -629,6 +644,18 @@ const filterUsedInOverview = computed({
 	},
 })
 const hasFilters = computed(() => typeof projectStore.projectsArray.find(p => isSavedFilter(p)) !== 'undefined')
+const overviewProjects = computed<IProject[]>({
+	get: () => normalizeOverviewProjectIds(settings.value.frontendSettings.overviewProjectIds)
+		.map((id): IProject | undefined => projectStore.projects[id] as IProject | undefined)
+		.filter((p): p is IProject => typeof p !== 'undefined'),
+	set: (projects: IProject[]) => {
+		// Keep stored ids whose project isn't in the store yet (archived projects load via a
+		// separate paginated pass) so editing the selection can't silently drop them.
+		const unresolved = normalizeOverviewProjectIds(settings.value.frontendSettings.overviewProjectIds)
+			.filter(id => typeof projectStore.projects[id] === 'undefined')
+		settings.value.frontendSettings.overviewProjectIds = [...projects.map(p => p.id), ...unresolved]
+	},
+})
 const loading = computed(() => authStore.isLoadingGeneralSettings)
 
 async function updateSettings() {

@@ -125,6 +125,7 @@ import {useLabelStore} from '@/stores/labels'
 import type {TaskFilterParams} from '@/services/taskCollection'
 import TaskCollectionService from '@/services/taskCollection'
 import {PERMISSIONS} from '@/constants/permissions'
+import {normalizeOverviewProjectIds, resolveOverviewProjectScope} from '@/helpers/overviewTaskFilter'
 
 const props = withDefaults(defineProps<{
 	dateFrom?: Date | string,
@@ -197,6 +198,7 @@ const hasTasks = computed(() => tasks.value && tasks.value.length > 0)
 const userAuthenticated = computed(() => authStore.authenticated)
 const loading = computed(() => taskStore.isLoading || taskCollectionService.value.loading)
 const filterIdUsedOnOverview = computed(() => authStore.settings?.frontendSettings?.filterIdUsedOnOverview)
+const overviewProjectIds = computed(() => normalizeOverviewProjectIds(authStore.settings?.frontendSettings?.overviewProjectIds))
 
 interface dateStrings {
 	dateFrom: string,
@@ -275,10 +277,15 @@ async function loadPendingTasks(from: Date|string, to: Date|string, filterId: nu
 		params.filter += params.filter ? ` && ${labelFilter}` : labelFilter
 	}
 
-	let projectId = null
-	if (showAll.value && filterId && typeof projectStore.projects[filterId] !== 'undefined'
-		&& (!props.labelIds || props.labelIds.length === 0)) {
-		projectId = filterId
+	const {projectFilterClause, projectId} = resolveOverviewProjectScope({
+		overviewProjectIds: overviewProjectIds.value,
+		savedFilterId: filterId,
+		savedFilterExists: !!filterId && typeof projectStore.projects[filterId] !== 'undefined',
+		showAll: showAll.value,
+		hasLabelFilter: Boolean(props.labelIds && props.labelIds.length > 0),
+	})
+	if (projectFilterClause) {
+		params.filter += params.filter ? ` && ${projectFilterClause}` : projectFilterClause
 	}
 
 	tasks.value = await taskStore.loadTasks(params, projectId)
@@ -307,7 +314,8 @@ function updateTasks(updatedTask: ITask) {
 // hasn't changed. Using watch with explicit dependencies and immediate:true gives us
 // the same behavior but only triggers when these specific values actually change.
 watch(
-	[() => props.dateFrom, () => props.dateTo, filterIdUsedOnOverview],
+	// join to a stable string so a fresh-but-equal ids array doesn't retrigger the reload
+	[() => props.dateFrom, () => props.dateTo, filterIdUsedOnOverview, () => overviewProjectIds.value.join(',')],
 	([from, to, filterId]) => loadPendingTasks(from, to, filterId),
 	{immediate: true},
 )
