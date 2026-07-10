@@ -2,6 +2,7 @@ import {ref, computed, onMounted, onUnmounted, watch} from 'vue'
 import {useMediaQuery} from '@vueuse/core'
 import {useAuthStore} from '@/stores/auth'
 import {normalizeHiddenNavItems} from '@/components/home/navigationItems'
+import {normalizeOverviewProjectIds} from '@/helpers/overviewTaskFilter'
 
 const BULMA_MOBILE_BREAKPOINT = 768
 const DEFAULT_SIDEBAR_WIDTH = 300
@@ -137,6 +138,7 @@ export function useSidebarResize() {
 				sidebarWidth: currentWidth.value,
 				quickAddDefaultReminders: [...(authStore.settings.frontendSettings.quickAddDefaultReminders ?? [])],
 				hiddenNavItems: normalizeHiddenNavItems(authStore.settings.frontendSettings.hiddenNavItems),
+				overviewProjectIds: normalizeOverviewProjectIds(authStore.settings.frontendSettings.overviewProjectIds),
 			},
 		}
 		await authStore.saveUserSettings({

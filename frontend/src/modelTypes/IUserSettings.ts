@@ -16,6 +16,7 @@ export interface IFrontendSettings {
 	colorSchema: BasicColorSchema
 	allowIconChanges: boolean
 	filterIdUsedOnOverview: IProject['id'] | null
+	overviewProjectIds?: IProject['id'][]
 	defaultView?: DefaultProjectViewKind
 	minimumPriority?: Priority
 	dateDisplay: DateDisplay
