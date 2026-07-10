@@ -649,11 +649,11 @@ const overviewProjects = computed<IProject[]>({
 		.map((id): IProject | undefined => projectStore.projects[id] as IProject | undefined)
 		.filter((p): p is IProject => typeof p !== 'undefined'),
 	set: (projects: IProject[]) => {
-		// Keep stored ids whose project isn't in the store yet (archived projects load via a
-		// separate paginated pass) so editing the selection can't silently drop them.
-		const unresolved = normalizeOverviewProjectIds(settings.value.frontendSettings.overviewProjectIds)
-			.filter(id => typeof projectStore.projects[id] === 'undefined')
-		settings.value.frontendSettings.overviewProjectIds = [...projects.map(p => p.id), ...unresolved]
+		// Rebuild from the displayed selection only — an id whose project no longer resolves
+		// (deleted / access revoked) is dropped here so it self-heals on the next edit.
+		// Do NOT preserve unresolved ids: the getter hides them, so a preserved id would be
+		// unremovable and permanently scope the overview to zero tasks.
+		settings.value.frontendSettings.overviewProjectIds = projects.map(p => p.id)
 	},
 })
 const loading = computed(() => authStore.isLoadingGeneralSettings)

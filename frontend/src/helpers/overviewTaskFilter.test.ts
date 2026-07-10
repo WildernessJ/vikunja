@@ -17,6 +17,10 @@ describe('normalizeOverviewProjectIds', () => {
 		expect(normalizeOverviewProjectIds([1, '2', 3, null, {}, 4])).toEqual([1, 3, 4])
 	})
 
+	it('drops NaN, floats, zero and negatives (would break the project-in filter)', () => {
+		expect(normalizeOverviewProjectIds([1, NaN, 2.5, 0, -3, 4])).toEqual([1, 4])
+	})
+
 	it('passes a clean numeric array through unchanged', () => {
 		expect(normalizeOverviewProjectIds([10, 20, 30])).toEqual([10, 20, 30])
 	})

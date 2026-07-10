@@ -1,8 +1,10 @@
 // frontend_settings is free-form JSON stored verbatim, so a tampered value could be a
 // non-array or hold non-numeric junk. Normalize to a fresh numeric array: reads never throw.
 export function normalizeOverviewProjectIds(value: unknown): number[] {
+	// Real project ids are positive integers; anything else (NaN, floats, negatives from a
+	// tampered blob) would produce e.g. `project in NaN` and make the backend reject the filter.
 	return Array.isArray(value)
-		? value.filter((id): id is number => typeof id === 'number')
+		? value.filter((id): id is number => Number.isInteger(id) && (id as number) > 0)
 		: []
 }
 
