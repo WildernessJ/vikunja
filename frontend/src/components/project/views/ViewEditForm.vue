@@ -33,17 +33,31 @@ const view = ref<IProjectView>()
 const labelStore = useLabelStore()
 const projectStore = useProjectStore()
 
+// AbstractModel.assignData() camelCases nested objects, so a filter coming
+// from the API response may carry `filterIncludeNulls` instead of the
+// `filter_include_nulls` key IFilters declares.
+type IFiltersFromApi = IFilters & { filterIncludeNulls?: boolean }
+
+function emptyFilters(): IFilters {
+	return {
+		sort_by: [],
+		order_by: [],
+		filter: '',
+		filter_include_nulls: false,
+		s: '',
+	}
+}
+
 onBeforeMount(() => {
-	const transformFilterFromApi = (filterInput: IFilters): IFilter => {
+	const transformFilterFromApi = (filterInput: IFiltersFromApi): IFilters => {
 		const filterString = transformFilterStringFromApi(
 			filterInput.filter,
 			labelId => labelStore.getLabelById(labelId)?.title || null,
 			projectId => projectStore.projects[projectId]?.title || null,
 		)
-		
+
 		const filter: IFilters = {
-			filter: '',
-			s: '',
+			...emptyFilters(),
 		}
 		if (hasFilterQuery(filterString)) {
 			filter.filter = filterString
@@ -59,14 +73,8 @@ onBeforeMount(() => {
 			filter.filter = filter.s
 		}
 
-		// AbstractModel.assignData() runs objectToCamelCase recursively on all
-		// nested objects, which converts filter_include_nulls to filterIncludeNulls
-		// inside the filter object. IFilters intentionally uses snake_case keys to
-		// match the API query param format. We check both key forms here to handle
-		// data coming from either the API response (camelCased by assignData) or
-		// from a freshly constructed filter object (snake_case).
 		filter.filter_include_nulls = filterInput.filter_include_nulls
-			?? (filterInput as Record<string, unknown>).filterIncludeNulls as boolean
+			?? filterInput.filterIncludeNulls
 			?? false
 
 		return filter
@@ -74,7 +82,7 @@ onBeforeMount(() => {
 
 	const transformed = {
 		...props.modelValue,
-		filter: transformFilterFromApi(props.modelValue.filter),
+		filter: transformFilterFromApi(props.modelValue.filter ?? emptyFilters()),
 		bucketConfiguration: props.modelValue.bucketConfiguration.map(bc => ({
 			title: bc.title,
 			filter: transformFilterFromApi(bc.filter),
@@ -87,7 +95,7 @@ onBeforeMount(() => {
 })
 
 function save() {
-	const transformFilterForApi = (filterInput: IFilters): IFilters => {
+	const transformFilterForApi = (filterInput: IFilters | undefined): IFilters => {
 		const filterString = transformFilterStringForApi(
 			filterInput?.filter || '',
 			labelTitle => labelStore.getLabelByExactTitle(labelTitle)?.id || null,
@@ -97,6 +105,7 @@ function save() {
 			},
 		)
 		const filter: IFilters = {
+			...emptyFilters(),
 			filter_include_nulls: filterInput?.filter_include_nulls ?? false,
 		}
 		if (hasFilterQuery(filterString)) {
@@ -114,7 +123,7 @@ function save() {
 		bucketConfiguration: view.value?.bucketConfiguration.map(bc => ({
 			title: bc.title,
 			filter: transformFilterForApi(bc.filter),
-		})),
+		})) ?? [],
 	})
 }
 
@@ -135,6 +144,7 @@ function handleBubbleSave() {
 
 <template>
 	<form
+		v-if="view"
 		@focusout="handleBubbleSave"
 		@submit.prevent="save"
 	>
@@ -175,30 +185,32 @@ function handleBubbleSave() {
 			</template>
 		</FormField>
 
-		<label
-			class="label"
-			for="filter"
-		>
-			{{ $t('project.views.filter') }}
-		</label>
-		<FilterInput
-			id="filter"
-			v-model="view.filter.filter"
-			:project-id="view.projectId"
-			class="mbe-1"
-		/>
-
-		<div class="is-size-7 mbe-2">
-			<FilterInputDocs />
-		</div>
-
-		<div class="field mbe-3">
-			<FancyCheckbox
-				v-model="view.filter.filter_include_nulls"
+		<template v-if="view.filter">
+			<label
+				class="label"
+				for="filter"
 			>
-				{{ $t('filters.attributes.includeNulls') }}
-			</FancyCheckbox>
-		</div>
+				{{ $t('project.views.filter') }}
+			</label>
+			<FilterInput
+				id="filter"
+				v-model="view.filter.filter"
+				:project-id="view.projectId"
+				class="mbe-1"
+			/>
+
+			<div class="is-size-7 mbe-2">
+				<FilterInputDocs />
+			</div>
+
+			<div class="field mbe-3">
+				<FancyCheckbox
+					v-model="view.filter.filter_include_nulls"
+				>
+					{{ $t('filters.attributes.includeNulls') }}
+				</FancyCheckbox>
+			</div>
+		</template>
 
 		<div
 			v-if="view.viewKind === 'kanban'"
@@ -286,7 +298,7 @@ function handleBubbleSave() {
 					<XButton
 						variant="secondary"
 						icon="plus"
-						@click="() => view.bucketConfiguration.push({title: '', filter: {filter: '', filter_include_nulls: false}})"
+						@click="() => view.bucketConfiguration.push({title: '', filter: emptyFilters()})"
 					>
 						{{ $t('project.kanban.addBucket') }}
 					</XButton>
