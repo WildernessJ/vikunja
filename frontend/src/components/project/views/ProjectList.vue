@@ -41,7 +41,7 @@
 					<Nothing v-if="ctaVisible && tasks.length === 0 && !loading">
 						{{ $t('project.list.empty') }}
 						<ButtonLink
-							v-if="project?.id > 0 && canWrite"
+							v-if="(project?.id ?? 0) > 0 && canWrite"
 							@click="focusNewTaskInput()"
 						>
 							{{ $t('project.list.newTaskCta') }}
@@ -70,12 +70,12 @@
 						@start="handleDragStart"
 						@end="saveTaskPosition"
 					>
-						<template #item="{element: t, index}">
+						<template #item="itemSlotProps">
 							<SingleTaskInProject
-								:ref="(el) => setTaskRef(el, index)"
+								:ref="(el) => setTaskRef(el as InstanceType<typeof SingleTaskInProject> | null, getItemSlotProps(itemSlotProps).index)"
 								:show-list-color="false"
 								:can-mark-as-done="canWrite || isPseudoProject"
-								:the-task="t"
+								:the-task="getItemSlotProps(itemSlotProps).element"
 								:all-tasks="allTasks"
 								@taskUpdated="updateTasks"
 							>
@@ -119,7 +119,7 @@ import {shouldShowTaskInListView} from '@/composables/useTaskListFiltering'
 import {PERMISSIONS as Permissions} from '@/constants/permissions'
 import {calculateItemPosition} from '@/helpers/calculateItemPosition'
 import type {ITask} from '@/modelTypes/ITask'
-import {isSavedFilter, useSavedFilter} from '@/services/savedFilter'
+import {isSavedFilter, useSavedFilter, getSavedFilterIdFromProjectId} from '@/services/savedFilter'
 
 import {useBaseStore} from '@/stores/base'
 import {useTaskStore} from '@/stores/tasks'
@@ -162,14 +162,19 @@ const {
 
 const taskPositionService = ref(new TaskPositionService())
 
+// isSavedFilter() requires a full IProject; here we only have an id, so re-implement its check locally.
+function isSavedFilterId(id: IProject['id']) {
+	return getSavedFilterIdFromProjectId(id) > 0
+}
+
 // Saved filter composable for accessing filter data
-const _savedFilter = useSavedFilter(() => isSavedFilter({id: projectId.value}) ? projectId.value : undefined).filter
+const _savedFilter = useSavedFilter(() => isSavedFilterId(projectId.value) ? projectId.value : undefined).filter
 
 const tasks = ref<ITask[]>([])
 watch(
 	allTasks,
 	() => {
-		const isFiltered = isSavedFilter({id: projectId.value})
+		const isFiltered = isSavedFilterId(projectId.value)
 		tasks.value = ([...allTasks.value]).filter(t => shouldShowTaskInListView(t, allTasks.value, isFiltered))
 	},
 )
@@ -187,10 +192,14 @@ const firstNewPosition = computed(() => {
 const baseStore = useBaseStore()
 const taskStore = useTaskStore()
 const {handleTaskDropToProject} = useTaskDragToProject()
-const project = computed(() => baseStore.currentProject)
+// baseStore.currentProject is a DeepReadonly<IProject>; copy it to get back a plain IProject.
+const project = computed<IProject | null>(() => {
+	return baseStore.currentProject ? {...baseStore.currentProject} as IProject : null
+})
 
 const canWrite = computed(() => {
-	return project.value?.maxPermission > Permissions.READ && project.value?.id > 0
+	return project.value?.maxPermission !== null && project.value?.maxPermission !== undefined &&
+		project.value.maxPermission > Permissions.READ && (project.value?.id ?? 0) > 0
 })
 
 const isPseudoProject = computed(() => (project.value && isSavedFilter(project.value)) || project.value?.id === -1)
@@ -289,6 +298,17 @@ async function saveTaskPosition(e: { originalEvent?: MouseEvent, to: HTMLElement
 
 const taskRefs = ref<(InstanceType<typeof SingleTaskInProject> | null)[]>([])
 const focusedIndex = ref(-1)
+
+// zhyswan-vuedraggable ships no slot types, so the #item scoped slot props type as {}.
+// This reflects the shape it actually passes at runtime (SortableJS list item + index).
+interface ItemSlotProps {
+	element: ITask,
+	index: number,
+}
+
+function getItemSlotProps(slotProps: unknown): ItemSlotProps {
+	return slotProps as ItemSlotProps
+}
 
 function setTaskRef(el: InstanceType<typeof SingleTaskInProject> | null, index: number) {
 	if (el === null) {

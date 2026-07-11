@@ -79,17 +79,17 @@
 							@keyup.prevent.esc="searchInput?.focus()"
 						>
 							<template v-if="r.type === ACTION_TYPE.LABELS">
-								<XLabel :label="i" />
+								<XLabel :label="(i as ILabel)" />
 							</template>
 							<template v-else-if="r.type === ACTION_TYPE.TASK">
 								<SingleTaskInlineReadonly
-									:task="i"
+									:task="(i as DoAction<ITask>)"
 									:show-project="true"
 								/>
 							</template>
 							<template v-else>
 								<span
-									v-if="i.id < -1"
+									v-if="(i.id ?? 0) < -1"
 									class="saved-filter-icon icon"
 								>
 									<Icon icon="filter" />
@@ -114,6 +114,7 @@ import TaskService from '@/services/task'
 import TeamService from '@/services/team'
 
 import TeamModel from '@/models/team'
+import TaskModel from '@/models/task'
 import ProjectModel from '@/models/project'
 
 import BaseButton from '@/components/base/BaseButton.vue'
@@ -134,7 +135,7 @@ import {success} from '@/message'
 import type {ITeam} from '@/modelTypes/ITeam'
 import type {ITask} from '@/modelTypes/ITask'
 import type {IProject} from '@/modelTypes/IProject'
-import type {IAbstract} from '@/modelTypes/IAbstract'
+import type {ILabel} from '@/modelTypes/ILabel'
 import {isSavedFilter} from '@/services/savedFilter'
 
 const {t} = useI18n({useScope: 'global'})
@@ -177,7 +178,11 @@ const selectedCmd = ref<Command | null>(null)
 const foundTasks = ref<DoAction<ITask>[]>([])
 const taskService = shallowReactive(new TaskService())
 
-const foundTeams = ref<ITeam[]>([])
+// teamService.getAll() results get a `title` stamped on for display, mirroring
+// the other result kinds — ITeam itself only has `name`.
+type TeamResult = ITeam & { title: string }
+
+const foundTeams = ref<TeamResult[]>([])
 const teamService = shallowReactive(new TeamService())
 
 const active = computed(() => baseStore.quickActionsActive)
@@ -242,8 +247,10 @@ const foundProjects = computed(() => {
 
 	if (text === '') {
 		const history = getHistory()
-		return history.map((p) => projectStore.projects[p.id])
-			.filter(p => Boolean(p))
+		// projectStore.projects is exposed readonly(); the entries are structurally
+		// IProject, just deep-readonly-typed.
+		return history.map((p) => projectStore.projects[p.id] as IProject | undefined)
+			.filter((p): p is IProject => Boolean(p))
 	}
 
 	return projectStore.searchProjectAndFilter(project ?? text)
@@ -268,10 +275,12 @@ const foundCommands = computed(() => availableCmds.value.filter((a) =>
 	a.title.toLowerCase().includes(query.value.toLowerCase()),
 ))
 
+type ResultItem = Command | IProject | DoAction<ITask> | ILabel | TeamResult
+
 interface Result {
 	type: ACTION_TYPE
 	title: string
-	items: DoAction<IAbstract>
+	items: ResultItem[]
 }
 
 const results = computed<Result[]>(() => {
@@ -312,6 +321,9 @@ const loading = computed(() =>
 
 interface Command {
 	type: COMMAND_TYPE
+	// Commands have no id (unlike projects/teams), but the "else" branch of the
+	// results template reads `.id` uniformly across CMD/PROJECT/TEAM items.
+	id?: number
 	title: string
 	placeholder: string
 	action: () => Promise<void>
@@ -341,11 +353,14 @@ const commands = computed<{ [key in COMMAND_TYPE]: Command }>(() => ({
 const placeholder = computed(() => selectedCmd.value?.placeholder || t('quickActions.placeholder'))
 
 const currentProject = computed(() => {
-	if (Object.keys(baseStore.currentProject).length === 0 || isSavedFilter(baseStore.currentProject)) {
+	const project = baseStore.currentProject
+	// baseStore exposes currentProject via readonly(); it's still structurally
+	// IProject, just deep-readonly-typed, which isSavedFilter's IProject param doesn't accept.
+	if (project === null || Object.keys(project).length === 0 || isSavedFilter(project as IProject)) {
 		return null
 	}
 
-	return baseStore.currentProject
+	return project
 })
 
 const hintText = computed(() => {
@@ -361,7 +376,14 @@ const hintText = computed(() => {
 	}
 	const prefixes =
 		PREFIXES[authStore.settings.frontendSettings.quickAddMagicMode] ?? PREFIXES[PrefixMode.Default]
-	return t('quickActions.hint', prefixes)
+	// Passed as a fresh object literal (not the `prefixes` variable) so it structurally
+	// satisfies vue-i18n's Record<string, unknown> param type.
+	return t('quickActions.hint', {
+		label: prefixes.label,
+		project: prefixes.project,
+		priority: prefixes.priority,
+		assignee: prefixes.assignee,
+	})
 })
 
 const availableCmds = computed(() => {
@@ -457,7 +479,7 @@ function searchTasks() {
 	}
 
 	taskSearchTimeout.value = setTimeout(async () => {
-		const r = await taskService.getAll({}, params) as DoAction<ITask>[]
+		const r = await taskService.getAll(new TaskModel(), params) as DoAction<ITask>[]
 		foundTasks.value = r.map((t) => {
 			t.type = ACTION_TYPE.TASK
 			return t
@@ -485,12 +507,12 @@ function searchTeams() {
 	const {assignees} = parsedQuery.value
 	teamSearchTimeout.value = setTimeout(async () => {
 		const teamSearchPromises = assignees.map((t) =>
-			teamService.getAll({}, {s: t}),
+			teamService.getAll(new TeamModel(), {s: t}),
 		)
 		const teamsResult = await Promise.all(teamSearchPromises)
-		foundTeams.value = teamsResult.flat().map((team) => {
-			team.title = team.name
-			return team
+		foundTeams.value = teamsResult.flat().map((team): TeamResult => {
+			(team as TeamResult).title = team.name
+			return team as TeamResult
 		})
 	}, 150)
 }
@@ -528,14 +550,14 @@ if (isQuickAddMode) {
 	})
 }
 
-async function doAction(type: ACTION_TYPE, item: DoAction) {
+async function doAction(type: ACTION_TYPE, item: ResultItem) {
 	switch (type) {
 		case ACTION_TYPE.PROJECT:
 			closeQuickActions()
 			if (!isQuickAddMode) {
 				await router.push({
 					name: 'project.index',
-					params: {projectId: (item as DoAction<IProject>).id},
+					params: {projectId: (item as IProject).id},
 				})
 			}
 			break
@@ -558,13 +580,13 @@ async function doAction(type: ACTION_TYPE, item: DoAction) {
 			if (!isQuickAddMode) {
 				await router.push({
 					name: 'teams.edit',
-					params: {id: (item as DoAction<ITeam>).id},
+					params: {id: (item as TeamResult).id},
 				})
 			}
 			break
 		case ACTION_TYPE.CMD:
 			query.value = ''
-			selectedCmd.value = item as DoAction<Command>
+			selectedCmd.value = item as Command
 			searchInput.value?.focus()
 			break
 		case ACTION_TYPE.LABELS:
