@@ -75,7 +75,7 @@
 					</template>
 				</Popup>
 				<FilterPopup
-					v-if="!isSavedFilter({id: projectId})"
+					v-if="!isSavedFilter({id: projectId} as IProject)"
 					v-model="params"
 					:view-id="viewId"
 					:project-id="projectId"
@@ -248,25 +248,25 @@
 									</td>
 									<DateTableCell
 										v-if="activeColumns.dueDate"
-										:date="t.dueDate"
+										:date="t.dueDate ?? undefined"
 									/>
 									<td v-if="activeColumns.commentCount">
 										<CommentCount :task="t" />
 									</td>
 									<DateTableCell
 										v-if="activeColumns.startDate"
-										:date="t.startDate"
+										:date="t.startDate ?? undefined"
 									/>
 									<DateTableCell
 										v-if="activeColumns.endDate"
-										:date="t.endDate"
+										:date="t.endDate ?? undefined"
 									/>
 									<td v-if="activeColumns.percentDone">
 										{{ t.percentDone * 100 }}%
 									</td>
 									<DateTableCell
 										v-if="activeColumns.doneAt"
-										:date="t.doneAt"
+										:date="t.doneAt ?? undefined"
 									/>
 									<DateTableCell
 										v-if="activeColumns.created"
@@ -319,6 +319,7 @@ import Popup from '@/components/misc/Popup.vue'
 
 import type {SortBy} from '@/composables/useTaskList'
 import {useTaskList} from '@/composables/useTaskList'
+import type {ExpandTaskFilterParam} from '@/services/taskCollection'
 import type {ITask} from '@/modelTypes/ITask'
 import type {IProject} from '@/modelTypes/IProject'
 import AssigneeList from '@/components/tasks/partials/AssigneeList.vue'
@@ -365,7 +366,8 @@ const taskList = useTaskList(
 	() => props.projectId, 
 	() => props.viewId, 
 	sortBy.value,
-	() => ['comment_count', 'is_unread'],
+	// TaskFilterParams.expand is typed as a single value, but the query serializer accepts arrays at runtime
+	() => ['comment_count', 'is_unread'] as unknown as ExpandTaskFilterParam,
 )
 
 const {
@@ -410,11 +412,12 @@ function sort(property: keyof SortBy, event?: MouseEvent) {
 
 function setActiveColumnsSortParam() {
 	sortByParam.value = Object.keys(sortBy.value)
-		.filter(prop => activeColumns.value[camelCase(prop)])
+		.filter(prop => activeColumns.value[camelCase(prop) as keyof typeof activeColumns.value])
 		.reduce((obj, key) => {
-			obj[key] = sortBy.value[key]
+			const sortKey = key as keyof SortBy
+			obj[sortKey] = sortBy.value[sortKey]
 			return obj
-		}, {})
+		}, {} as SortBy)
 }
 
 // TODO: re-enable opening task detail in modal

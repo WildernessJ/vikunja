@@ -21,6 +21,8 @@ import UserModel from './user'
 import AttachmentModel from './attachment'
 import SubscriptionModel from './subscription'
 import type {ITaskReminder} from '@/modelTypes/ITaskReminder'
+import type {IReactionPerEntity} from '@/modelTypes/IReaction'
+import type {ITaskComment} from '@/modelTypes/ITaskComment.ts'
 import TaskReminderModel from '@/models/taskReminder'
 import TaskCommentModel from '@/models/taskComment.ts'
 
@@ -67,10 +69,10 @@ export default class TaskModel extends AbstractModel<ITask> implements ITask {
 	labels: ILabel[] = []
 	assignees: IUser[] = []
 
-	dueDate: Date | null = 0
-	deadline: Date | null = 0
-	startDate: Date | null = 0
-	endDate: Date | null = 0
+	dueDate: Date | null = null
+	deadline: Date | null = null
+	startDate: Date | null = null
+	endDate: Date | null = null
 	repeatAfter: number | IRepeatAfter = 0
 	repeatFromCurrentDate = false
 	repeatMode: IRepeatMode = TASK_REPEAT_MODES.REPEAT_MODE_DEFAULT
@@ -83,20 +85,20 @@ export default class TaskModel extends AbstractModel<ITask> implements ITask {
 	estimatedDuration = 0
 	relatedTasks:  Partial<Record<IRelationKind, ITask[]>> = {}
 	attachments: IAttachment[] = []
-	coverImageAttachmentId: IAttachment['id'] = null
+	coverImageAttachmentId: IAttachment['id'] | null = null
 	identifier = ''
 	index = 0
 	isFavorite = false
-	subscription: ISubscription = null
+	subscription!: ISubscription
 
 	position = 0
-	
-	reactions = {}
-	comments = []
 
-	createdBy: IUser = UserModel
-	created: Date = null
-	updated: Date = null
+	reactions: IReactionPerEntity = {}
+	comments: ITaskComment[] = []
+
+	createdBy!: IUser
+	created!: Date
+	updated!: Date
 
 	projectId: IProject['id'] = 0
 	bucketId: IBucket['id'] = 0
@@ -108,7 +110,8 @@ export default class TaskModel extends AbstractModel<ITask> implements ITask {
 
 		this.id = Number(this.id)
 		this.title = this.title?.trim()
-		this.doneAt = parseDateOrNull(this.doneAt)
+		const doneAt = this.doneAt
+		this.doneAt = doneAt === null ? null : parseDateOrNull(doneAt)
 
 		this.labels = this.labels
 			.map(l => new LabelModel(l))
@@ -119,10 +122,14 @@ export default class TaskModel extends AbstractModel<ITask> implements ITask {
 			return new UserModel(a)
 		})
 
-		this.dueDate = parseDateOrNull(this.dueDate)
-		this.deadline = parseDateOrNull(this.deadline)
-		this.startDate = parseDateOrNull(this.startDate)
-		this.endDate = parseDateOrNull(this.endDate)
+		const dueDate = this.dueDate
+		this.dueDate = dueDate === null ? null : parseDateOrNull(dueDate)
+		const deadline = this.deadline
+		this.deadline = deadline === null ? null : parseDateOrNull(deadline)
+		const startDate = this.startDate
+		this.startDate = startDate === null ? null : parseDateOrNull(startDate)
+		const endDate = this.endDate
+		this.endDate = endDate === null ? null : parseDateOrNull(endDate)
 
 		// Parse the repeat after into something usable
 		this.repeatAfter = parseRepeatAfter(this.repeatAfter as number)
@@ -135,7 +142,8 @@ export default class TaskModel extends AbstractModel<ITask> implements ITask {
 
 		// Convert all subtasks to task models
 		Object.keys(this.relatedTasks).forEach(relationKind => {
-			this.relatedTasks[relationKind] = this.relatedTasks[relationKind].map(t => {
+			const kind = relationKind as IRelationKind
+			this.relatedTasks[kind] = this.relatedTasks[kind]!.map((t: ITask) => {
 				return new TaskModel(t)
 			})
 		})
@@ -164,8 +172,9 @@ export default class TaskModel extends AbstractModel<ITask> implements ITask {
 
 		// We can't convert emojis to camel case, hence we do this manually
 		this.reactions = {}
-		Object.keys(data.reactions || {}).forEach(reaction => {
-			this.reactions[reaction] = data.reactions[reaction].map(u => new UserModel(u))
+		const reactions = data.reactions || {}
+		Object.keys(reactions).forEach(reaction => {
+			this.reactions[reaction] = reactions[reaction].map(u => new UserModel(u))
 		})
 	}
 

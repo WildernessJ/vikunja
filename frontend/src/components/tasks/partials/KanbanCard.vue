@@ -43,7 +43,7 @@
 					</span>
 				</span>
 				<span
-					v-if="task.dueDate > 0"
+					v-if="task.dueDate && task.dueDate.getTime() > 0"
 					v-tooltip="formatDateLong(task.dueDate)"
 					class="due-date"
 				>
@@ -103,7 +103,7 @@
 					<Icon icon="align-left" />
 				</span>
 				<span
-					v-if="task.repeatAfter.amount > 0"
+					v-if="hasRepeatAfter"
 					class="icon"
 				>
 					<Icon icon="history" />
@@ -194,7 +194,11 @@ const projectTitle = computed(() => {
 	return project?.title
 })
 
-const showTaskPosition = computed(() => window.DEBUG_TASK_POSITION)
+const showTaskPosition = computed(() => (window as unknown as {DEBUG_TASK_POSITION?: unknown}).DEBUG_TASK_POSITION)
+
+const hasRepeatAfter = computed(() => (
+	typeof props.task.repeatAfter === 'object' && props.task.repeatAfter.amount > 0
+))
 
 const {now} = useGlobalNow()
 const isOverdue = computed(() => (
@@ -212,7 +216,7 @@ const isDeadlineOverdue = computed(() => (
 ))
 
 async function toggleTaskDone(task: ITask) {
-	const isRecurringTask = task.repeatAfter.amount > 0 || task.repeatMode === TASK_REPEAT_MODES.REPEAT_MODE_MONTH
+	const isRecurringTask = (typeof task.repeatAfter === 'object' && task.repeatAfter.amount > 0) || task.repeatMode === TASK_REPEAT_MODES.REPEAT_MODE_MONTH
 	const wasBeingMarkedDone = !task.done
 	
 	loadingInternal.value = true

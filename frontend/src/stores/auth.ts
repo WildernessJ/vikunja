@@ -1,4 +1,5 @@
 import {computed, readonly, ref} from 'vue'
+import type {Ref} from 'vue'
 import {acceptHMRUpdate, defineStore} from 'pinia'
 
 import {AuthenticatedHTTPFactory, HTTPFactory} from '@/helpers/fetcher'
@@ -644,7 +645,10 @@ export const useAuthStore = defineStore('auth', () => {
 		authenticated: readonly(authenticated),
 		needsTotpPasscode: readonly(needsTotpPasscode),
 
-		info: readonly(info),
+		// Runtime-readonly guard is kept; exposed type stays mutable IUser so
+		// read-only consumers can pass it to IUser-typed helpers without a
+		// DeepReadonly mismatch.
+		info: readonly(info) as unknown as Ref<IUser | null>,
 		avatarUrl: readonly(avatarUrl),
 		settings: readonly(settings),
 

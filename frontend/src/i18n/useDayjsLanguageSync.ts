@@ -35,7 +35,7 @@ export const DAYJS_LOCALE_MAPPING = {
 	'he-il': 'he',
 	'sv-se': 'sv',
 	'el-gr': 'el',
-} as Record<SupportedLocale, ISOLanguage>
+} as Record<string, ISOLanguage>
 
 export const DAYJS_LANGUAGE_IMPORTS = {
 	'de-de': () => import('dayjs/locale/de'),
@@ -69,7 +69,7 @@ export const DAYJS_LANGUAGE_IMPORTS = {
 	'he-il': () => import('dayjs/locale/he'),
 	'sv-se': () => import('dayjs/locale/sv'),
 	'el-gr': () => import('dayjs/locale/el'),
-} as Record<SupportedLocale, () => Promise<ILocale>>
+} as Record<string, () => Promise<ILocale>>
 
 export async function loadDayJsLocale(language: SupportedLocale) {
 	if (language === 'en') {
@@ -93,7 +93,7 @@ export function useDayjsLanguageSync(dayjsGlobal: typeof dayjs) {
 			if (dayjsLanguageLoaded.value) {
 				return
 			}
-			await loadDayJsLocale(currentLanguage)
+			await loadDayJsLocale(currentLanguage as SupportedLocale)
 			dayjsGlobal.locale(dayjsLanguageCode)
 			dayjsLanguageLoaded.value = true
 		},

@@ -14,11 +14,12 @@ export default class TeamModel extends AbstractModel<ITeam> implements ITeam {
 	members: ITeamMember[] = []
 	permission: Permission = PERMISSIONS.READ
 	externalId = ''
+	oidcId = ''
 	isPublic: boolean = false
 
-	createdBy: IUser | null = null
-	created: Date = null
-	updated: Date = null
+	createdBy!: IUser
+	created!: Date
+	updated!: Date
 
 	constructor(data: Partial<ITeam> = {}) {
 		super()

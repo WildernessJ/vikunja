@@ -44,7 +44,7 @@
 
 					<ColorBubble
 						v-if="task.hexColor !== ''"
-						:color="getHexColor(task.hexColor)"
+						:color="getHexColor(task.hexColor) ?? ''"
 						class="mie-1"
 					/>
 	
@@ -81,7 +81,7 @@
 				/>
 
 				<Popup
-					v-if="+new Date(task.dueDate) > 0"
+					v-if="task.dueDate !== null && task.dueDate.getTime() > 0"
 				>
 					<template #trigger="{toggle, isOpen}">
 						<BaseButton
@@ -202,7 +202,7 @@
 				<template v-if="getTaskById(subtask.id)">
 					<single-task-in-project
 						:key="subtask.id"
-						:the-task="getTaskById(subtask.id)"
+						:the-task="getTaskById(subtask.id)!"
 						:disabled="disabled"
 						:can-mark-as-done="canMarkAsDone"
 						:all-tasks="allTasks"
@@ -215,7 +215,7 @@
 </template>
 
 <script setup lang="ts">
-import {ref, watch, shallowReactive, onMounted, computed} from 'vue'
+import {ref, watch, shallowReactive, onMounted, computed, type ComponentPublicInstance} from 'vue'
 import {useI18n} from 'vue-i18n'
 
 import TaskModel, {getHexColor} from '@/models/task'
@@ -271,7 +271,7 @@ const emit = defineEmits<{
 
 function getTaskById(taskId: number): ITask | undefined {
 	if (typeof props.allTasks === 'undefined' || props.allTasks.length === 0) {
-		return null
+		return undefined
 	}
 
 	return props.allTasks.find(t => t.id === taskId)
@@ -282,7 +282,13 @@ const {t} = useI18n({useScope: 'global'})
 const taskService = shallowReactive(new TaskService())
 const task = ref<ITask>(new TaskModel())
 
-const isRepeating = computed(() => task.value.repeatAfter.amount > 0 || (task.value.repeatAfter.amount === 0 && task.value.repeatMode === TASK_REPEAT_MODES.REPEAT_MODE_MONTH))
+const isRepeating = computed(() => {
+	const {repeatAfter} = task.value
+	if (typeof repeatAfter !== 'object') {
+		return false
+	}
+	return repeatAfter.amount > 0 || (repeatAfter.amount === 0 && task.value.repeatMode === TASK_REPEAT_MODES.REPEAT_MODE_MONTH)
+})
 
 watch(
 	() => props.theTask,
@@ -371,7 +377,7 @@ const isDeadlineOverdue = computed(() => (
 	task.value.deadline.getTime() <= now.value.getTime()
 ))
 
-let oldTask
+let oldTask: ITask | undefined
 
 async function markAsDone(checked: boolean, wasReverted: boolean = false) {
 	oldTask = {...task.value}
@@ -417,11 +423,15 @@ async function markAsDone(checked: boolean, wasReverted: boolean = false) {
 }
 
 function undoDone(checked: boolean) {
-	if (isRepeating.value) {
+	if (isRepeating.value && typeof oldTask !== 'undefined') {
 		task.value = {...oldTask}
 	}
 	task.value.done = !task.value.done
 	markAsDone(!checked, true)
+}
+
+function deferTaskUpdate(newTask: ITask) {
+	task.value = newTask
 }
 
 async function toggleFavorite() {
@@ -430,10 +440,10 @@ async function toggleFavorite() {
 }
 
 const taskRoot = ref<HTMLElement | null>(null)
-const taskLinkRef = ref<HTMLElement | null>(null)
+const taskLinkRef = ref<ComponentPublicInstance | null>(null)
 
 function hasTextSelected() {
-	const isTextSelected = window.getSelection().toString()
+	const isTextSelected = window.getSelection()?.toString()
 	return !(typeof isTextSelected === 'undefined' || isTextSelected === '' || isTextSelected === '\n')
 }
 
