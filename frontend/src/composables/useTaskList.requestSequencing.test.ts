@@ -23,6 +23,7 @@ vi.mock('@/message', () => ({
 
 vi.mock('@/stores/auth', () => ({
 	useAuthStore: () => ({
+		authenticated: true,
 		settings: {timezone: 'utc'},
 		info: {id: 1},
 	}),

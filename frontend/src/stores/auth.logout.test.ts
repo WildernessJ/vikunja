@@ -72,4 +72,13 @@ describe('auth store logout resets appearance settings (issue #44)', () => {
 		expect(store.settings.frontendSettings.fontFamily).toBe(DEFAULT_FONT_FAMILY)
 		expect(store.settings.frontendSettings.colorSchema).toBe('auto')
 	})
+
+	it('marks the session unauthenticated so settings-driven watchers cannot fetch during teardown', async () => {
+		const store = useAuthStore()
+		store.setAuthenticated(true)
+
+		await store.logout()
+
+		expect(store.authenticated).toBe(false)
+	})
 })

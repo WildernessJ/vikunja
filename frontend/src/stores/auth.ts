@@ -571,6 +571,11 @@ export const useAuthStore = defineStore('auth', () => {
 		window.localStorage.clear() // Clear all settings and history we might have saved in local storage.
 		lastUserInfoRefresh.value = null
 
+		// Mark unauthenticated before touching settings below: that reset re-fires
+		// settings watchers (e.g. useTaskList's), and this flag is what keeps them
+		// from firing a doomed request during teardown (issue #44 follow-up).
+		setAuthenticated(false)
+
 		// Reset to model defaults so the settings-driven composables (useColorScheme,
 		// useAppearance) re-fire and strip the logged-out user's styling from <html>
 		// instead of leaving it stuck on the login page (issue #44).
