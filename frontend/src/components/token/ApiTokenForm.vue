@@ -10,7 +10,7 @@ import flatPickr from 'vue-flatpickr-component'
 import 'flatpickr/dist/flatpickr.css'
 import {useI18n} from 'vue-i18n'
 import FormField from '@/components/input/FormField.vue'
-import type {IApiToken} from '@/modelTypes/IApiToken'
+import type {IApiToken, IApiPermission} from '@/modelTypes/IApiToken'
 import {useTimeFormat} from '@/composables/useTimeFormat'
 import {TIME_FORMAT} from '@/constants/timeFormat'
 
@@ -36,12 +36,24 @@ const {t} = useI18n()
 const {store: timeFormat} = useTimeFormat()
 const now = new Date()
 
-const availableRoutes = ref(null)
-const newToken = ref<IApiToken>(new ApiTokenModel())
+interface RoutePermissions {
+	[permission: string]: string[]
+}
+
+interface AvailableRoutesMap {
+	[group: string]: RoutePermissions
+}
+
+function createEmptyToken(): IApiToken {
+	return Object.assign(new ApiTokenModel(), {permissions: {} as IApiPermission})
+}
+
+const availableRoutes = ref<AvailableRoutesMap | null>(null)
+const newToken = ref<IApiToken>(createEmptyToken())
 const newTokenExpiry = ref<string | number>(30)
 const newTokenExpiryCustom = ref(new Date())
-const newTokenPermissions = ref({})
-const newTokenPermissionsGroup = ref({})
+const newTokenPermissions = ref<Record<string, Record<string, boolean>>>({})
+const newTokenPermissionsGroup = ref<Record<string, boolean>>({})
 const newTokenTitleValid = ref(true)
 const newTokenPermissionValid = ref(true)
 const apiTokenTitle = ref()
@@ -107,9 +119,9 @@ const flatPickerConfig = computed(() => ({
 }))
 
 onMounted(async () => {
-	const allRoutes = await service.getAvailableRoutes()
+	const allRoutes = await service.getAvailableRoutes() as AvailableRoutesMap
 
-	const routesAvailable = {}
+	const routesAvailable: AvailableRoutesMap = {}
 	const keys = Object.keys(allRoutes)
 	keys.sort((a, b) => (a === 'other' ? 1 : b === 'other' ? -1 : 0))
 	keys.forEach(key => {
@@ -153,6 +165,9 @@ function resetPermissions() {
 	newTokenPermissions.value = {}
 	newTokenPermissionsGroup.value = {}
 	newTokenPermissionValid.value = true
+	if (availableRoutes.value === null) {
+		return
+	}
 	Object.entries(availableRoutes.value).forEach(entry => {
 		const [group, routes] = entry
 		newTokenPermissions.value[group] = {}
@@ -165,6 +180,10 @@ function resetPermissions() {
 
 function applyPreset(preset: TokenPreset) {
 	resetPermissions()
+
+	if (availableRoutes.value === null) {
+		return
+	}
 
 	for (const [groupKey, permissions] of Object.entries(preset.groups)) {
 		if (groupKey === '*') {
@@ -192,6 +211,9 @@ function applyPermissionsToGroup(group: string, permissions: string[] | '*') {
 }
 
 function selectPermissionGroup(group: string, checked: boolean) {
+	if (availableRoutes.value === null) {
+		return
+	}
 	Object.entries(availableRoutes.value[group]).forEach(entry => {
 		const [key] = entry
 		newTokenPermissions.value[group][key] = checked
@@ -205,12 +227,14 @@ function toggleGroupPermissionsFromChild(group: string, checked: boolean) {
 	if (checked) {
 		newTokenPermissionValid.value = true
 		let allChecked = true
-		Object.entries(availableRoutes.value[group]).forEach(entry => {
-			const [key] = entry
-			if (!newTokenPermissions.value[group][key]) {
-				allChecked = false
-			}
-		})
+		if (availableRoutes.value !== null) {
+			Object.entries(availableRoutes.value[group]).forEach(entry => {
+				const [key] = entry
+				if (!newTokenPermissions.value[group][key]) {
+					allChecked = false
+				}
+			})
+		}
 
 		if (allChecked) {
 			newTokenPermissionsGroup.value[group] = true
@@ -221,7 +245,7 @@ function toggleGroupPermissionsFromChild(group: string, checked: boolean) {
 }
 
 function formatPermissionTitle(title: string): string {
-	return title.replaceAll('_', ' ')
+	return title.split('_').join(' ')
 }
 
 async function createToken() {
@@ -264,7 +288,7 @@ async function createToken() {
 	const token = await service.create(newToken.value)
 	emit('created', token)
 
-	newToken.value = new ApiTokenModel()
+	newToken.value = createEmptyToken()
 	newTokenExpiry.value = 30
 	newTokenExpiryCustom.value = new Date()
 	resetPermissions()
@@ -375,7 +399,7 @@ async function createToken() {
 						class="mis-4 mie-2 is-capitalized"
 						@update:modelValue="checked => toggleGroupPermissionsFromChild(group, checked)"
 					>
-						{{ formatPermissionTitle(permission) }}
+						{{ formatPermissionTitle(String(permission)) }}
 					</FancyCheckbox>
 					<br>
 				</template>
