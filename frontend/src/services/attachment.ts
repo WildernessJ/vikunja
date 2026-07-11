@@ -12,6 +12,13 @@ export enum PREVIEW_SIZE {
 	XL = 'xl',
 }
 
+// Shape of the upload response payload: not an IAttachment itself, but declared as
+// extending it so it stays assignable through AbstractService's Model-typed create()/modelCreateFactory() overrides.
+interface AttachmentUploadResponse extends IAttachment {
+	success: IAttachment[]
+	errors: {message: string}[] | null
+}
+
 export default class AttachmentService extends AbstractService<IAttachment> {
 	constructor() {
 		super({
@@ -36,12 +43,12 @@ export default class AttachmentService extends AbstractService<IAttachment> {
 		return new AttachmentModel(data)
 	}
 
-	modelCreateFactory(data) {
+	modelCreateFactory(data: Partial<IAttachment> & {success?: Partial<IAttachment>[] | null, errors?: {message: string}[] | null}) {
 		// Success contains the uploaded attachments
-		data.success = (data.success === null ? [] : data.success).map(a => {
+		const success = (data.success === null || typeof data.success === 'undefined' ? [] : data.success).map((a: Partial<IAttachment>) => {
 			return this.modelFactory(a)
 		})
-		return data
+		return {...data, success} as unknown as AttachmentUploadResponse
 	}
 
 	getBlobUrl(model: IAttachment, size?: PREVIEW_SIZE) {
@@ -63,7 +70,7 @@ export default class AttachmentService extends AbstractService<IAttachment> {
 	 * @param files
 	 * @returns {Promise<any|never>}
 	 */
-	create(model: IAttachment, files: File[] | FileList) {
+	create(model: IAttachment, files: File[] | FileList = []): Promise<AttachmentUploadResponse> {
 		const data = new FormData()
 		for (let i = 0; i < files.length; i++) {
 			// TODO: Validation of file size
@@ -73,6 +80,6 @@ export default class AttachmentService extends AbstractService<IAttachment> {
 		return this.uploadFormData(
 			this.getReplacedRoute(this.paths.create, model),
 			data,
-		)
+		) as unknown as Promise<AttachmentUploadResponse>
 	}
 }

@@ -2,7 +2,7 @@ import { objectToSnakeCase } from '@/helpers/case'
 import AbstractModel from './abstractModel'
 import UserModel from '@/models/user'
 
-import type {ISavedFilter} from '@/modelTypes/ISavedFilter'
+import type {ISavedFilter, IFilters} from '@/modelTypes/ISavedFilter'
 import type {IUser} from '@/modelTypes/IUser'
 
 export default class SavedFilterModel extends AbstractModel<ISavedFilter> implements ISavedFilter {
@@ -18,9 +18,9 @@ export default class SavedFilterModel extends AbstractModel<ISavedFilter> implem
 	}
 	isFavorite = false
 
-	owner: IUser = {}
-	created: Date = null
-	updated: Date = null
+	owner!: IUser
+	created!: Date
+	updated!: Date
 
 	constructor(data: Partial<ISavedFilter> = {}) {
 		super()
@@ -30,7 +30,7 @@ export default class SavedFilterModel extends AbstractModel<ISavedFilter> implem
 
 		// Filters are in snake_case for the API - this makes it consistent with the way filter params are used with one-off filters.
 		// Should probably be camelCase everywhere, but that's a task for another day.
-		this.filters = objectToSnakeCase(this.filters)
+		this.filters = objectToSnakeCase(this.filters) as IFilters
 
 		this.created = new Date(this.created)
 		this.updated = new Date(this.updated)

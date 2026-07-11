@@ -40,6 +40,7 @@ import TaskCollectionService, {type TaskFilterParams} from '@/services/taskColle
 import {getRandomColorHex} from '@/helpers/color/randomColor'
 import {REPEAT_TYPES} from '@/types/IRepeatAfter'
 import {TASK_REPEAT_MODES} from '@/types/IRepeatMode'
+import type {Priority} from '@/constants/priorities'
 
 interface MatchedAssignee extends IUser {
 	match: string,
@@ -542,15 +543,17 @@ export const useTaskStore = defineStore('task', () => {
 		const task = new TaskModel({
 			title: cleanedTitle,
 			projectId: foundProjectId,
-			dueDate,
-			deadline,
-			priority: parsedTask.priority,
+			dueDate: dueDate as unknown as Date | null,
+			deadline: deadline as unknown as Date | null,
+			priority: (parsedTask.priority ?? undefined) as Priority | undefined,
 			assignees,
 			bucketId: bucketId || 0,
 			position,
 			index,
 		})
-		task.repeatAfter = parsedTask.repeats
+		if (parsedTask.repeats !== null) {
+			task.repeatAfter = parsedTask.repeats
+		}
 		task.reminders = buildDefaultRemindersForQuickAdd(
 			authStore.settings.frontendSettings.quickAddDefaultReminders,
 			dueDate,

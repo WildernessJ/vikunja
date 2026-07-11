@@ -18,12 +18,15 @@ import {formatDisplayDate} from '@/helpers/time/formatDate'
 const STATUS_ACTIVE = 0
 const STATUS_DISABLED = 2
 
+// Bot users carry a status the shared IUser model doesn't model.
+type BotUser = IUser & { status: number }
+
 const {t} = useI18n({useScope: 'global'})
 useTitle(() => t('user.settings.bots.title'))
 
 const botService = new BotUserService()
 const tokenService = new ApiTokenService()
-const bots = ref<IUser[]>([])
+const bots = ref<BotUser[]>([])
 const newBotUsername = ref('')
 const newBotName = ref('')
 const createError = ref<string | null>(null)
@@ -36,17 +39,17 @@ const editingName = ref<Record<number, boolean>>({})
 const nameDraft = ref<Record<number, string>>({})
 
 const showDeleteModal = ref<boolean>(false)
-const botToDelete = ref<IUser>()
+const botToDelete = ref<BotUser>()
 
 async function loadBots() {
-	bots.value = await botService.getAll() as IUser[]
+	bots.value = await botService.getAll() as BotUser[]
 	for (const bot of bots.value) {
 		await loadTokens(bot.id)
 	}
 }
 
 async function loadTokens(botId: number) {
-	tokensByBot.value[botId] = await tokenService.getAll({}, {owner_id: botId}) as IApiToken[]
+	tokensByBot.value[botId] = await tokenService.getAll({} as IApiToken, {owner_id: botId}) as IApiToken[]
 }
 
 async function createBot() {
@@ -59,7 +62,7 @@ async function createBot() {
 	}
 	try {
 		const created = await botService.create(new UserModel(payload))
-		bots.value.push(created as IUser)
+		bots.value.push(created as BotUser)
 		newBotUsername.value = ''
 		newBotName.value = ''
 		showCreateForm.value = false
@@ -69,12 +72,12 @@ async function createBot() {
 	}
 }
 
-async function toggleBotStatus(bot: IUser) {
+async function toggleBotStatus(bot: BotUser) {
 	const updated = new UserModel({
 		...bot,
 		status: bot.status === STATUS_ACTIVE ? STATUS_DISABLED : STATUS_ACTIVE,
 	})
-	const result = await botService.update(updated) as IUser
+	const result = await botService.update(updated) as BotUser
 	const idx = bots.value.findIndex(b => b.id === bot.id)
 	if (idx >= 0) {
 		bots.value[idx] = result
@@ -91,12 +94,12 @@ function cancelEditName(bot: IUser) {
 	delete nameDraft.value[bot.id]
 }
 
-async function saveBotName(bot: IUser) {
+async function saveBotName(bot: BotUser) {
 	const updated = new UserModel({
 		...bot,
 		name: (nameDraft.value[bot.id] ?? '').trim(),
 	})
-	const result = await botService.update(updated) as IUser
+	const result = await botService.update(updated) as BotUser
 	const idx = bots.value.findIndex(b => b.id === bot.id)
 	if (idx >= 0) {
 		bots.value[idx] = result

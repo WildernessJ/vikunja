@@ -265,7 +265,7 @@ export const useProjectStore = defineStore('project', () => {
 		let page = 1
 		try {
 			do {
-				const newProjects = await projectService.getAll({}, {is_archived: true, expand: 'permissions'}, page) as IProject[]
+				const newProjects = await projectService.getAll({} as IProject, {is_archived: true, expand: 'permissions'}, page)
 				loadedProjects.push(...newProjects)
 				page++
 			} while (page <= projectService.totalPages)
@@ -316,7 +316,7 @@ export const useProjectStore = defineStore('project', () => {
 
 		try {
 			const projectService = new ProjectService()
-			const loadedProject = await projectService.get({id: projectId})
+			const loadedProject = await projectService.get({id: projectId} as IProject)
 			setProject(loadedProject)
 			return loadedProject
 		} catch (e) {
@@ -397,9 +397,10 @@ export function useProject(projectId: MaybeRefOrGetter<IProject['id']>) {
 		})
 
 		const duplicate = await projectDuplicateService.create(projectDuplicate)
-		if (duplicate.duplicatedProject) {
-			duplicate.duplicatedProject.maxPermission = PERMISSIONS.ADMIN
+		if (!duplicate.duplicatedProject) {
+			throw new Error('Duplicated project is missing from the response')
 		}
+		duplicate.duplicatedProject.maxPermission = PERMISSIONS.ADMIN
 
 		projectStore.setProject(duplicate.duplicatedProject)
 		success({message: t('project.duplicate.success')})

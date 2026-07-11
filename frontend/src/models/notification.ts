@@ -108,7 +108,7 @@ export default class NotificationModel extends AbstractModel<INotification> impl
 		switch (this.name) {
 			case NOTIFICATION_NAMES.TASK_COMMENT: {
 				const n = this.notification as NotificationTaskComment
-				return `commented on ${n.task.getTextIdentifier()}`
+				return `commented on ${(n.task as TaskModel).getTextIdentifier()}`
 			}
 			case NOTIFICATION_NAMES.TASK_ASSIGNED: {
 				const n = this.notification as NotificationAssigned
@@ -118,11 +118,11 @@ export default class NotificationModel extends AbstractModel<INotification> impl
 					who = 'you'
 				}
 
-				return `assigned ${who} to ${n.task.getTextIdentifier()}`
+				return `assigned ${who} to ${(n.task as TaskModel).getTextIdentifier()}`
 			}
 			case NOTIFICATION_NAMES.TASK_DELETED: {
 				const n = this.notification as NotificationTask
-				return `deleted ${n.task.getTextIdentifier()}`
+				return `deleted ${(n.task as TaskModel).getTextIdentifier()}`
 			}
 			case NOTIFICATION_NAMES.PROJECT_CREATED: {
 				const n = this.notification as NotificationCreated
@@ -140,11 +140,11 @@ export default class NotificationModel extends AbstractModel<INotification> impl
 			}
 			case NOTIFICATION_NAMES.TASK_REMINDER: {
 				const n = this.notification as NotificationTaskReminder
-				return `Reminder for ${n.task.getTextIdentifier()} ${n.task.title} (${n.project.title})`
+				return `Reminder for ${(n.task as TaskModel).getTextIdentifier()} ${n.task.title} (${n.project.title})`
 			}
 			case NOTIFICATION_NAMES.TASK_MENTIONED: {
 				const n = this.notification as NotificationTask
-				return `${getDisplayName(n.doer)} mentioned you on ${n.task.getTextIdentifier()}`
+				return `${getDisplayName(n.doer)} mentioned you on ${(n.task as TaskModel).getTextIdentifier()}`
 			}
 		}
 

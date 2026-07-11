@@ -92,7 +92,7 @@ export default class CSVMigrationService extends AbstractService {
 	}
 
 	getStatus(): Promise<MigrationStatus> {
-		return this.getM('/migration/csv/status')
+		return this.getM('/migration/csv/status') as unknown as Promise<MigrationStatus>
 	}
 
 	useCreateInterceptor() {
@@ -104,20 +104,20 @@ export default class CSVMigrationService extends AbstractService {
 			'/migration/csv/detect',
 			file,
 			'import',
-		)
+		) as unknown as Promise<DetectionResult>
 	}
 
 	async preview(file: File, config: ImportConfig): Promise<PreviewResult> {
 		const data = new FormData()
 		data.append('import', file)
 		data.append('config', JSON.stringify(config))
-		return this.uploadFormData('/migration/csv/preview', data)
+		return this.uploadFormData('/migration/csv/preview', data) as unknown as Promise<PreviewResult>
 	}
 
 	async migrate(file: File, config: ImportConfig): Promise<{ message: string }> {
 		const data = new FormData()
 		data.append('import', file)
 		data.append('config', JSON.stringify(config))
-		return this.uploadFormData('/migration/csv/migrate', data)
+		return this.uploadFormData('/migration/csv/migrate', data) as unknown as Promise<{ message: string }>
 	}
 }

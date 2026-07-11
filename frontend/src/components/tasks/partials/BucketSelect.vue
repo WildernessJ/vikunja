@@ -40,6 +40,7 @@ import {useI18n} from 'vue-i18n'
 
 import type {ITask} from '@/modelTypes/ITask'
 import type {IBucket} from '@/modelTypes/IBucket'
+import type {ITaskBucket} from '@/modelTypes/ITaskBucket'
 
 import {PROJECT_VIEW_KINDS} from '@/modelTypes/IProjectView'
 
@@ -122,10 +123,11 @@ watch(
 )
 
 const currentBucket = computed(() => {
-	if (!kanbanView.value) {
+	const view = kanbanView.value
+	if (!view) {
 		return undefined
 	}
-	return props.task.buckets?.find(b => b.projectViewId === kanbanView.value.id)
+	return props.task.buckets?.find(b => b.projectViewId === view.id)
 })
 
 const currentBucketTitle = computed(() => {
@@ -133,7 +135,8 @@ const currentBucketTitle = computed(() => {
 })
 
 async function changeBucket(bucket: IBucket) {
-	if (!kanbanView.value || currentBucket.value?.id === bucket.id) {
+	const view = kanbanView.value
+	if (!view || currentBucket.value?.id === bucket.id) {
 		return
 	}
 
@@ -141,18 +144,18 @@ async function changeBucket(bucket: IBucket) {
 	const updatedTaskBucket = await taskBucketService.update(new TaskBucketModel({
 		taskId: props.task.id,
 		bucketId: bucket.id,
-		projectViewId: kanbanView.value.id,
+		projectViewId: view.id,
 		projectId: props.task.projectId,
-	}))
+	}) as ITaskBucket)
 
 	const updatedBuckets = (props.task.buckets || []).map(b => {
-		if (b.projectViewId === kanbanView.value.id) {
+		if (b.projectViewId === view.id) {
 			return {...bucket}
 		}
 		return b
 	})
 
-	if (!updatedBuckets.find(b => b.projectViewId === kanbanView.value.id)) {
+	if (!updatedBuckets.find(b => b.projectViewId === view.id)) {
 		updatedBuckets.push({...bucket})
 	}
 

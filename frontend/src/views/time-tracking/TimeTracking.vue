@@ -74,7 +74,10 @@
 				<div class="filter-columns">
 					<div class="field">
 						<label class="label">{{ $t('task.attributes.project') }}</label>
-						<ProjectSearch v-model="selectedProject" />
+						<ProjectSearch
+							:model-value="selectedProject ?? undefined"
+							@update:modelValue="selectedProject = $event"
+						/>
 					</div>
 					<div class="field">
 						<label class="label">{{ $t('timeTracking.form.task') }}</label>
@@ -87,7 +90,7 @@
 							@search="findTasks"
 						>
 							<template #searchResult="{option}">
-								{{ option.title }}
+								{{ typeof option === 'object' ? option.title : option }}
 							</template>
 						</Multiselect>
 					</div>
@@ -103,7 +106,7 @@
 						@search="findUsers"
 					>
 						<template #searchResult="{option}">
-							{{ option.username }}
+							{{ typeof option === 'object' ? option.username : option }}
 						</template>
 					</Multiselect>
 				</div>
@@ -204,7 +207,7 @@ async function findTasks(query: string) {
 		foundTasks.value = []
 		return
 	}
-	foundTasks.value = await taskService.getAll({}, {s: query, sort_by: 'done'}) as ITask[]
+	foundTasks.value = await taskService.getAll({} as ITask, {s: query, sort_by: 'done'}) as ITask[]
 }
 
 const userService = shallowReactive(new UserService())
@@ -214,7 +217,7 @@ async function findUsers(query: string) {
 		foundUsers.value = []
 		return
 	}
-	foundUsers.value = await userService.getAll({}, {s: query}) as IUser[]
+	foundUsers.value = await userService.getAll({} as IUser, {s: query}) as IUser[]
 }
 
 // Datemath preset strings (now/M) pass through unchanged; a custom Date becomes
@@ -295,7 +298,7 @@ async function restoreFromQuery() {
 				.catch(() => { /* task gone — drop the filter */ })
 			: Promise.resolve(),
 		typeof q.user === 'string'
-			? userService.getAll({}, {s: q.user})
+			? userService.getAll({} as IUser, {s: q.user})
 				.then(users => {
 					selectedUser.value = (users as IUser[]).find(u => u.username === q.user) ?? null
 				})

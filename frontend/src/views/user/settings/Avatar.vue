@@ -5,7 +5,7 @@
 		</Message>
 
 		<Message v-else-if="avatarProvider === 'openid'">
-			{{ $t('user.settings.avatar.openid', {provider: authStore.info.authProvider}) }}
+			{{ $t('user.settings.avatar.openid', {provider: externalAuthProvider}) }}
 		</Message>
 
 		<template v-else>
@@ -88,11 +88,17 @@ import {useTitle} from '@/composables/useTitle'
 import {success} from '@/message'
 import {useAuthStore} from '@/stores/auth'
 import Message from '@/components/misc/Message.vue'
+import type {IUser} from '@/modelTypes/IUser'
+import type {IAvatar, AvatarProvider} from '@/modelTypes/IAvatar'
 
 defineOptions({name: 'UserSettingsAvatar'})
 
 const {t} = useI18n({useScope: 'global'})
 const authStore = useAuthStore()
+
+// `authProvider` is set by the backend for OIDC users but isn't part of the shared IUser type.
+type UserWithAuthProvider = IUser & {authProvider?: string}
+const externalAuthProvider = computed(() => (authStore.info as UserWithAuthProvider | null)?.authProvider)
 
 const AVATAR_PROVIDERS = computed(() => ({
 	default: t('misc.default'),
@@ -112,7 +118,7 @@ const loading = ref(false)
 const avatarProvider = ref('')
 
 async function avatarStatus() {
-	const {avatarProvider: currentProvider} = await avatarService.get({})
+	const {avatarProvider: currentProvider} = await avatarService.get({} as IAvatar)
 	avatarProvider.value = currentProvider
 }
 
@@ -120,7 +126,7 @@ avatarStatus()
 
 
 async function updateAvatarStatus() {
-	await avatarService.update(new AvatarModel({avatarProvider: avatarProvider.value}))
+	await avatarService.update(new AvatarModel({avatarProvider: avatarProvider.value as AvatarProvider}))
 	success({message: t('user.settings.avatar.statusUpdateSuccess')})
 	authStore.reloadAvatar()
 }
@@ -138,7 +144,7 @@ async function uploadAvatar() {
 	}
 
 	try {
-		const blob = await new Promise(resolve => canvas.toBlob(blob => resolve(blob)))
+		const blob = await new Promise<Blob | null>(resolve => canvas.toBlob((blob: Blob | null) => resolve(blob)))
 		await avatarService.create(blob)
 		success({message: t('user.settings.avatar.setSuccess')})
 		authStore.reloadAvatar()
@@ -161,7 +167,10 @@ function cropAvatar() {
 	loading.value = true
 	const reader = new FileReader()
 	reader.onload = e => {
-		avatarToCrop.value = e.target.result
+		if (e.target === null) {
+			return
+		}
+		avatarToCrop.value = (e.target as FileReader).result
 		isCropAvatar.value = true
 		// Note: loading stays true until Cropper's @ready event fires
 		// This ensures the canvas is ready before allowing upload

@@ -1,7 +1,7 @@
 <template>
 	<div
 		class="task"
-		:data-is-overdue="task.dueDate <= new Date() && !task.done || undefined"
+		:data-is-overdue="task.dueDate && task.dueDate <= new Date() && !task.done || undefined"
 	>
 		<span>
 			<span
@@ -15,7 +15,7 @@
 
 			<ColorBubble
 				v-if="task.hexColor !== ''"
-				:color="getHexColor(task.hexColor)"
+				:color="getHexColor(task.hexColor) ?? ''"
 				class="mie-1"
 			/>
 
@@ -52,7 +52,7 @@
 		/>
 
 		<span
-			v-if="+new Date(task.dueDate) > 0"
+			v-if="task.dueDate && +new Date(task.dueDate) > 0"
 			v-tooltip="formatDateLong(task.dueDate)"
 			class="dueDate"
 		>
@@ -78,7 +78,7 @@
 				<Icon icon="align-left" />
 			</span>
 			<span
-				v-if="task.repeatAfter.amount > 0"
+				v-if="typeof task.repeatAfter === 'object' && task.repeatAfter.amount > 0"
 				class="project-task-icon"
 			>
 				<Icon icon="history" />

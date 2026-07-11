@@ -208,6 +208,8 @@ import CSVMigrationService, {
 import {useTitle} from '@/composables/useTitle'
 import {useProjectStore} from '@/stores/projects'
 import {getErrorText} from '@/message'
+import type {Priority} from '@/constants/priorities'
+import type {ILabel} from '@/modelTypes/ILabel'
 
 type Step = 'upload' | 'mapping' | 'success'
 
@@ -241,11 +243,11 @@ const previewTasks = computed(() => {
 		title: pt.title || t('migrate.csv.untitled'),
 		description: pt.description || '',
 		done: pt.done,
-		dueDate: pt.due_date || null,
-		startDate: pt.start_date || null,
-		endDate: pt.end_date || null,
-		priority: pt.priority,
-		labels: (pt.labels || []).map((l, li) => ({id: -(li + 1), title: l})),
+		dueDate: (pt.due_date || null) as unknown as Date | null,
+		startDate: (pt.start_date || null) as unknown as Date | null,
+		endDate: (pt.end_date || null) as unknown as Date | null,
+		priority: pt.priority as Priority,
+		labels: (pt.labels || []).map((l, li) => ({id: -(li + 1), title: l})) as ILabel[],
 	}))
 })
 

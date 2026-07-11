@@ -6,10 +6,11 @@ export default class ApiTokenModel extends AbstractModel<IApiToken> {
 	title = ''
 	token = ''
 	permissions = null
-	expiresAt: Date = null
-	created: Date = null
+	expiresAt!: Date
+	created!: Date
+	updated!: Date
 	ownerId = 0
-	
+
 	constructor(data: Partial<IApiToken> = {}) {
 		super()
 		

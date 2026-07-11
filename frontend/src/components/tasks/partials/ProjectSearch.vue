@@ -11,13 +11,15 @@
 		@search="findProjects"
 	>
 		<template #searchResult="{option}">
-			<span
-				v-if="projectStore.getAncestors(option).length > 1"
-				class="has-text-grey"
-			>
-				{{ projectStore.getAncestors(option).filter(p => p.id !== option.id).map(p => getProjectTitle(p)).join(' &gt; ') }} &gt;
-			</span>
-			{{ getProjectTitle(option) }}
+			<template v-if="typeof option === 'object'">
+				<span
+					v-if="projectStore.getAncestors(option).length > 1"
+					class="has-text-grey"
+				>
+					{{ projectStore.getAncestors(option).filter(p => p.id !== option.id).map(p => getProjectTitle(p)).join(' &gt; ') }} &gt;
+				</span>
+				{{ getProjectTitle(option) }}
+			</template>
 		</template>
 	</Multiselect>
 </template>

@@ -23,7 +23,7 @@
 					:class="{ 'is-loading': loading && !oneTaskUpdating}"
 					class="kanban kanban-bucket-container loader-container"
 				>
-					<draggable
+					<BucketDraggable
 						v-bind="DRAG_OPTIONS"
 						:model-value="buckets"
 						group="buckets"
@@ -149,7 +149,7 @@
 									</Dropdown>
 								</div>
 
-								<draggable
+								<TaskDraggable
 									v-bind="DRAG_OPTIONS"
 									:handle="taskDragHandle"
 									:delay="isTouchDevice ? 300 : 1000"
@@ -160,7 +160,7 @@
 									tag="ul"
 									:item-key="(task: ITask) => `bucket${bucket.id}-task${task.id}`"
 									:component-data="getTaskDraggableTaskComponentData(bucket)"
-									@update:modelValue="(tasks) => updateTasks(bucket.id, tasks)"
+									@update:modelValue="(tasks: IBucket['tasks']) => updateTasks(bucket.id, tasks)"
 									@start="handleTaskDragStart"
 									@end="updateTaskPosition"
 								>
@@ -235,10 +235,10 @@
 											/>
 										</div>
 									</template>
-								</draggable>
+								</TaskDraggable>
 							</div>
 						</template>
-					</draggable>
+					</BucketDraggable>
 
 					<div
 						v-if="canWrite && !loading && buckets.length > 0"
@@ -296,7 +296,7 @@ import {computed, nextTick, ref, watch, toRef} from 'vue'
 import {useRouter} from 'vue-router'
 import {useRouteQuery} from '@vueuse/router'
 import {useI18n} from 'vue-i18n'
-import draggable from 'zhyswan-vuedraggable'
+import draggableComponent from 'zhyswan-vuedraggable'
 import {klona} from 'klona/lite'
 
 import {PERMISSIONS as Permissions} from '@/constants/permissions'
@@ -304,6 +304,8 @@ import BucketModel from '@/models/bucket'
 
 import type {IBucket} from '@/modelTypes/IBucket'
 import type {ITask} from '@/modelTypes/ITask'
+import type {IProject} from '@/modelTypes/IProject'
+import type {ITaskBucket} from '@/modelTypes/ITaskBucket'
 
 import {useBaseStore} from '@/stores/base'
 import {useTaskStore} from '@/stores/tasks'
@@ -347,6 +349,20 @@ const props = defineProps<{
 
 const projectId = toRef(props, 'projectId')
 
+// zhyswan-vuedraggable ships no slot types, so its #item/#footer scoped slots
+// type as {}. Cast to a typed intermediate matching what it actually passes.
+const BucketDraggable = draggableComponent as unknown as new () => InstanceType<typeof draggableComponent> & {
+	$slots: {
+		item(props: { element: IBucket, index: number }): unknown,
+	},
+}
+const TaskDraggable = draggableComponent as unknown as new () => InstanceType<typeof draggableComponent> & {
+	$slots: {
+		item(props: { element: ITask }): unknown,
+		footer(): unknown,
+	},
+}
+
 const DRAG_OPTIONS = {
 	// sortable options
 	animation: 150,
@@ -372,7 +388,8 @@ const taskPositionService = ref(new TaskPositionService())
 const taskBucketService = ref(new TaskBucketService())
 
 // Saved filter composable for accessing filter data
-const savedFilter = useSavedFilter(() => isSavedFilter({id: projectId.value}) ? projectId.value : undefined).filter
+// useSavedFilter's internal watch skips on `undefined`; its getter signature just doesn't declare that.
+const savedFilter = useSavedFilter((): number => (isSavedFilter({id: projectId.value}) ? projectId.value : undefined) as number).filter
 
 const taskContainerRefs = ref<{ [id: IBucket['id']]: HTMLElement }>({})
 const bucketLimitInputRef = ref<HTMLInputElement | null>(null)
@@ -413,8 +430,8 @@ const params = ref<TaskFilterParams>({
 })
 
 watch([filter, s], ([filterValue, sValue]) => {
-	params.value.filter = filterValue ?? ''
-	params.value.s = sValue ?? ''
+	params.value.filter = (Array.isArray(filterValue) ? filterValue[0] : filterValue) ?? ''
+	params.value.s = (Array.isArray(sValue) ? sValue[0] : sValue) ?? ''
 }, { immediate: true })
 
 function updateFilters(newParams: TaskFilterParams) {
@@ -449,7 +466,7 @@ const bucketDraggableComponentData = computed(() => ({
 }))
 const project = computed(() => projectId.value ? projectStore.projects[projectId.value] : null)
 const view = computed(() => project.value?.views.find(v => v.id === props.viewId) as IProjectView || null)
-const canWrite = computed(() => baseStore.currentProject?.maxPermission > Permissions.READ && view.value.bucketConfigurationMode === 'manual')
+const canWrite = computed(() => (baseStore.currentProject?.maxPermission ?? 0) > Permissions.READ && view.value.bucketConfigurationMode === 'manual')
 const canCreateTasks = computed(() => canWrite.value && projectId.value > 0)
 
 const isTouchDevice = ref(false)
@@ -546,7 +563,7 @@ function updateTasks(bucketId: IBucket['id'], tasks: IBucket['tasks']) {
 	})
 }
 
-async function updateTaskPosition(e) {
+async function updateTaskPosition(e: { originalEvent?: MouseEvent, to: HTMLElement, newIndex: number }) {
 	drag.value = false
 
 	// Check if dropped on a sidebar project
@@ -631,7 +648,7 @@ async function updateTaskPosition(e) {
 					bucketId: newTask.bucketId,
 					projectViewId: props.viewId,
 					projectId: projectIdWithFallback.value,
-				}))
+				}) as unknown as ITaskBucket)
 				Object.assign(newTask, updatedTaskBucket.task)
 				if (updatedTaskBucket.bucketId !== newTask.bucketId) {
 					kanbanStore.moveTaskToBucket(newTask, updatedTaskBucket.bucketId)
@@ -824,7 +841,7 @@ async function saveBucketLimit(bucketId: IBucket['id'], limit: number) {
 	success({message: t('project.kanban.bucketLimitSavedSuccess')})
 }
 
-const setBucketLimitCancel = ref<number | null>(null)
+const setBucketLimitCancel = ref<ReturnType<typeof setTimeout> | null>(null)
 
 async function setBucketLimit(bucketId: IBucket['id'], now: boolean = false) {
 	const limit = parseInt(bucketLimitInputRef.value?.value || '')
@@ -856,9 +873,9 @@ function dragstart(bucket: IBucket) {
 	sourceBucket.value = bucket.id
 }
 
-function handleTaskDragStart(e) {
-	const taskId = parseInt(e.item.dataset.taskId, 10)
-	const bucketIndex = parseInt(e.from.dataset.bucketIndex, 10)
+function handleTaskDragStart(e: { item: HTMLElement, from: HTMLElement }) {
+	const taskId = parseInt(e.item.dataset.taskId ?? '', 10)
+	const bucketIndex = parseInt(e.from.dataset.bucketIndex ?? '', 10)
 	const bucket = buckets.value[bucketIndex]
 	const task = bucket?.tasks.find(t => t.id === taskId)
 
@@ -877,17 +894,22 @@ async function toggleDefaultBucket(bucket: IBucket) {
 		? 0
 		: bucket.id
 
+	if (!project.value) {
+		return
+	}
+	const currentProject = project.value
+
 	const projectViewService = new ProjectViewService()
 	const updatedView = await projectViewService.update(new ProjectViewModel({
 		...view.value,
 		defaultBucketId,
 	}))
 
-	const views = project.value.views.map(v => v.id === view.value?.id ? updatedView : v)
+	const views = currentProject.views.map(v => v.id === view.value?.id ? updatedView : v)
 	const updatedProject = {
-		...project.value,
+		...currentProject,
 		views,
-	}
+	} as IProject
 
 	projectStore.setProject(updatedProject)
 
@@ -903,18 +925,23 @@ async function toggleDoneBucket(bucket: IBucket) {
 		? 0
 		: bucket.id
 	
+	if (!project.value) {
+		return
+	}
+	const currentProject = project.value
+
 	const projectViewService = new ProjectViewService()
 	const updatedView = await projectViewService.update(new ProjectViewModel({
 		...view.value,
 		doneBucketId,
 	}))
 
-	const views = project.value.views.map(v => v.id === view.value?.id ? updatedView : v)
+	const views = currentProject.views.map(v => v.id === view.value?.id ? updatedView : v)
 	const updatedProject = {
-		...project.value,
+		...currentProject,
 		views,
-	}
-	
+	} as IProject
+
 	projectStore.setProject(updatedProject)
 	
 	success({message: t('project.kanban.doneBucketSavedSuccess')})
