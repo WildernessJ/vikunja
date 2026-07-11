@@ -76,7 +76,7 @@ async function toggleBotStatus(bot: BotUser) {
 	const updated = new UserModel({
 		...bot,
 		status: bot.status === STATUS_ACTIVE ? STATUS_DISABLED : STATUS_ACTIVE,
-	})
+	} as Partial<IUser>)
 	const result = await botService.update(updated) as BotUser
 	const idx = bots.value.findIndex(b => b.id === bot.id)
 	if (idx >= 0) {

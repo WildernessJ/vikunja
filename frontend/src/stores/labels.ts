@@ -3,14 +3,14 @@ import type {Ref, ComputedRef} from 'vue'
 import {acceptHMRUpdate, defineStore} from 'pinia'
 
 import LabelService from '@/services/label'
-import {success} from '@/message'
+import {success, translate} from '@/message'
 import {i18n} from '@/i18n'
 import {setModuleLoading} from '@/stores/helper'
 import type {ILabel} from '@/modelTypes/ILabel'
 
 async function getAllLabels(page = 1): Promise<ILabel[]> {
 	const labelService = new LabelService()
-	const labels  = await labelService.getAll({}, {}, page) as ILabel[]
+	const labels  = await labelService.getAll({} as ILabel, {}, page) as ILabel[]
 	if (page < labelService.totalPages) {
 		const nextLabels = await getAllLabels(page + 1)
 		return labels.concat(nextLabels)
@@ -107,7 +107,7 @@ export const useLabelStore = defineStore('label', () => {
 		try {
 			const result = await labelService.delete(label)
 			removeLabelById(label)
-			success({message: i18n.global.t('label.deleteSuccess')})
+			success({message: translate('label.deleteSuccess')})
 			return result
 		} finally {
 			cancel()
@@ -121,7 +121,7 @@ export const useLabelStore = defineStore('label', () => {
 		try {
 			const newLabel = await labelService.update(label)
 			setLabel(newLabel)
-			success({message: i18n.global.t('label.edit.success')})
+			success({message: translate('label.edit.success')})
 			return newLabel
 		} finally {
 			cancel()

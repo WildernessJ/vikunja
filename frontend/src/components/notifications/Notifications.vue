@@ -61,7 +61,7 @@
 							>
 								{{ getDisplayName(n.notification.doer) }}
 							</span>
-							{{ n.toText(userInfo) }}
+							{{ (n as NotificationModel).toText(userInfo) }}
 						</div>
 						<span
 							v-tooltip="formatDateLong(n.created)"
@@ -120,7 +120,7 @@ const {t} = useI18n()
 
 const allNotifications = ref<INotification[]>([])
 const showNotifications = ref(false)
-const popup = ref(null)
+const popup = ref<HTMLElement | null>(null)
 
 const unreadNotifications = computed(() => {
 	return notifications.value.filter(n => n.readAt === null).length
@@ -196,8 +196,8 @@ async function loadNotifications() {
 	allNotifications.value = await notificationService.getAll()
 }
 
-function hidePopup(e) {
-	if (showNotifications.value) {
+function hidePopup(e: MouseEvent) {
+	if (showNotifications.value && popup.value) {
 		closeWhenClickedOutside(e, popup.value, () => showNotifications.value = false)
 	}
 }

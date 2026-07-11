@@ -1,6 +1,7 @@
 import AbstractService from './abstractService'
 import AttachmentModel from '../models/attachment'
 
+import type {Method} from 'axios'
 import type { IAttachment } from '@/modelTypes/IAttachment'
 
 import {downloadBlob} from '@/helpers/downloadBlob'
@@ -51,7 +52,13 @@ export default class AttachmentService extends AbstractService<IAttachment> {
 		return {...data, success} as unknown as AttachmentUploadResponse
 	}
 
-	getBlobUrl(model: IAttachment, size?: PREVIEW_SIZE) {
+	getBlobUrl(model: IAttachment | string, size?: PREVIEW_SIZE | Method, data?: Record<string, unknown>) {
+		if (typeof model === 'string') {
+			// When model is a url string, size stands in for the base method's `method` param
+			// (no caller ever passes a PREVIEW_SIZE alongside a string model).
+			return AbstractService.prototype.getBlobUrl.call(this, model, size as Method | undefined, data)
+		}
+
 		let mainUrl = '/tasks/' + model.taskId + '/attachments/' + model.id
 		if (size !== undefined) {
 			mainUrl += `?preview_size=${size}`

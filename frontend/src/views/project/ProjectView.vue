@@ -17,6 +17,7 @@ import ProjectCalendar from '@/components/project/views/ProjectCalendar.vue'
 
 import {DEFAULT_PROJECT_VIEW_SETTINGS} from '@/modelTypes/IProjectView'
 import {saveProjectToHistory} from '@/modules/projectHistory'
+import type {IProject} from '@/modelTypes/IProject'
 
 const props = defineProps<{
 	projectId: number,
@@ -52,7 +53,7 @@ watch(
 		}
 
 		try {
-			const loadedProject = await projectService.get({id: projectIdToLoad})
+			const loadedProject = await projectService.get({id: projectIdToLoad} as IProject)
 
 			// Here, we only set the new project in the projectStore.
 			// Setting that projet as the current one in the baseStore is handled by the watcher below.
@@ -65,7 +66,7 @@ watch(
 )
 
 watch(
-	() => [currentProject.value, props.viewId],
+	() => [currentProject.value, props.viewId] as [IProject | undefined, number],
 	([newCurrentProject, newViewId]) => {
 		if (!newCurrentProject) {
 			baseStore.handleSetCurrentProject({project: null})

@@ -44,7 +44,10 @@
 			v-if="projectStore.hasProjects"
 			:label="$t('project.parent')"
 		>
-			<ProjectSearch v-model="parentProject" />
+			<ProjectSearch
+				:model-value="parentProject ?? undefined"
+				@update:modelValue="(val) => parentProject = val ?? null"
+			/>
 		</FormField>
 		<FormField :label="$t('project.color')">
 			<ColorPicker v-model="project.hexColor" />
@@ -96,7 +99,7 @@ onMounted(async () => {
 
 watch(
 	() => props.parentProjectId,
-	() => parentProject.value = projectStore.projects[props.parentProjectId],
+	() => parentProject.value = (props.parentProjectId !== undefined ? projectStore.projects[props.parentProjectId] : undefined) ?? null,
 	{immediate: true},
 )
 

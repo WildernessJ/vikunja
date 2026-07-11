@@ -213,12 +213,23 @@ const validateUsernameField = useDebounceFn(() => {
 const needsTotpPasscode = computed(() => authStore.needsTotpPasscode)
 const totpPasscode = ref<HTMLInputElement | null>(null)
 
+interface LoginCredentials {
+	username?: string
+	password: string
+	longToken: boolean
+	totpPasscode?: string
+}
+
+interface LoginError {
+	response?: {data: {code?: number}}
+}
+
 async function submit() {
 	errorMessage.value = ''
 	// Some browsers prevent Vue bindings from working with autofilled values.
 	// To work around this, we're manually getting the values here instead of relying on vue bindings.
 	// For more info, see https://kolaente.dev/vikunja/frontend/issues/78
-	const credentials = {
+	const credentials: LoginCredentials = {
 		username: usernameRef.value?.value,
 		password: password.value,
 		longToken: rememberMe.value,
@@ -236,12 +247,14 @@ async function submit() {
 	}
 
 	try {
-		await authStore.login(credentials)
+		// Credentials isn't exported from the auth store; derive its type from login() itself
+		// rather than widening LoginCredentials or exporting a new type.
+		await authStore.login(credentials as Parameters<typeof authStore.login>[0])
 		authStore.setNeedsTotpPasscode(false)
 
 		redirectIfSaved()
 	} catch (e) {
-		if (e.response?.data.code === 1017 && !credentials.totpPasscode) {
+		if ((e as LoginError).response?.data.code === 1017 && !credentials.totpPasscode) {
 			return
 		}
 

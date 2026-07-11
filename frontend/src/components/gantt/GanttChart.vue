@@ -133,7 +133,7 @@ let resizeObserver: ResizeObserver
 const {tasks, filters} = toRefs(props)
 
 const dayjsLanguageLoading = useDayjsLanguageSync(dayjs)
-const ganttContainer = ref(null)
+const ganttContainer = ref<HTMLElement | null>(null)
 const ganttChartBodyRef = ref<InstanceType<typeof GanttChartBody> | null>(null)
 const router = useRouter()
 

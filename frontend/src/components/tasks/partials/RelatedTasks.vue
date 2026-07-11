@@ -39,7 +39,7 @@
 					class="field task-relation-search-field"
 				>
 					<Multiselect
-						v-model="newTaskRelation.task"
+						v-model="selectedRelationTask"
 						v-focus
 						:placeholder="$t('task.relation.searchPlaceholder')"
 						:loading="taskService.loading"
@@ -237,6 +237,16 @@ const newTaskRelation: TaskRelation = reactive({
 	task: new TaskModel(),
 })
 
+// Multiselect's generic requires an index signature the real ITask payload doesn't
+// declare, so this widens the type only at that component boundary.
+type SelectableTask = ITask & Record<string, unknown>
+const selectedRelationTask = computed<SelectableTask>({
+	get: () => newTaskRelation.task as SelectableTask,
+	set: (value) => {
+		newTaskRelation.task = value
+	},
+})
+
 watch(
 	() => props.initialRelatedTasks,
 	(value) => {
@@ -253,7 +263,7 @@ const foundTasks = ref<ITask[]>([])
 
 async function findTasks(newQuery: string) {
 	query.value = newQuery
-	const result = await taskService.getAll({}, {
+	const result = await taskService.getAll({} as ITask, {
 		s: newQuery,
 		sort_by: 'done',
 	})

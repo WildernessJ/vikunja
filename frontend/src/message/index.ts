@@ -1,6 +1,13 @@
 import {i18n} from '@/i18n'
 import {notify} from '@kyvg/vue3-notification'
 
+// vue-i18n's `t` is typed against the full message schema, whose overload
+// resolution is excessively deep (TS2589) — especially with dynamic keys.
+// Call it through a loosely-typed wrapper (behaviour identical at runtime).
+export function translate(key: string): string {
+	return (i18n.global as unknown as {t: (key: string) => string}).t(key)
+}
+
 interface ErrorResponseData {
 	code?: number
 	message?: string
@@ -28,7 +35,7 @@ export function getErrorText(r: unknown): string {
 
 	if (data?.code) {
 		const path = `error.${data.code}`
-		let message: string = i18n.global.t(path)
+		let message: string = translate(path)
 
 		if (data?.code && data?.message && (data.code === 4016 || data.code === 4017 || data.code === 4018 || data.code === 4019 || data.code === 4024)) {
 			message += '\n' + data.message
@@ -41,7 +48,7 @@ export function getErrorText(r: unknown): string {
 	}
 	
 	// v2 errors are RFC 9457 problem+json, which carries `detail` instead of `message`.
-	let message = data?.message || data?.detail || err.message
+	let message = data?.message || data?.detail || err.message || ''
 
 	if (typeof err.cause?.message !== 'undefined') {
 		message += ' ' + err.cause.message
@@ -58,7 +65,7 @@ export interface Action {
 export function error(e: unknown, actions: Action[] = []) {
 	notify({
 		type: 'error',
-		title: i18n.global.t('error.error'),
+		title: translate('error.error'),
 		text: getErrorText(e),
 		ignoreDuplicates: true,
 		data: {
@@ -70,7 +77,7 @@ export function error(e: unknown, actions: Action[] = []) {
 export function success(e: unknown, actions: Action[] = []) {
 	notify({
 		type: 'success',
-		title: i18n.global.t('error.success'),
+		title: translate('error.success'),
 		text: getErrorText(e),
 		ignoreDuplicates: true,
 		data: {

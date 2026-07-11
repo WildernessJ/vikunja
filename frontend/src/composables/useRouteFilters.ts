@@ -20,7 +20,9 @@ export function useRouteFilters<CurrentFilters extends Filters>(
 ) : UseRouteFiltersReturn<CurrentFilters> {
 	const router = useRouter()
 
-	const filters = ref<CurrentFilters>(routeToFilters(route.value))
+	// Generic CurrentFilters makes ref<T>()'s inferred type ambiguous between
+	// Ref<T> and Ref<UnwrapRef<T>>; pin it explicitly.
+	const filters = ref(routeToFilters(route.value)) as Ref<CurrentFilters>
 
 	const routeFromFiltersFullPath = computed(() => router.resolve(filtersToRoute(filters.value)).fullPath)
 

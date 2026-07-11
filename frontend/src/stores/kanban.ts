@@ -260,12 +260,13 @@ export const useKanbanStore = defineStore('kanban', () => {
 
 		const taskCollectionService = new TaskCollectionService()
 		try {
-			const newBuckets = await taskCollectionService.getAll({projectId, viewId}, {
+			// This view route returns buckets (each with nested tasks), not a flat ITask[] as the generic service type implies.
+			const newBuckets = await taskCollectionService.getAll({projectId, viewId} as unknown as ITask, {
 				...params,
 				expand: ['comment_count', 'is_unread'],
 				per_page: TASKS_PER_BUCKET,
 			})
-			setBuckets(newBuckets)
+			setBuckets(newBuckets as unknown as IBucket[])
 			setProjectId(projectId)
 			return newBuckets
 		} finally {
@@ -307,7 +308,7 @@ export const useKanbanStore = defineStore('kanban', () => {
 
 		const taskService = new TaskCollectionService()
 		try {
-			const tasks = await taskService.getAll({projectId, viewId}, params, page)
+			const tasks = await taskService.getAll({projectId, viewId} as unknown as ITask, params, page)
 			addTasksToBucket(tasks, bucketId)
 			setTasksLoadedForBucketPage({bucketId, page})
 			if (taskService.totalPages <= page) {

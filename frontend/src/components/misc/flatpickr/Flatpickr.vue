@@ -137,6 +137,8 @@ onMounted(() => {
 		return
 	}
 
+	const inputEl = root.value
+
 	prepareConfig()
 
 	/**
@@ -144,8 +146,8 @@ onMounted(() => {
 	 * Bind on parent element if wrap is true
 	 */
 	const element = props.config.wrap
-		? root.value.parentNode
-		: root.value
+		? inputEl.parentNode!
+		: inputEl
 
 	// Init flatpickr
 	fp.value = flatpickr(element, safeConfig.value)
@@ -211,7 +213,7 @@ watch(
 		if (!root.value || newValue === nullify(root.value.value)) return
 		// Make sure we have a flatpickr instance and
 		// notify flatpickr instance that there is a change in value
-		fp.value?.setDate(newValue, true)
+		fp.value?.setDate(newValue as DateOption | DateOption[], true)
 	},
 	{deep: true},
 )

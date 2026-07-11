@@ -80,14 +80,14 @@
 							v-model="newMember"
 							:loading="userService.loading"
 							:placeholder="$t('team.edit.search')"
-							:search-results="foundUsers"
+							:search-results="foundUsers as unknown as Record<string, unknown>[]"
 							label="username"
 							@search="findUser"
 						>
 							<template #searchResult="{option: user}">
 								<User
 									:avatar-size="24"
-									:user="user"
+									:user="user as unknown as IUser"
 									class="m-0"
 								/>
 							</template>
@@ -289,7 +289,7 @@ const userService = ref<UserService>(new UserService())
 const team = ref<ITeam>()
 const teamId = computed(() => Number(route.params.id))
 const memberToDelete = ref<ITeamMember>()
-const newMember = ref<IUser>()
+const newMember = ref<IUser | null>(null)
 const foundUsers = ref<IUser[]>()
 
 const showDeleteModal = ref(false)
@@ -357,7 +357,7 @@ async function addUser() {
 		teamId: teamId.value,
 		username: newMember.value.username,
 	}))
-	newMember.value = undefined
+	newMember.value = null
 	await loadTeam()
 	success({message: t('team.edit.userAddedSuccess')})
 }

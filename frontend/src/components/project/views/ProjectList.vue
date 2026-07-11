@@ -48,7 +48,7 @@
 						</ButtonLink>
 					</Nothing>
 
-					<draggable
+					<TaskDraggable
 						v-if="tasks && tasks.length > 0"
 						v-model="tasks"
 						:group="{name: 'tasks', put: false}"
@@ -87,7 +87,7 @@
 								</span>
 							</SingleTaskInProject>
 						</template>
-					</draggable>
+					</TaskDraggable>
 
 					<Pagination
 						:total-pages="totalPages"
@@ -114,6 +114,7 @@ import Pagination from '@/components/misc/Pagination.vue'
 import SortPopup from '@/components/project/partials/SortPopup.vue'
 
 import {useTaskList} from '@/composables/useTaskList'
+import type {ExpandTaskFilterParam} from '@/services/taskCollection'
 import {useTaskDragToProject} from '@/composables/useTaskDragToProject'
 import {shouldShowTaskInListView} from '@/composables/useTaskListFiltering'
 import {PERMISSIONS as Permissions} from '@/constants/permissions'
@@ -155,9 +156,9 @@ const {
 	() => projectId.value,
 	() => props.viewId,
 	{position: 'asc'},
-	() => projectId.value === -1
+	() => (projectId.value === -1
 		? ['comment_count', 'is_unread']
-		: ['subtasks', 'comment_count', 'is_unread'],
+		: ['subtasks', 'comment_count', 'is_unread']) as unknown as ExpandTaskFilterParam,
 )
 
 const taskPositionService = ref(new TaskPositionService())
@@ -168,7 +169,7 @@ function isSavedFilterId(id: IProject['id']) {
 }
 
 // Saved filter composable for accessing filter data
-const _savedFilter = useSavedFilter(() => isSavedFilterId(projectId.value) ? projectId.value : undefined).filter
+const _savedFilter = useSavedFilter(() => (isSavedFilterId(projectId.value) ? projectId.value : undefined) as number).filter
 
 const tasks = ref<ITask[]>([])
 watch(
@@ -308,6 +309,14 @@ interface ItemSlotProps {
 
 function getItemSlotProps(slotProps: unknown): ItemSlotProps {
 	return slotProps as ItemSlotProps
+}
+
+// Omit + re-add $slots (rather than intersect over the original) so vue-tsc's
+// `T extends { $slots: infer Slots }` check resolves to our slot, not `{}`.
+const TaskDraggable = draggable as unknown as new () => Omit<InstanceType<typeof draggable>, '$slots'> & {
+	$slots: {
+		item(props: ItemSlotProps): unknown,
+	},
 }
 
 function setTaskRef(el: InstanceType<typeof SingleTaskInProject> | null, index: number) {

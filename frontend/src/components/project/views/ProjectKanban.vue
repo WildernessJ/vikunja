@@ -329,13 +329,12 @@ import {bucketRoleToggleDisabled} from '@/helpers/bucketRoleToggle'
 
 import {isSavedFilter, useSavedFilter} from '@/services/savedFilter'
 import {useTaskDragToProject} from '@/composables/useTaskDragToProject'
-import {success} from '@/message'
+import {success, translate} from '@/message'
 import {useProjectStore} from '@/stores/projects'
 import type {TaskFilterParams} from '@/services/taskCollection'
 import type {IProjectView} from '@/modelTypes/IProjectView'
 import TaskPositionService from '@/services/taskPosition'
 import TaskPositionModel from '@/models/taskPosition'
-import {i18n} from '@/i18n'
 import ProjectViewService from '@/services/projectViews'
 import ProjectViewModel from '@/models/projectView'
 import TaskBucketService from '@/services/taskBucket'
@@ -350,16 +349,28 @@ const props = defineProps<{
 const projectId = toRef(props, 'projectId')
 
 // zhyswan-vuedraggable ships no slot types, so its #item/#footer scoped slots
-// type as {}. Cast to a typed intermediate matching what it actually passes.
-const BucketDraggable = draggableComponent as unknown as new () => InstanceType<typeof draggableComponent> & {
+// type as {}. Omit + re-add $slots (rather than intersect over the original) so
+// vue-tsc's `T extends { $slots: infer Slots }` check resolves to our slot, not `{}`.
+interface BucketItemSlotProps {
+	element: IBucket,
+	index: number,
+}
+
+interface TaskItemSlotProps {
+	element: ITask,
+	index: number,
+}
+
+const BucketDraggable = draggableComponent as unknown as new () => Omit<InstanceType<typeof draggableComponent>, '$slots'> & {
 	$slots: {
-		item(props: { element: IBucket, index: number }): unknown,
+		item(props: BucketItemSlotProps): unknown,
 	},
 }
-const TaskDraggable = draggableComponent as unknown as new () => InstanceType<typeof draggableComponent> & {
+
+const TaskDraggable = draggableComponent as unknown as new () => Omit<InstanceType<typeof draggableComponent>, '$slots'> & {
 	$slots: {
-		item(props: { element: ITask }): unknown,
-		footer(): unknown,
+		item(props: TaskItemSlotProps): unknown,
+		footer?(): unknown,
 	},
 }
 
@@ -389,7 +400,7 @@ const taskBucketService = ref(new TaskBucketService())
 
 // Saved filter composable for accessing filter data
 // useSavedFilter's internal watch skips on `undefined`; its getter signature just doesn't declare that.
-const savedFilter = useSavedFilter((): number => (isSavedFilter({id: projectId.value}) ? projectId.value : undefined) as number).filter
+const savedFilter = useSavedFilter((): number => (isSavedFilter({id: projectId.value} as IProject) ? projectId.value : undefined) as number).filter
 
 const taskContainerRefs = ref<{ [id: IBucket['id']]: HTMLElement }>({})
 const bucketLimitInputRef = ref<HTMLInputElement | null>(null)
@@ -784,7 +795,7 @@ async function saveBucketTitle(bucketId: IBucket['id'], bucketTitle: string) {
 		title: bucketTitle,
 		projectId: projectId.value,
 	})
-	success({message: i18n.global.t('project.kanban.bucketTitleSavedSuccess')})
+	success({message: translate('project.kanban.bucketTitleSavedSuccess')})
 	bucketTitleEditable.value = false
 }
 

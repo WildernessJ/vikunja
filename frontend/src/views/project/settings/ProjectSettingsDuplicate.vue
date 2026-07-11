@@ -37,9 +37,9 @@ useTitle(() => t('project.duplicate.title'))
 const route = useRoute()
 const projectStore = useProjectStore()
 
-const {project, isLoading, duplicateProject} = useProject(route.params.projectId)
+const {project, isLoading, duplicateProject} = useProject(() => Number(route.params.projectId))
 
-const parentProject = ref<IProject | null>(null)
+const parentProject = ref<IProject | undefined>(undefined)
 const duplicateShares = ref(true)
 const isDuplicating = ref(false)
 

@@ -10,23 +10,25 @@ export default class NotificationService extends AbstractService<INotification> 
 		})
 	}
 
-	modelFactory(data) {
+	modelFactory(data: Partial<INotification>) {
 		return new NotificationModel(data)
 	}
 
-	beforeUpdate(model) {
+	beforeUpdate(model: INotification) {
 		if (!model) {
 			return model
 		}
 
+		// The API wants ISO date strings on the wire, even though INotification's
+		// created/readAt are typed as Date locally — cast to stay a compatible override.
 		return {
 			...model,
 			created: new Date(model.created).toISOString(),
-			readAt: new Date(model.readAt).toISOString(),
-		}
+			readAt: model.readAt ? new Date(model.readAt).toISOString() : null,
+		} as unknown as INotification
 	}
 	
 	async markAllRead() {
-		return this.post('/notifications', false)
+		return this.post('/notifications', false as unknown as INotification)
 	}
 }

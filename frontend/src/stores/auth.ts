@@ -11,7 +11,7 @@ import UserSettingsService from '@/services/userSettings'
 import {getToken, refreshToken, removeToken, saveToken} from '@/helpers/auth'
 import {useWebSocket} from '@/composables/useWebSocket'
 import {setModuleLoading} from '@/stores/helper'
-import {success, error} from '@/message'
+import {success, error, translate} from '@/message'
 import {
 	getRedirectUrlFromCurrentFrontendPath,
 	redirectToProvider,
@@ -549,7 +549,7 @@ export const useAuthStore = defineStore('auth', () => {
 				}
 			}
 			if (showMessage) {
-				success({message: i18n.global.t('user.settings.general.savedSuccess')})
+				success({message: translate('user.settings.general.savedSuccess')})
 			}
 		} catch (e) {
 			error(e)

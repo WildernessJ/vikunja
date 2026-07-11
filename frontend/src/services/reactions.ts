@@ -17,7 +17,9 @@ export default class ReactionService extends AbstractService {
 		return new ReactionModel(data)
 	}
 
-	modelGetAllFactory(data: Partial<IReactionPerEntity>): Partial<IReactionPerEntity> {
+	// Not an override of AbstractService.modelGetAllFactory: this transforms a
+	// reaction-per-entity map, not a single Model instance.
+	transformReactionsPerEntity(data: Partial<IReactionPerEntity>): Partial<IReactionPerEntity> {
 		Object.keys(data).forEach(reaction => {
 			data[reaction] = data[reaction]?.map(u => new UserModel(u))
 		})

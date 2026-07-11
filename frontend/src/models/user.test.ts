@@ -15,6 +15,7 @@ function makeUser(overrides: Partial<IUser> = {}): IUser {
 		settings: {} as IUser['settings'],
 		isLocalUser: true,
 		deletionScheduledAt: null,
+		maxPermission: null,
 		...overrides,
 	}
 }

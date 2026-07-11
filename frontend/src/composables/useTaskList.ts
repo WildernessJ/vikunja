@@ -208,12 +208,15 @@ export function useTaskList(
 	
 	const authStore = useAuthStore()
 	
-	const getAllTasksParams = computed(() => {
+	// Explicit tuple type (matching taskCollectionService.getAll's params) so the
+	// spread call below doesn't collapse to a same-typed array union.
+	const getAllTasksParams = computed<Parameters<TaskCollectionService['getAll']>>(() => {
 		return [
+			// Only projectId/viewId are used, for URL templating in getReplacedRoute.
 			{
 				projectId: projectId.value,
 				viewId: projectViewId.value,
-			},
+			} as unknown as ITask,
 			{
 				...allParams.value,
 				filter_timezone: authStore.settings.timezone,

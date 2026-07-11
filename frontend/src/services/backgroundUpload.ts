@@ -2,9 +2,8 @@ import AbstractService from './abstractService'
 import ProjectModel from '@/models/project'
 
 import type { IProject } from '@/modelTypes/IProject'
-import type { IFile } from '@/modelTypes/IFile'
 
-export default class BackgroundUploadService extends AbstractService {
+export default class BackgroundUploadService extends AbstractService<IProject> {
 	constructor() {
 		super({
 			create: '/projects/{projectId}/backgrounds/upload',
@@ -22,10 +21,10 @@ export default class BackgroundUploadService extends AbstractService {
 	/**
 	 * Uploads a file to the server
 	 */
-	create(projectId: IProject['id'], file: IFile) {
+	create(projectId: IProject['id'] | IProject, file?: File) {
 		return this.uploadFile(
 			this.getReplacedRoute(this.paths.create, {projectId}),
-			file,
+			file!,
 			'background',
 		)
 	}

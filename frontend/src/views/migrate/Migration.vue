@@ -24,7 +24,7 @@
 import {computed} from 'vue'
 import {useI18n} from 'vue-i18n'
 
-import {MIGRATORS} from './migrators'
+import {MIGRATORS, type Migrator} from './migrators'
 import {useTitle} from '@/composables/useTitle'
 import {useConfigStore} from '@/stores/config'
 
@@ -34,7 +34,7 @@ useTitle(() => t('migrate.title'))
 
 const configStore = useConfigStore()
 const availableMigrators = computed(() => configStore.availableMigrators
-	.map((id) => MIGRATORS[id])
+	.map((id) => MIGRATORS[id] as Migrator)
 	.filter((item) => Boolean(item)),
 )
 </script>

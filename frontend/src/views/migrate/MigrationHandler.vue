@@ -173,7 +173,7 @@ async function initMigration() {
 	}
 
 	const authUrlResponse = await migrationService.getAuthUrl()
-	authUrl.value = (authUrlResponse as MigrationConfig & { url?: string }).url ?? ''
+	authUrl.value = (authUrlResponse as unknown as MigrationConfig & { url?: string }).url ?? ''
 
 	const TOKEN_HASH_PREFIX = '#token='
 	migratorAuthCode.value = location.hash.startsWith(TOKEN_HASH_PREFIX)
@@ -183,7 +183,7 @@ async function initMigration() {
 	if (!migratorAuthCode.value) {
 		return
 	}
-	const {started_at, finished_at} = (await migrationService.getStatus()) as MigrationConfig & {
+	const {started_at, finished_at} = (await migrationService.getStatus()) as unknown as MigrationConfig & {
 		started_at?: string,
 		finished_at?: string,
 	}

@@ -19,7 +19,10 @@ export default class AvatarService extends AbstractService<IAvatar> {
 		return false
 	}
 
-	create(blob) {
+	// Widened to stay a compatible override of AbstractService.create(model: IAvatar);
+	// the only caller passes a Blob, never an IAvatar.
+	create(model: IAvatar | Blob) {
+		const blob = model instanceof Blob ? model : new Blob()
 		return this.uploadBlob(
 			this.paths.create,
 			blob,

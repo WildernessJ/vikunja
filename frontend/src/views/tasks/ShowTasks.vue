@@ -41,7 +41,10 @@
 			v-if="!showAll"
 			class="show-tasks-options"
 		>
-			<DatepickerWithRange @update:modelValue="setDate">
+			<DatepickerWithRange
+				:model-value="datepickerModelValue"
+				@update:modelValue="setDate"
+			>
 				<template #trigger="{toggle}">
 					<XButton
 						variant="primary"
@@ -204,6 +207,11 @@ interface DateRangeModelValue {
 	dateFrom: string | Date | null,
 	dateTo: string | Date | null,
 }
+
+const datepickerModelValue = computed<DateRangeModelValue>(() => ({
+	dateFrom: props.dateFrom ?? null,
+	dateTo: props.dateTo ?? null,
+}))
 
 function setDate(dates: DateRangeModelValue) {
 	const from = dates.dateFrom ?? props.dateFrom

@@ -84,7 +84,10 @@ const projectHistory = computed(() => {
 
 const tasksLoaded = ref(false)
 
-const deletionScheduledAt = computed(() => parseDateOrNull(authStore.info?.deletionScheduledAt))
+const deletionScheduledAt = computed(() => {
+	const date = authStore.info?.deletionScheduledAt
+	return date ? parseDateOrNull(date) : null
+})
 
 // Extract label IDs from query parameter
 const labelIds = computed(() => {
@@ -92,7 +95,7 @@ const labelIds = computed(() => {
 	if (!labelsParam) {
 		return undefined
 	}
-	return Array.isArray(labelsParam) ? labelsParam : [labelsParam]
+	return (Array.isArray(labelsParam) ? labelsParam : [labelsParam]) as string[]
 })
 
 // This is to reload the tasks list after adding a new task through the global task add.

@@ -36,7 +36,7 @@ async function handleCreate(webhook: IWebhook) {
 }
 
 async function handleDelete(webhookId: number) {
-	await service.delete({id: webhookId})
+	await service.delete({id: webhookId} as IWebhook)
 	success({message: t('project.webhooks.deleteSuccess')})
 	await loadWebhooks()
 }

@@ -8,8 +8,8 @@ export default class UserShareBaseModel extends AbstractModel<IUserShareBase> im
 	username: IUser['username'] = ''
 	permission: Permission = PERMISSIONS.READ
 
-	created: Date = null
-	updated: Date = null
+	created!: Date
+	updated!: Date
 
 	constructor(data: Partial<IUserShareBase>) {
 		super()

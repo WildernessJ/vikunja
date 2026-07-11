@@ -17,7 +17,7 @@
 				@click="toggleOpen"
 			>
 				<Icon
-					:icon="triggerIcon"
+					:icon="triggerIcon ?? 'ellipsis-h'"
 					class="icon"
 				/>
 			</BaseButton>
@@ -48,13 +48,13 @@ import type {IconProp} from '@fortawesome/fontawesome-svg-core'
 import CustomTransition from '@/components/misc/CustomTransition.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
 
-withDefaults(defineProps<{
+// withDefaults' generic instantiation blows up (TS2590) once an IconProp-typed prop
+// is in the mix, regardless of whether IconProp itself gets a default. triggerLabel's
+// only "default" was `undefined`, i.e. a no-op, so withDefaults buys nothing here.
+defineProps<{
 	triggerIcon?: IconProp
 	triggerLabel?: string
-}>(), {
-	triggerIcon: 'ellipsis-h',
-	triggerLabel: undefined,
-})
+}>()
 
 const emit = defineEmits<{
 	'close': [event: PointerEvent]
@@ -63,11 +63,14 @@ const emit = defineEmits<{
 defineSlots<{
 	'trigger': (props: {
 		close: () => void,
-		toggleOpen: () => void, 
+		toggleOpen: () => void,
 		open: boolean
 	}) => void,
-	'default': () => void
+	'default': (props: {
+		close: () => void,
+	}) => void
 }>()
+
 
 const initialMount = ref(false)
 const open = ref(false)

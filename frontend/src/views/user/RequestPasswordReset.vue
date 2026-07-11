@@ -74,7 +74,7 @@ async function requestPasswordReset() {
 		await passwordResetService.requestResetPassword(passwordReset.value)
 		isSuccess.value = true
 	} catch (e) {
-		errorMsg.value = e.response.data.message
+		errorMsg.value = (e as {response: {data: {message: string}}}).response.data.message
 	}
 }
 </script>
