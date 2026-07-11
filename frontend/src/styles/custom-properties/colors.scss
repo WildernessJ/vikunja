@@ -191,6 +191,14 @@
   --grey-900: hsl(220.9, 39.3%, 11%);
   --site-background: var(--grey-100);
 
+  // Lightness bounds for tinting a project's name with its own colour while
+  // keeping it legible against the task-list background (see SingleTaskInProject).
+  // Light mode caps lightness so a pale colour can't wash out; the dark override
+  // floors it so a dark colour can't vanish. Values guarantee WCAG AA against the
+  // hover background across the colour wheel.
+  --project-name-lightness-min: 0;
+  --project-name-lightness-max: 0.45;
+
   // Overrides of Bulma defaults
   --scheme-main: var(--white);
   --grey-darker: var(--grey-700);
@@ -293,6 +301,10 @@
       --text-invert: #000;
       --text-light: var(--grey-300);
       --text-strong: var(--grey-900);
+
+      // Floor project-name lightness instead of capping it (see :root above).
+      --project-name-lightness-min: 0.78;
+      --project-name-lightness-max: 1;
 
       // Elements that rely on Bulma defaults in light mode but
       // need to be overridden in dark mode
