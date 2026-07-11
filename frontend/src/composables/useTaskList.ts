@@ -237,6 +237,13 @@ export function useTaskList(
 	// last, so we drop any response that isn't from the most recent call.
 	let latestRequestId = 0
 	async function loadTasks(resetBeforeLoad: boolean = true) {
+		// A logged-out session has no business fetching tasks. logout() resets the
+		// store, which nudges getAllTasksParams (timezone) and re-fires the watcher
+		// below while a list view is still torn down — without this guard that fires
+		// a 401 request and a stray error toast during logout (issue #44 follow-up).
+		if (!authStore.authenticated) {
+			return tasks.value
+		}
 		if(resetBeforeLoad) {
 			tasks.value = []
 		}
