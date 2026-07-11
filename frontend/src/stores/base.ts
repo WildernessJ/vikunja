@@ -1,4 +1,5 @@
 import {ref, computed, readonly} from 'vue'
+import type {Ref} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {defineStore, acceptHMRUpdate} from 'pinia'
 
@@ -199,7 +200,10 @@ export const useBaseStore = defineStore('base', () => {
 		loadApp,
 		appReady,
 
-		currentProject: readonly(currentProject),
+		// Runtime-readonly guard against external mutation is kept; the exposed
+		// type stays mutable IProject so read-only consumers can pass it to
+		// helpers typed for IProject without a DeepReadonly mismatch.
+		currentProject: readonly(currentProject) as unknown as Ref<IProject | null>,
 		currentProjectViewId: readonly(currentProjectViewId),
 		background: readonly(background),
 		blurHash: readonly(blurHash),

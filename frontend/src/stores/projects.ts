@@ -1,4 +1,4 @@
-import {watch, reactive, shallowReactive, toValue, readonly, ref, computed, type MaybeRefOrGetter} from 'vue'
+import {watch, reactive, shallowReactive, toValue, readonly, ref, computed, type MaybeRefOrGetter, type Ref, type ComputedRef} from 'vue'
 import {acceptHMRUpdate, defineStore} from 'pinia'
 import {useI18n} from 'vue-i18n'
 import {useRouter} from 'vue-router'
@@ -329,12 +329,15 @@ export const useProjectStore = defineStore('project', () => {
 		isLoading: readonly(isLoading),
 		draggedProjectId: readonly(draggedProjectId),
 		setDraggedProjectId,
-		projects: readonly(projects),
-		projectsArray: readonly(projectsArray),
-		notArchivedRootProjects: readonly(notArchivedRootProjects),
-		favoriteProjects: readonly(favoriteProjects),
+		// Runtime-readonly guards are kept; exposed types stay mutable so
+		// read-only consumers can pass projects to IProject-typed helpers
+		// without a DeepReadonly mismatch.
+		projects: readonly(projects) as unknown as Ref<{ [id: IProject['id']]: IProject }>,
+		projectsArray: readonly(projectsArray) as unknown as ComputedRef<IProject[]>,
+		notArchivedRootProjects: readonly(notArchivedRootProjects) as unknown as ComputedRef<IProject[]>,
+		favoriteProjects: readonly(favoriteProjects) as unknown as ComputedRef<IProject[]>,
 		hasProjects: readonly(hasProjects),
-		savedFilterProjects: readonly(savedFilterProjects),
+		savedFilterProjects: readonly(savedFilterProjects) as unknown as ComputedRef<IProject[]>,
 
 		getChildProjects,
 		isOrphanedSubProject,
