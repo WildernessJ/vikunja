@@ -346,7 +346,7 @@ async function markAllRead() {
 				margin: 0 .5rem;
 
 				span {
-					font-family: $family-sans-serif;
+					font-family: var(--body-family);
 				}
 
 				.avatar {

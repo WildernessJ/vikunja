@@ -215,7 +215,7 @@ function onUpdateField(e: Event) {
 			text-align: start;
 			box-shadow: none;
 			text-transform: none;
-			font-family: $family-sans-serif;
+			font-family: var(--body-family);
 			font-weight: normal;
 			padding: .5rem .75rem;
 			border: none;

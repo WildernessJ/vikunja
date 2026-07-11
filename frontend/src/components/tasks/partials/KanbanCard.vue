@@ -291,7 +291,7 @@ $task-background: var(--white);
 	}
 
 	h3 {
-		font-family: $family-sans-serif;
+		font-family: var(--body-family);
 		font-size: .85rem;
 		word-break: break-word;
 	}
