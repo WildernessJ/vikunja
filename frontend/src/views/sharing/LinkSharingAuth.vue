@@ -50,6 +50,16 @@ import {useAuthStore} from '@/stores/auth'
 import {useRedirectToLastVisited} from '@/composables/useRedirectToLastVisited'
 import type {IProject} from '@/modelTypes/IProject.ts'
 
+interface HTTPErrorResponse {
+	response?: {
+		status?: number
+		data?: {
+			code?: number
+			message?: string
+		}
+	}
+}
+
 const {t} = useI18n({useScope: 'global'})
 useTitle(t('sharing.authenticating'))
 const {getLastVisitedRoute} = useRedirectToLastVisited()
@@ -116,7 +126,7 @@ function useAuth() {
 
 		try {
 			const {project_id: projectId} = await authStore.linkShareAuth({
-				hash: route.params.share,
+				hash: route.params.share as string,
 				password: password.value,
 			})
 			const logoVisible = route.query.logoVisible
@@ -126,37 +136,39 @@ function useAuth() {
 
 			return redirectToProject(projectId)
 		} catch (e) {
-			if (e?.response?.data?.code === 13001) {
+			const err = e as HTTPErrorResponse
+
+			if (err?.response?.data?.code === 13001) {
 				authenticateWithPassword.value = true
 				return
 			}
 
 			// Handle generic 403 errors that might occur after initial auth
-			if (e?.response?.status === 403 && !e?.response?.data?.code) {
+			if (err?.response?.status === 403 && !err?.response?.data?.code) {
 				errorMessage.value = t('sharing.accessDenied')
 				authenticateWithPassword.value = false
 				return
 			}
-			
+
 			// Handle network/server errors
-			if (e?.response?.status >= 500 || !e?.response) {
+			if ((err?.response?.status ?? 0) >= 500 || !err?.response) {
 				errorMessage.value = t('sharing.serverError')
 				authenticateWithPassword.value = false
 				return
 			}
-			
+
 			// Log unexpected errors for debugging
 			console.error('Link share authentication error:', e)
 
 			// TODO: Put this logic in a global errorMessage handler method which checks all auth codes
-			let err = t('sharing.error')
-			if (e?.response?.data?.message) {
-				err = e.response.data.message
+			let errorText = t('sharing.error')
+			if (err?.response?.data?.message) {
+				errorText = err.response.data.message
 			}
-			if (e?.response?.data?.code === 13002) {
-				err = t('sharing.invalidPassword')
+			if (err?.response?.data?.code === 13002) {
+				errorText = t('sharing.invalidPassword')
 			}
-			errorMessage.value = err
+			errorMessage.value = errorText
 		} finally {
 			loading.value = false
 		}

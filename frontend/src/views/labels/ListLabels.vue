@@ -38,7 +38,7 @@
 				>
 					<span>{{ label.title }}</span>
 					<BaseButton
-						v-if="userInfo.id === label.createdBy.id"
+						v-if="userInfo?.id === label.createdBy.id"
 						class="label-edit-button is-small"
 						@click.stop.prevent="editLabel(label)"
 					>
@@ -168,16 +168,13 @@ function editLabelSubmit() {
 }
 
 function editLabel(label: ILabel) {
-	if (label.createdBy.id !== userInfo.value.id) {
+	if (!userInfo.value || label.createdBy.id !== userInfo.value.id) {
 		return
 	}
 	// Duplicating the label to make sure it does not look like changes take effect immediatly as the label 
 	// object passed to this function here still has a reference to the store.
 	labelEditLabel.value = new LabelModel({
 		...label,
-		// The model does not support passing dates into it directly so we need to convert them first				
-		created: +label.created,
-		updated: +label.updated,
 	})
 	isLabelEdit.value = true
 

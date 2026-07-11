@@ -1,4 +1,5 @@
 import {computed, readonly, ref} from 'vue'
+import type {Ref, ComputedRef} from 'vue'
 import {acceptHMRUpdate, defineStore} from 'pinia'
 
 import LabelService from '@/services/label'
@@ -141,8 +142,11 @@ export const useLabelStore = defineStore('label', () => {
 	}
 
 	return {
-		labels: readonly(labels),
-		labelsArray: readonly(labelsArray),
+		// Runtime-readonly guards are kept; exposed types stay mutable so
+		// read-only consumers can pass labels to ILabel-typed helpers
+		// without a DeepReadonly mismatch.
+		labels: readonly(labels) as unknown as Ref<{ [id: ILabel['id']]: ILabel }>,
+		labelsArray: readonly(labelsArray) as unknown as ComputedRef<ILabel[]>,
 		isLoading,
 
 		getLabelById,

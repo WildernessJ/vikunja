@@ -1,6 +1,7 @@
 import AbstractService from './abstractService'
 import TaskModel from '@/models/task'
 import type {ITask} from '@/modelTypes/ITask'
+import type {IRelationKind} from '@/types/IRelationKind'
 import AttachmentService from './attachment'
 import LabelService from './label'
 
@@ -9,7 +10,7 @@ import {SECONDS_A_DAY, SECONDS_A_HOUR, SECONDS_A_WEEK} from '@/constants/date'
 import {objectToSnakeCase} from '@/helpers/case'
 import {AuthenticatedHTTPFactory} from '@/helpers/fetcher'
 
-const parseDate = date => {
+const parseDate = (date: Date | null) => {
 	if (date) {
 		return new Date(date).toISOString()
 	}
@@ -28,15 +29,15 @@ export default class TaskService extends AbstractService<ITask> {
 		})
 	}
 
-	modelFactory(data) {
+	modelFactory(data: Partial<ITask>) {
 		return new TaskModel(data)
 	}
 
-	beforeUpdate(model) {
+	beforeUpdate(model: ITask) {
 		return this.processModel(model)
 	}
 
-	beforeCreate(model) {
+	beforeCreate(model: ITask) {
 		return this.processModel(model)
 	}
 
@@ -44,71 +45,72 @@ export default class TaskService extends AbstractService<ITask> {
 		return false
 	}
 
-	processModel(updatedModel) {
-		const model = {...updatedModel}
-
-		model.title = model.title?.trim()
-
-		// Ensure that projectId is an int
-		model.projectId = Number(model.projectId)
-
-		// Convert dates into an iso string
-		model.dueDate = parseDate(model.dueDate)
-		model.deadline = parseDate(model.deadline)
-		model.startDate = parseDate(model.startDate)
-		model.endDate = parseDate(model.endDate)
-		model.doneAt = parseDate(model.doneAt)
-		model.created = new Date(model.created).toISOString()
-		model.updated = new Date(model.updated).toISOString()
-
-		model.reminderDates = null
+	processModel(updatedModel: ITask) {
 		// remove all nulls, these would create empty reminders
-		model.reminders = model.reminders.filter(r => r !== null)
-		// Make normal timestamps from js dates
-		if (model.reminders.length > 0) {
-			model.reminders.forEach(r => {
-				r.reminder = new Date(r.reminder).toISOString()
-			})
-		}
+		const reminders = updatedModel.reminders
+			.filter(r => r !== null)
+			.map(r => ({
+				...r,
+				// Make normal timestamps from js dates
+				reminder: new Date(r.reminder!).toISOString(),
+			}))
 
 		// Make the repeating amount to seconds
 		let repeatAfterSeconds = 0
-		if (model.repeatAfter !== null && (model.repeatAfter.amount !== null || model.repeatAfter.amount !== 0)) {
-			switch (model.repeatAfter.type) {
+		if (updatedModel.repeatAfter !== null && typeof updatedModel.repeatAfter === 'object' && (updatedModel.repeatAfter.amount !== null || updatedModel.repeatAfter.amount !== 0)) {
+			switch (updatedModel.repeatAfter.type) {
 				case 'hours':
-					repeatAfterSeconds = model.repeatAfter.amount * SECONDS_A_HOUR
+					repeatAfterSeconds = updatedModel.repeatAfter.amount * SECONDS_A_HOUR
 					break
 				case 'days':
-					repeatAfterSeconds = model.repeatAfter.amount * SECONDS_A_DAY
+					repeatAfterSeconds = updatedModel.repeatAfter.amount * SECONDS_A_DAY
 					break
 				case 'weeks':
-					repeatAfterSeconds = model.repeatAfter.amount * SECONDS_A_WEEK
+					repeatAfterSeconds = updatedModel.repeatAfter.amount * SECONDS_A_WEEK
 					break
 			}
 		}
-		model.repeatAfter = repeatAfterSeconds
-
-		model.hexColor = colorFromHex(model.hexColor)
 
 		// Do the same for all related tasks
-		Object.keys(model.relatedTasks).forEach(relationKind => {
-			model.relatedTasks[relationKind] = model.relatedTasks[relationKind].map(t => {
+		const relatedTasks = {...updatedModel.relatedTasks}
+		;(Object.keys(relatedTasks) as IRelationKind[]).forEach(relationKind => {
+			relatedTasks[relationKind] = relatedTasks[relationKind]!.map(t => {
 				return this.processModel(t)
 			})
 		})
 
 		// Process all attachments to prevent parsing errors
-		if (model.attachments.length > 0) {
+		if (updatedModel.attachments.length > 0) {
 			const attachmentService = new AttachmentService()
-			model.attachments.map(a => {
+			updatedModel.attachments.map(a => {
 				return attachmentService.processModel(a)
 			})
 		}
 
 		// Preprocess all labels
-		if (model.labels.length > 0) {
-			const labelService = new LabelService()
-			model.labels = model.labels.map(l => labelService.processModel(l))
+		const labels = updatedModel.labels.length > 0
+			? updatedModel.labels.map(l => new LabelService().processModel(l))
+			: updatedModel.labels
+
+		const model = {
+			...updatedModel,
+			title: updatedModel.title?.trim(),
+			// Ensure that projectId is an int
+			projectId: Number(updatedModel.projectId),
+			// Convert dates into an iso string
+			dueDate: parseDate(updatedModel.dueDate),
+			deadline: parseDate(updatedModel.deadline),
+			startDate: parseDate(updatedModel.startDate),
+			endDate: parseDate(updatedModel.endDate),
+			doneAt: parseDate(updatedModel.doneAt),
+			created: new Date(updatedModel.created).toISOString(),
+			updated: new Date(updatedModel.updated).toISOString(),
+			reminderDates: null,
+			reminders,
+			repeatAfter: repeatAfterSeconds,
+			hexColor: colorFromHex(updatedModel.hexColor),
+			relatedTasks,
+			labels,
 		}
 
 		const transformed = objectToSnakeCase(model)

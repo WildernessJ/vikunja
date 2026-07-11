@@ -75,12 +75,12 @@ export default class UserModel extends AbstractModel<IUser> implements IUser {
 	exp = 0
 	type: AuthType = AUTH_TYPES.UNKNOWN
 
-	created: Date
-	updated: Date
-	settings: IUserSettings
+	created!: Date
+	updated!: Date
+	settings!: IUserSettings
 
-	isLocalUser: boolean
-	deletionScheduledAt: null
+	isLocalUser!: boolean
+	deletionScheduledAt!: null
 	isAdmin?: boolean
 	botOwnerId = 0
 

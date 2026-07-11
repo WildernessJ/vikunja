@@ -1,5 +1,5 @@
 import {AuthenticatedHTTPFactory} from '@/helpers/fetcher'
-import type {Method} from 'axios'
+import type {Method, AxiosRequestConfig} from 'axios'
 
 import {objectToSnakeCase} from '@/helpers/case'
 import AbstractModel from '@/models/abstractModel'
@@ -186,8 +186,8 @@ export default abstract class AbstractService<Model extends IAbstract = IAbstrac
 	 * getReplacedRoute('/projects/{projectId}/tasks', { projectId: 3 })
 	 * === '/projects/{projectId}/tasks'
 	 */
-	getReplacedRoute(path : string, pathparams : Record<string, unknown>) : string {
-		const replacements = this.getRouteReplacements(path, pathparams)
+	getReplacedRoute(path : string, pathparams : object) : string {
+		const replacements = this.getRouteReplacements(path, pathparams as Record<string, unknown>)
 		return Object.entries(replacements).reduce(
 			(result, [parameter, value]) => result.replace(parameter, value as string),
 			path,
@@ -326,7 +326,7 @@ export default abstract class AbstractService<Model extends IAbstract = IAbstrac
 	 * This is a more abstract implementation which only does a get request.
 	 * Services which need more flexibility can use this.
 	 */
-	async getM(url : string, model : Model = new AbstractModel({}), params: Record<string, unknown> = {}) {
+	async getM(url : string, model : Model = new (AbstractModel as unknown as new () => Model)(), params: Record<string, unknown> = {}) {
 		const cancel = this.setLoading()
 
 		model = this.beforeGet(model)
@@ -342,17 +342,17 @@ export default abstract class AbstractService<Model extends IAbstract = IAbstrac
 		}
 	}
 
-	async getBlobUrl(url : string, method : Method = 'GET', data = {}) {
+	async getBlobUrl(url : string, method : Method = 'GET', data = {}) : Promise<string> {
 		const response = await this.http({
 			url,
 			method,
 			responseType: 'blob',
 			data,
 		})
-		
+
 		// Handle SVG blobs specially - convert to data URL for better browser compatibility
 		if (response.data.type === 'image/svg+xml') {
-			return new Promise((resolve, reject) => {
+			return new Promise<string>((resolve, reject) => {
 				const reader = new FileReader()
 				reader.onload = () => resolve(reader.result as string)
 				reader.onerror = reject
@@ -370,12 +370,12 @@ export default abstract class AbstractService<Model extends IAbstract = IAbstrac
 	 * @param params Optional query parameters
 	 * @param page The page to get
 	 */
-	async getAll(model : Model = new AbstractModel({}), params = {}, page = 1): Promise<Model[]> {
+	async getAll(model : Model = new (AbstractModel as unknown as new () => Model)(), params = {}, page = 1): Promise<Model[]> {
 		if (this.paths.getAll === '') {
 			throw new Error('This model is not able to get data.')
 		}
 
-		params.page = page
+		(params as Record<string, unknown>).page = page
 
 		const cancel = this.setLoading()
 		model = this.beforeGet(model)
@@ -463,7 +463,7 @@ export default abstract class AbstractService<Model extends IAbstract = IAbstrac
 		const finalUrl = this.getReplacedRoute(this.paths.delete, model)
 
 		try {
-			const {data} = await this.http.delete(finalUrl, model)
+			const {data} = await this.http.delete(finalUrl, model as unknown as AxiosRequestConfig)
 			return data
 		} finally {
 			cancel()
@@ -501,7 +501,7 @@ export default abstract class AbstractService<Model extends IAbstract = IAbstrac
 				{
 					headers: {
 						'Content-Type':
-							'multipart/form-data; boundary=' + formData._boundary,
+							'multipart/form-data; boundary=' + (formData as unknown as {_boundary?: string})._boundary,
 					},
 					// fix upload issue after upgrading to axios to 1.0.0
 					// see: https://github.com/axios/axios/issues/4885#issuecomment-1222419132
