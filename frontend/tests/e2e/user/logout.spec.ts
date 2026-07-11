@@ -56,10 +56,34 @@ test.describe('Log out', () => {
 		const historyBefore = await page.evaluate(() => localStorage.getItem('projectHistory'))
 		expect(historyBefore).not.toBeNull()
 
+		// Logging out resets the settings store, which nudges the task list's params
+		// watcher. Guard against it firing a task fetch after the token is gone — that
+		// 401s and flashes a stray error toast on the way out (#44 follow-up). A benign
+		// still-authenticated (200) fetch during the transition is harmless; only a
+		// failed one is the regression, so assert on 401s / aborted task requests.
+		const isTaskFetch = (url: string) => /\/projects\/\d+\/(views\/\d+\/)?tasks(\?|$)/.test(url)
+		const doomedTaskFetches: string[] = []
+		const onResponse = (response) => {
+			if (isTaskFetch(response.url()) && response.status() === 401) {
+				doomedTaskFetches.push(`401 ${response.url()}`)
+			}
+		}
+		const onRequestFailed = (request) => {
+			if (isTaskFetch(request.url())) {
+				doomedTaskFetches.push(`failed ${request.url()}`)
+			}
+		}
+		page.on('response', onResponse)
+		page.on('requestfailed', onRequestFailed)
+
 		await logout(page)
 
 		// Check URL redirects to login
 		await expect(page).toHaveURL(/\/login/)
+		page.off('response', onResponse)
+		page.off('requestfailed', onRequestFailed)
+
+		expect(doomedTaskFetches, 'no task fetch should 401/fail during logout').toEqual([])
 
 		// Verify the project history is cleared after logout
 		const historyAfter = await page.evaluate(() => localStorage.getItem('projectHistory'))
