@@ -567,7 +567,7 @@ function focus() {
 	box-shadow: none;
 	border-radius: 0;
 	text-transform: none;
-	font-family: $family-sans-serif;
+	font-family: var(--body-family);
 	font-weight: normal;
 	padding: .5rem;
 	border: none;
