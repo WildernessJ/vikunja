@@ -571,6 +571,11 @@ export const useAuthStore = defineStore('auth', () => {
 		window.localStorage.clear() // Clear all settings and history we might have saved in local storage.
 		lastUserInfoRefresh.value = null
 
+		// Reset to model defaults so the settings-driven composables (useColorScheme,
+		// useAppearance) re-fire and strip the logged-out user's styling from <html>
+		// instead of leaving it stuck on the login page (issue #44).
+		settings.value = new UserSettingsModel()
+
 		sessionStorage.setItem(JUST_LOGGED_OUT_KEY, 'true')
 
 		// Redirect to the OIDC provider to end its session too. Prefer the
