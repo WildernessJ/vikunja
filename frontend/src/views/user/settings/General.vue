@@ -199,6 +199,27 @@
 				/>
 			</FormField>
 			<FormField
+				:label="$t('user.settings.appearance.fontSize.title')"
+				layout="two-col"
+			>
+				<FormSelect
+					v-model="settings.frontendSettings.fontSize"
+					:options="fontSizeOptions"
+				/>
+			</FormField>
+			<p class="help">
+				{{ $t('user.settings.appearance.fontSize.description') }}
+			</p>
+			<FormField
+				:label="$t('user.settings.appearance.fontFamily.title')"
+				layout="two-col"
+			>
+				<FormSelect
+					v-model="settings.frontendSettings.fontFamily"
+					:options="fontFamilyOptions"
+				/>
+			</FormField>
+			<FormField
 				:label="$t('user.settings.quickAddMagic.title')"
 				layout="two-col"
 			>
@@ -346,6 +367,7 @@ import FormSelect from '@/components/input/FormSelect.vue'
 import FormCheckbox from '@/components/input/FormCheckbox.vue'
 
 import {SUPPORTED_LOCALES} from '@/i18n'
+import {FONT_SIZES, FONT_FAMILIES, type FontSizeKey, type FontFamilyKey} from '@/helpers/appearance'
 import {AuthenticatedHTTPFactory} from '@/helpers/fetcher'
 import {formatDisplayDateFormat} from '@/helpers/time/formatDate'
 
@@ -432,6 +454,20 @@ const colorSchemeOptions = computed(() => [
 	{value: 'auto', label: t('user.settings.appearance.colorScheme.system')},
 	{value: 'dark', label: t('user.settings.appearance.colorScheme.dark')},
 ])
+
+const fontSizeOptions = computed(() =>
+	(Object.keys(FONT_SIZES) as FontSizeKey[]).map(value => ({
+		value,
+		label: t(`user.settings.appearance.fontSize.${value.replace('.', '_')}`),
+	})),
+)
+
+const fontFamilyOptions = computed(() =>
+	(Object.keys(FONT_FAMILIES) as FontFamilyKey[]).map(value => ({
+		value,
+		label: t(`user.settings.appearance.fontFamily.${value}`),
+	})),
+)
 
 const quickAddMagicModeOptions = computed(() =>
 	(Object.values(PrefixMode) as PrefixMode[]).map(mode => ({

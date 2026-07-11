@@ -8,6 +8,7 @@ import {PRIORITIES} from '@/constants/priorities'
 import {DATE_DISPLAY} from '@/constants/dateDisplay'
 import {TIME_FORMAT} from '@/constants/timeFormat'
 import {RELATION_KIND} from '@/types/IRelationKind'
+import {DEFAULT_FONT_SIZE, DEFAULT_FONT_FAMILY} from '@/helpers/appearance'
 
 export default class UserSettingsModel extends AbstractModel<IUserSettings> implements IUserSettings {
 	name = ''
@@ -41,6 +42,8 @@ export default class UserSettingsModel extends AbstractModel<IUserSettings> impl
 		desktopQuickEntryShortcut: 'CmdOrCtrl+Shift+A',
 		quickAddDefaultReminders: [],
 		hiddenNavItems: [],
+		fontSize: DEFAULT_FONT_SIZE,
+		fontFamily: DEFAULT_FONT_FAMILY,
 	}
 	extraSettingsLinks = {}
 

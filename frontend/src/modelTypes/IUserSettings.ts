@@ -9,6 +9,7 @@ import type {Priority} from '@/constants/priorities'
 import type {DateDisplay} from '@/constants/dateDisplay'
 import type {TimeFormat} from '@/constants/timeFormat'
 import type {IRelationKind} from '@/types/IRelationKind'
+import type {FontSizeKey, FontFamilyKey} from '@/helpers/appearance'
 
 export interface IFrontendSettings {
 	playSoundWhenDone: boolean
@@ -32,6 +33,8 @@ export interface IFrontendSettings {
 	quickAddDefaultReminders: ITaskReminder[]
 	timeTrackingDefaultStart?: string
 	hiddenNavItems?: string[]
+	fontSize?: FontSizeKey
+	fontFamily?: FontFamilyKey
 }
 
 export interface IExtraSettingsLink {
