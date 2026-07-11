@@ -26,6 +26,7 @@ import {PrefixMode} from '@/modules/quickAddMagic'
 import {DATE_DISPLAY} from '@/constants/dateDisplay'
 import {TIME_FORMAT} from '@/constants/timeFormat'
 import {RELATION_KIND} from '@/types/IRelationKind'
+import {DEFAULT_FONT_SIZE, DEFAULT_FONT_FAMILY} from '@/helpers/appearance'
 import type {IProvider} from '@/types/IProvider'
 
 // Set on explicit logout so the login page won't immediately bounce the user
@@ -163,6 +164,8 @@ export const useAuthStore = defineStore('auth', () => {
 				hiddenNavItems: [],
 				overviewProjectIds: [],
 				desktopQuickEntryShortcut: 'CmdOrCtrl+Shift+A',
+				fontSize: DEFAULT_FONT_SIZE,
+				fontFamily: DEFAULT_FONT_FAMILY,
 				...newSettings.frontendSettings,
 			},
 		})

@@ -277,6 +277,21 @@
           "light": "Light",
           "system": "System",
           "dark": "Dark"
+        },
+        "fontSize": {
+          "title": "Text size",
+          "description": "Adjusts the base text size across the app. Larger sizes also scale spacing, like a mild zoom.",
+          "87_5": "Small",
+          "100": "Default",
+          "112_5": "Large",
+          "125": "Extra large"
+        },
+        "fontFamily": {
+          "title": "Font",
+          "system": "System default",
+          "sansSerif": "Sans-serif",
+          "serif": "Serif",
+          "monospace": "Monospace"
         }
       },
       "backgroundBrightness": {
