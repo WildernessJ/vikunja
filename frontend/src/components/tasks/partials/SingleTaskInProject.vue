@@ -35,8 +35,8 @@
 						v-tooltip="$t('task.detail.belongsToProject', {project: project.title})"
 						:to="{ name: 'project.index', params: { projectId: task.projectId } }"
 						class="task-project mie-1"
-						:class="{'mie-2': task.hexColor !== '', 'has-project-color': projectColor}"
-						:style="{ '--project-color': projectColor || undefined }"
+						:class="{'mie-2': task.hexColor !== '', 'has-project-color': hasProjectColor}"
+						:style="hasProjectColor ? { '--project-color': projectColor } : undefined"
 						@click.stop
 					>
 						{{ project.title }}
@@ -173,8 +173,8 @@
 				v-tooltip="$t('task.detail.belongsToProject', {project: project.title})"
 				:to="{ name: 'project.index', params: { projectId: task.projectId } }"
 				class="task-project"
-				:class="{'has-project-color': projectColor}"
-				:style="{ '--project-color': projectColor || undefined }"
+				:class="{'has-project-color': hasProjectColor}"
+				:style="hasProjectColor ? { '--project-color': projectColor } : undefined"
 				@click.stop
 			>
 				{{ project.title }}
@@ -301,6 +301,10 @@ const taskStore = useTaskStore()
 
 const project = computed(() => projectStore.projects[task.value.projectId])
 const projectColor = computed(() => project.value ? project.value?.hexColor : '')
+// Only tint the name for a well-formed hex; the backend validates length but not
+// charset, so a malformed value would make the CSS colour invalid and fall back
+// unpredictably rather than to the intended grey.
+const hasProjectColor = computed(() => /^#[0-9a-f]{6}$/i.test(projectColor.value))
 
 const showProjectSeparately = computed(() => !props.showProject && currentProject.value?.id !== task.value.projectId && project.value)
 
@@ -546,26 +550,16 @@ defineExpose({
 		white-space: nowrap;
 
 		// Tint the name with the project's own colour (colourless projects keep
-		// the grey above). The clamp keeps it legible on either background —
-		// capping lightness on light, flooring it on dark — without shifting hue
-		// or chroma; color-mix is the fallback where relative-colour syntax is
-		// unavailable. Applied straight to `color`, not via a custom property,
-		// which Chrome mis-resolves through var() indirection.
+		// the grey above). Clamping lightness to the theme's bounds keeps it
+		// legible on the list background without shifting hue or chroma — the
+		// bounds cap it in light mode and floor it in dark, and live in the token
+		// file so theme and print are handled centrally. color-mix is the
+		// fallback where relative-colour syntax is unavailable.
 		&.has-project-color {
 			color: color-mix(in oklab, var(--project-color), var(--text) 30%);
 
 			@supports (color: oklch(from red l c h)) {
-				color: oklch(from var(--project-color) #{"min(l, 0.5)"} c h);
-			}
-
-			// Dark overrides sit inside @media screen so they don't leak into
-			// print, which always renders on a light background (see styles/README).
-			.dark & {
-				@media screen {
-					@supports (color: oklch(from red l c h)) {
-						color: oklch(from var(--project-color) #{"max(l, 0.72)"} c h);
-					}
-				}
+				color: oklch(from var(--project-color) clamp(var(--project-name-lightness-min), l, var(--project-name-lightness-max)) c h);
 			}
 		}
 	}
