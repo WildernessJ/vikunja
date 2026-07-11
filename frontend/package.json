@@ -43,6 +43,8 @@
     "test:e2e:ui": "playwright test --ui-host=0.0.0.0",
     "test:unit": "vitest --dir ./src",
     "typecheck": "vue-tsc --build --force",
+    "typecheck:ratchet": "node scripts/typecheck-ratchet.mjs --check",
+    "typecheck:update": "node scripts/typecheck-ratchet.mjs --update",
     "fonts:update": "pnpm fonts:download && pnpm fonts:subset",
     "fonts:download": "./scripts/fonts-download.sh",
     "fonts:subset": "./scripts/fonts-subset.sh",

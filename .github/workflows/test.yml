@@ -402,10 +402,13 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: ./.github/actions/setup-frontend
-      - name: Typecheck
-        continue-on-error: true
+      # vue-tsc still reports a large pre-existing error backlog (see #21), so a
+      # plain `pnpm typecheck` cannot gate yet. The ratchet enforces a per-file
+      # error budget instead: it fails only when a file gains new errors, and
+      # the budget ratchets down as files are cleaned.
+      - name: Typecheck ratchet
         working-directory: frontend
-        run: pnpm typecheck
+        run: pnpm typecheck:ratchet
 
   test-frontend-unit:
     runs-on: ubuntu-latest
