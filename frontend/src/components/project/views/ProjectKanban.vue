@@ -114,7 +114,7 @@
 										</DropdownItem>
 										<DropdownItem
 											v-tooltip="bucketRoleToggleDisabled(bucket, view, 'done') ? $t('project.kanban.doneBucketDisabledIsDefault') : $t('project.kanban.doneBucketHintExtended')"
-											:class="{'is-disabled': bucketRoleToggleDisabled(bucket, view, 'done')}"
+											:disabled="bucketRoleToggleDisabled(bucket, view, 'done')"
 											:icon-class="{'has-text-success': bucket.id === view?.doneBucketId}"
 											icon="check-double"
 											@click.stop="toggleDoneBucket(bucket)"
@@ -123,7 +123,7 @@
 										</DropdownItem>
 										<DropdownItem
 											v-tooltip="bucketRoleToggleDisabled(bucket, view, 'default') ? $t('project.kanban.defaultBucketDisabledIsDone') : $t('project.kanban.defaultBucketHint')"
-											:class="{'is-disabled': bucketRoleToggleDisabled(bucket, view, 'default')}"
+											:disabled="bucketRoleToggleDisabled(bucket, view, 'default')"
 											:icon-class="{'has-text-primary': bucket.id === view?.defaultBucketId}"
 											icon="th"
 											@click.stop="toggleDefaultBucket(bucket)"
@@ -139,7 +139,7 @@
 										<DropdownItem
 											v-tooltip="buckets.length <= 1 ? $t('project.kanban.deleteLast') : ''"
 											class="has-text-danger"
-											:class="{'is-disabled': buckets.length <= 1}"
+											:disabled="buckets.length <= 1"
 											icon-class="has-text-danger"
 											icon="trash-alt"
 											@click.stop="() => deleteBucketModal(bucket.id)"
