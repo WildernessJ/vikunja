@@ -25,12 +25,6 @@
 				/>
 			</span>
 
-			<ColorBubble
-				v-if="!showProjectSeparately && projectColor !== '' && currentProject?.id !== task.projectId"
-				:color="projectColor"
-				class="mie-1"
-			/>
-
 			<div
 				:class="{ 'done': task.done, 'show-project': showProject && project}"
 				class="tasktext"
@@ -41,7 +35,8 @@
 						v-tooltip="$t('task.detail.belongsToProject', {project: project.title})"
 						:to="{ name: 'project.index', params: { projectId: task.projectId } }"
 						class="task-project mie-1"
-						:class="{'mie-2': task.hexColor !== ''}"
+						:class="{'mie-2': task.hexColor !== '', 'has-project-color': projectColor}"
+						:style="{ '--project-color': projectColor || undefined }"
 						@click.stop
 					>
 						{{ project.title }}
@@ -173,17 +168,13 @@
 				is-small
 			/>
 
-			<ColorBubble
-				v-if="showProjectSeparately && projectColor !== '' && currentProject?.id !== task.projectId"
-				:color="projectColor"
-				class="mie-1"
-			/>
-
 			<RouterLink
 				v-if="showProjectSeparately"
 				v-tooltip="$t('task.detail.belongsToProject', {project: project.title})"
 				:to="{ name: 'project.index', params: { projectId: task.projectId } }"
 				class="task-project"
+				:class="{'has-project-color': projectColor}"
+				:style="{ '--project-color': projectColor || undefined }"
 				@click.stop
 			>
 				{{ project.title }}
@@ -553,6 +544,30 @@ defineExpose({
 		color: var(--grey-400);
 		font-size: .9rem;
 		white-space: nowrap;
+
+		// Tint the name with the project's own colour (colourless projects keep
+		// the grey above). The clamp keeps it legible on either background —
+		// capping lightness on light, flooring it on dark — without shifting hue
+		// or chroma; color-mix is the fallback where relative-colour syntax is
+		// unavailable. Applied straight to `color`, not via a custom property,
+		// which Chrome mis-resolves through var() indirection.
+		&.has-project-color {
+			color: color-mix(in oklab, var(--project-color), var(--text) 30%);
+
+			@supports (color: oklch(from red l c h)) {
+				color: oklch(from var(--project-color) #{"min(l, 0.5)"} c h);
+			}
+
+			// Dark overrides sit inside @media screen so they don't leak into
+			// print, which always renders on a light background (see styles/README).
+			.dark & {
+				@media screen {
+					@supports (color: oklch(from red l c h)) {
+						color: oklch(from var(--project-color) #{"max(l, 0.72)"} c h);
+					}
+				}
+			}
+		}
 	}
 
 	.avatar {
