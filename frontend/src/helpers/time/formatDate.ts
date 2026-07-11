@@ -11,12 +11,12 @@ import {DATE_DISPLAY, type DateDisplay} from '@/constants/dateDisplay'
 import {TIME_FORMAT, type TimeFormat} from '@/constants/timeFormat'
 import {DAYJS_LOCALE_MAPPING} from '@/i18n/useDayjsLanguageSync.ts'
 
-export function dateIsValid(date: Date | null) {
+export function dateIsValid(date: Date | string | null): date is Date {
 	if (date === null) {
 		return false
 	}
 
-	return date instanceof Date && !isNaN(date)
+	return date instanceof Date && !isNaN(date.getTime())
 }
 
 export const formatDate = (date: Date | string | null, f: string) => {
@@ -25,19 +25,19 @@ export const formatDate = (date: Date | string | null, f: string) => {
 	}
 
 	date = createDateFromString(date)
-	
-	const locale = DAYJS_LOCALE_MAPPING[i18n.global.locale.value.toLowerCase()] ?? 'en'
 
-	return date 
-		? dayjs(date).locale(locale).format(f) 
+	const locale = DAYJS_LOCALE_MAPPING[i18n.global.locale.value.toLowerCase() as keyof typeof DAYJS_LOCALE_MAPPING] ?? 'en'
+
+	return date
+		? dayjs(date).locale(locale).format(f)
 		: ''
 }
 
-export function formatDateLong(date) {
+export function formatDateLong(date: Date | string | null) {
 	return formatDate(date, 'LLLL')
 }
 
-export function formatDateShort(date) {
+export function formatDateShort(date: Date | string | null) {
 	return formatDate(date, 'lll')
 }
 
@@ -48,7 +48,7 @@ export const formatDateSince = (date: Date | string | null) => {
 
 	date = createDateFromString(date)
 
-	const locale = DAYJS_LOCALE_MAPPING[i18n.global.locale.value.toLowerCase()] ?? 'en'
+	const locale = DAYJS_LOCALE_MAPPING[i18n.global.locale.value.toLowerCase() as keyof typeof DAYJS_LOCALE_MAPPING] ?? 'en'
 
 	// Computing the relative string against the shared, ticking `now` (instead of fromNow's
 	// internal Date.now()) makes every reactive caller re-render on the 60s tick, so open views
@@ -60,7 +60,7 @@ export const formatDateSince = (date: Date | string | null) => {
 		: ''
 }
 
-export function formatISO(date) {
+export function formatISO(date: Date | string | null) {
 	return date ? new Date(date).toISOString() : ''
 }
 
