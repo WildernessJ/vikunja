@@ -1,15 +1,16 @@
 import {computed, readonly, ref} from 'vue'
+import type {Ref, ComputedRef} from 'vue'
 import {acceptHMRUpdate, defineStore} from 'pinia'
 
 import LabelService from '@/services/label'
-import {success} from '@/message'
+import {success, translate} from '@/message'
 import {i18n} from '@/i18n'
 import {setModuleLoading} from '@/stores/helper'
 import type {ILabel} from '@/modelTypes/ILabel'
 
 async function getAllLabels(page = 1): Promise<ILabel[]> {
 	const labelService = new LabelService()
-	const labels  = await labelService.getAll({}, {}, page) as ILabel[]
+	const labels  = await labelService.getAll({} as ILabel, {}, page) as ILabel[]
 	if (page < labelService.totalPages) {
 		const nextLabels = await getAllLabels(page + 1)
 		return labels.concat(nextLabels)
@@ -106,7 +107,7 @@ export const useLabelStore = defineStore('label', () => {
 		try {
 			const result = await labelService.delete(label)
 			removeLabelById(label)
-			success({message: i18n.global.t('label.deleteSuccess')})
+			success({message: translate('label.deleteSuccess')})
 			return result
 		} finally {
 			cancel()
@@ -120,7 +121,7 @@ export const useLabelStore = defineStore('label', () => {
 		try {
 			const newLabel = await labelService.update(label)
 			setLabel(newLabel)
-			success({message: i18n.global.t('label.edit.success')})
+			success({message: translate('label.edit.success')})
 			return newLabel
 		} finally {
 			cancel()
@@ -141,8 +142,11 @@ export const useLabelStore = defineStore('label', () => {
 	}
 
 	return {
-		labels: readonly(labels),
-		labelsArray: readonly(labelsArray),
+		// Runtime-readonly guards are kept; exposed types stay mutable so
+		// read-only consumers can pass labels to ILabel-typed helpers
+		// without a DeepReadonly mismatch.
+		labels: readonly(labels) as unknown as Ref<{ [id: ILabel['id']]: ILabel }>,
+		labelsArray: readonly(labelsArray) as unknown as ComputedRef<ILabel[]>,
 		isLoading,
 
 		getLabelById,

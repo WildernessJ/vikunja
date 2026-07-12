@@ -100,6 +100,7 @@ import {useBaseStore} from '@/stores/base'
 import {useProjectStore} from '@/stores/projects'
 import {useViewFiltersStore} from '@/stores/viewFilters'
 
+import ProjectModel from '@/models/project'
 import type {IProject} from '@/modelTypes/IProject'
 import type {IProjectView} from '@/modelTypes/IProjectView'
 
@@ -139,12 +140,7 @@ useResizeObserver(switchViewContainerRef, () => {
 })
 
 const currentProject = computed<IProject>(() => {
-	return baseStore.currentProject || {
-		id: 0,
-		title: '',
-		isArchived: false,
-		maxPermission: null,
-	}
+	return baseStore.currentProject || new ProjectModel()
 })
 useTitle(() => currentProject.value?.id ? getProjectTitle(currentProject.value) : '')
 

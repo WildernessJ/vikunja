@@ -96,6 +96,7 @@ function ganttFiltersToApiParams(filters: GanttFilters): TaskFilterParams {
 		order_by: ['asc', 'asc', 'desc'],
 		filter: buildDateWindowFilterQuery(dateFrom, dateTo),
 		filter_include_nulls: filters.showTasksWithoutDates,
+		s: '',
 		expand: 'subtasks',
 	}
 }
@@ -123,8 +124,8 @@ export function useGanttFilters(route: Ref<RouteLocationNormalized>, viewId: Ref
 	watch(
 		filters,
 		(newFilters) => {
-			const routeLocation = ganttFiltersToRoute(newFilters)
-			const query = routeLocation.query as LocationQueryRaw
+			const routeLocation = ganttFiltersToRoute(newFilters) as {query?: LocationQueryRaw}
+			const query = routeLocation.query
 			if (query && Object.keys(query).length > 0) {
 				viewFiltersStore.setViewQuery(viewId.value, query)
 			} else {

@@ -16,10 +16,8 @@ export default async function setupSentry(app: App, router: Router) {
 		integrations: [
 			Sentry.browserTracingIntegration({ router }),
 			Sentry.replayIntegration(),
+			Sentry.vueIntegration({ tracingOptions: { trackComponents: true } }),
 		],
-
-		// vue
-		trackComponents: true,
 
 		// Set tracesSampleRate to 1.0 to capture 100%
 		// of transactions for tracing.
@@ -41,8 +39,10 @@ export default async function setupSentry(app: App, router: Router) {
 
 		beforeSend(event, hint) {
 
-			if ((typeof hint.originalException?.code !== 'undefined' && 
-				typeof hint.originalException?.message !== 'undefined')
+			const originalException = hint.originalException as { code?: number, message?: string } | undefined
+
+			if ((typeof originalException?.code !== 'undefined' &&
+				typeof originalException?.message !== 'undefined')
 			|| hint.originalException instanceof AxiosError) {
 				return null
 			}
@@ -57,15 +57,17 @@ export default async function setupSentry(app: App, router: Router) {
 		'error',
 		(event) => {
 			if (!event.target) return
-	
-			if (event.target.tagName === 'IMG') {
+
+			const el = event.target as HTMLElement
+
+			if (el.tagName === 'IMG') {
 				Sentry.captureMessage(
-					`Failed to load image: ${event.target.src}`,
+					`Failed to load image: ${(el as HTMLImageElement).src}`,
 					'warning',
 				)
-			} else if (event.target.tagName === 'LINK') {
+			} else if (el.tagName === 'LINK') {
 				Sentry.captureMessage(
-					`Failed to load css: ${event.target.href}`,
+					`Failed to load css: ${(el as HTMLLinkElement).href}`,
 					'warning',
 				)
 			}

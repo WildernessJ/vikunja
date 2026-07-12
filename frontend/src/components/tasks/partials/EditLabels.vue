@@ -4,7 +4,7 @@
 		:loading="loading"
 		:placeholder="$t('task.label.placeholder')"
 		:multiple="true"
-		:search-results="foundLabels"
+		:search-results="foundLabels as unknown as Record<string, unknown>[]"
 		label="title"
 		:creatable="creatable"
 		:create-placeholder="$t('task.label.createPlaceholder')"
@@ -12,7 +12,7 @@
 		:close-after-select="false"
 		:disabled="disabled"
 		@search="findLabel"
-		@select="addLabel"
+		@select="(value) => addLabel(value as unknown as ILabel)"
 		@create="createAndAddLabel"
 	>
 		<template #tag="{item: label}">
@@ -38,7 +38,7 @@
 			</span>
 			<span
 				v-else
-				:style="getLabelStyles(option)"
+				:style="getLabelStyles(option as unknown as ILabel)"
 				class="tag search-result"
 			>
 				<span>{{ option.title }}</span>
@@ -87,7 +87,7 @@ const query = ref('')
 watch(
 	() => props.modelValue,
 	(value) => {
-		labels.value = Array.from(new Map(value.map(label => [label.id, label])).values())
+		labels.value = Array.from(new Map((value ?? []).map(label => [label.id, label])).values())
 	},
 	{
 		immediate: true,

@@ -14,7 +14,7 @@ export default class ProjectModel extends AbstractModel<IProject> implements IPr
 	id = 0
 	title = ''
 	description = ''
-	owner: IUser = UserModel
+	owner!: IUser
 	tasks: ITask[] = []
 	isArchived = false
 	isTemplate = false
@@ -22,14 +22,14 @@ export default class ProjectModel extends AbstractModel<IProject> implements IPr
 	identifier = ''
 	backgroundInformation: unknown | null = null
 	isFavorite = false
-	subscription: ISubscription = null
+	subscription: ISubscription | null = null
 	position = 0
 	backgroundBlurHash = ''
 	parentProjectId = 0
 	views: IProjectView[] = []
 	
-	created: Date = null
-	updated: Date = null
+	created: Date = new Date(0)
+	updated: Date = new Date(0)
 
 	constructor(data: Partial<IProject> = {}) {
 		super()

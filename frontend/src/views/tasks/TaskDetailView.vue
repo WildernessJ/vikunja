@@ -38,7 +38,7 @@
 					:key="p.id"
 				>
 					<a
-						v-if="router.options.history.state?.back?.includes('/projects/'+p.id+'/') || false"
+						v-if="String(router.options.history.state?.back ?? '').includes('/projects/'+p.id+'/')"
 						v-shortcut="p.id === project?.id ? 'KeyU' : ''"
 						@click="router.back()"
 					>
@@ -395,7 +395,7 @@
 						<Description
 							:model-value="task"
 							:can-write="canWrite"
-							:attachment-upload="attachmentUpload"
+							:attachment-upload="attachmentUploadForDescription"
 							@update:modelValue="Object.assign(task, $event)"
 						/>
 					</div>
@@ -718,18 +718,19 @@
 </template>
 
 <script lang="ts" setup>
-import {ref, reactive, shallowReactive, computed, watch, nextTick, onMounted} from 'vue'
+import {ref, reactive, shallowReactive, computed, watch, nextTick, onMounted, type ComponentPublicInstance} from 'vue'
 import {useRouter, useRoute, type RouteLocation, onBeforeRouteLeave} from 'vue-router'
 import {useI18n} from 'vue-i18n'
-import {unrefElement, useDebounceFn, useElementSize, useIntersectionObserver, useMutationObserver} from '@vueuse/core'
+import {unrefElement, useDebounceFn, useElementSize, useIntersectionObserver, useMutationObserver, type MaybeElement} from '@vueuse/core'
 import {klona} from 'klona/lite'
 
 import TaskService from '@/services/task'
-import TaskModel from '@/models/task'
+import TaskModel, {getHexColor} from '@/models/task'
 
 import type {ITask} from '@/modelTypes/ITask'
 import type {IAttachment} from '@/modelTypes/IAttachment'
 import type {IProject} from '@/modelTypes/IProject'
+import type {IRepeatAfter} from '@/types/IRepeatAfter'
 
 import {PRIORITIES, type Priority} from '@/constants/priorities'
 import {PERMISSIONS} from '@/constants/permissions'
@@ -745,7 +746,7 @@ import ColorPicker from '@/components/input/ColorPicker.vue'
 import Comments from '@/components/tasks/partials/Comments.vue'
 import CreatedUpdated from '@/components/tasks/partials/CreatedUpdated.vue'
 import Datepicker from '@/components/input/Datepicker.vue'
-import Description from '@/components/tasks/partials/Description.vue'
+import Description, {type AttachmentUploadFunction} from '@/components/tasks/partials/Description.vue'
 import EditAssignees from '@/components/tasks/partials/EditAssignees.vue'
 import EditLabels from '@/components/tasks/partials/EditLabels.vue'
 import Heading from '@/components/tasks/partials/Heading.vue'
@@ -783,6 +784,16 @@ import {useGlobalNow} from '@/composables/useGlobalNow'
 
 import {success} from '@/message'
 import type {Action as MessageAction} from '@/message'
+
+interface HTTPErrorResponse {
+	response?: {
+		status?: number
+		data?: {
+			code?: number
+			message?: string
+		}
+	}
+}
 
 const props = defineProps<{
 	taskId: ITask['id'],
@@ -907,13 +918,7 @@ const canWrite = computed(() => (
 	task.value.maxPermission > PERMISSIONS.READ
 ))
 
-const color = computed(() => {
-	const color = task.value.getHexColor
-		? task.value.getHexColor()
-		: undefined
-
-	return color
-})
+const color = computed(() => getHexColor(task.value.hexColor))
 
 const isModal = computed(() => Boolean(props.backdropView))
 
@@ -923,6 +928,12 @@ async function attachmentUpload(file: File, onSuccess?: (url: string) => void) {
 		onAttachmentsUpdated([...task.value.attachments, ...uploaded])
 	}
 	return uploaded
+}
+
+// Description only cares about the onSuccess callback firing with the uploaded url; its return value is discarded.
+const attachmentUploadForDescription: AttachmentUploadFunction = async (file, onSuccess) => {
+	const uploaded = await attachmentUpload(file, onSuccess)
+	return uploaded[0] ? String(uploaded[0].id) : ''
 }
 
 function onAttachmentsUpdated(attachments: IAttachment[]) {
@@ -1033,7 +1044,7 @@ watch(
 				// Only request the (server-computed) count when the feature is on.
 				expand.push('time_entries_count')
 			}
-			const loaded = await taskService.get({id}, {expand})
+			const loaded = await taskService.get({id} as ITask, {expand})
 			Object.assign(task.value, loaded)
 			taskColor.value = task.value.hexColor
 			setActiveFields()
@@ -1046,7 +1057,8 @@ watch(
 			if (lastProject.value) {
 				await baseStore.handleSetCurrentProjectIfNotSet(lastProject.value)
 			}
-		} catch (e) {
+		} catch (caughtError) {
+			const e = caughtError as HTTPErrorResponse
 			if (e?.response?.status === 404) {
 				taskNotFound.value = true
 				router.replace({name: 'not-found'})
@@ -1118,7 +1130,7 @@ function setActiveFields() {
 	activeFields.priority = task.value.priority !== PRIORITIES.UNSET
 	activeFields.relatedTasks = Object.keys(task.value.relatedTasks).length > 0
 	activeFields.reminders = task.value.reminders.length > 0
-	activeFields.repeatAfter = task.value.repeatAfter?.amount > 0 || task.value.repeatMode !== TASK_REPEAT_MODES.REPEAT_MODE_DEFAULT
+	activeFields.repeatAfter = (task.value.repeatAfter as IRepeatAfter).amount > 0 || task.value.repeatMode !== TASK_REPEAT_MODES.REPEAT_MODE_DEFAULT
 	activeFields.startDate = task.value.startDate !== null
 }
 
@@ -1138,10 +1150,11 @@ const activeFieldElements: { [id in FieldType]: HTMLElement | null } = reactive(
 	reminders: null,
 	repeatAfter: null,
 	startDate: null,
+	timeTracking: null,
 })
 
-function setFieldRef(name, e) {
-	activeFieldElements[name] = unrefElement(e)
+function setFieldRef(name: keyof typeof activeFieldElements, e: Element | ComponentPublicInstance | null) {
+	activeFieldElements[name] = (unrefElement(e as MaybeElement) ?? null) as HTMLElement | null
 }
 
 function setFieldActive(fieldName: keyof typeof activeFields) {
@@ -1267,10 +1280,10 @@ async function duplicateCurrentTask() {
 	}
 }
 
-async function setPriority(priority: Priority) {
+async function setPriority(priority: number) {
 	const newTask: ITask = {
 		...task.value,
-		priority,
+		priority: priority as Priority,
 	}
 
 	return saveTask(newTask)
@@ -1295,7 +1308,7 @@ async function setEstimatedDuration(estimatedDuration: number) {
 }
 
 async function removeRepeatAfter() {
-	task.value.repeatAfter.amount = 0
+	(task.value.repeatAfter as IRepeatAfter).amount = 0
 	task.value.repeatMode = TASK_REPEAT_MODES.REPEAT_MODE_DEFAULT
 	await saveTask()
 }

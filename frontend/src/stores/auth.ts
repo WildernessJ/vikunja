@@ -1,4 +1,5 @@
 import {computed, readonly, ref} from 'vue'
+import type {Ref} from 'vue'
 import {acceptHMRUpdate, defineStore} from 'pinia'
 
 import {AuthenticatedHTTPFactory, HTTPFactory} from '@/helpers/fetcher'
@@ -10,14 +11,15 @@ import UserSettingsService from '@/services/userSettings'
 import {getToken, refreshToken, removeToken, saveToken} from '@/helpers/auth'
 import {useWebSocket} from '@/composables/useWebSocket'
 import {setModuleLoading} from '@/stores/helper'
-import {success, error} from '@/message'
+import {success, error, translate} from '@/message'
 import {
 	getRedirectUrlFromCurrentFrontendPath,
 	redirectToProvider,
 	redirectToProviderOnLogout,
 } from '@/helpers/redirectToProvider'
 import {AUTH_TYPES, type IUser} from '@/modelTypes/IUser'
-import type {IUserSettings} from '@/modelTypes/IUserSettings'
+import type {IUserSettings, IFrontendSettings} from '@/modelTypes/IUserSettings'
+import type {IAvatar} from '@/modelTypes/IAvatar'
 import router from '@/router'
 import {useConfigStore} from '@/stores/config'
 import UserSettingsModel from '@/models/userSettings'
@@ -33,6 +35,32 @@ import type {IProvider} from '@/types/IProvider'
 // back to the OIDC provider. Lives in sessionStorage so it survives the
 // round-trip to the IdP within the tab and isn't wiped by localStorage.clear().
 export const JUST_LOGGED_OUT_KEY = 'justLoggedOut'
+
+// Minimal shape of the axios-style errors thrown by the HTTP layer, used to
+// type the values caught in this store's request handlers.
+interface HTTPError {
+	response?: {
+		status?: number
+		data?: {
+			code?: number
+			message?: string
+			invalid_fields?: string[]
+		}
+	}
+	cause?: {
+		request?: {status?: number}
+		response?: {status?: number}
+	}
+}
+
+interface Credentials {
+	username?: string
+	email?: string
+	password?: string
+	totpPasscode?: string
+	longToken?: boolean
+	[key: string]: unknown
+}
 
 function redirectToSpecifiedProvider() {
 
@@ -163,10 +191,15 @@ export const useAuthStore = defineStore('auth', () => {
 				commentSortOrder: 'asc',
 				hiddenNavItems: [],
 				overviewProjectIds: [],
+				filterIdUsedOnOverview: null,
+				alwaysShowBucketTaskCount: false,
+				quickAddDefaultReminders: [],
 				desktopQuickEntryShortcut: 'CmdOrCtrl+Shift+A',
 				fontSize: DEFAULT_FONT_SIZE,
 				fontFamily: DEFAULT_FONT_FAMILY,
-				...newSettings.frontendSettings,
+				// Typed Partial because the API may omit keys for users without
+				// saved settings; the defaults above are the fallback for those.
+				...(newSettings.frontendSettings as Partial<IFrontendSettings>),
 			},
 		})
 
@@ -198,7 +231,7 @@ export const useAuthStore = defineStore('auth', () => {
 	}
 
 	// Logs a user in with a set of credentials.
-	async function login(credentials) {
+	async function login(credentials: Credentials) {
 		const HTTP = HTTPFactory()
 		setIsLoading(true)
 
@@ -213,9 +246,9 @@ export const useAuthStore = defineStore('auth', () => {
 			// Tell others the user is authenticated
 			await checkAuth()
 		} catch (e) {
+			const err = e as HTTPError
 			if (
-				e.response &&
-				e.response.data.code === 1017 &&
+				err.response?.data?.code === 1017 &&
 				!credentials.totpPasscode
 			) {
 				setNeedsTotpPasscode(true)
@@ -231,7 +264,7 @@ export const useAuthStore = defineStore('auth', () => {
 	 * Registers a new user and logs them in.
 	 * Not sure if this is the right place to put the logic in, maybe a separate js component would be better suited. 
 	 */
-	async function register(credentials, language: string|null = null) {
+	async function register(credentials: Credentials, language: string|null = null) {
 		const HTTP = HTTPFactory()
 		setIsLoading(true)
 		
@@ -246,12 +279,13 @@ export const useAuthStore = defineStore('auth', () => {
 			})
 			return login(credentials)
 		} catch (e) {
-			if (e.response?.data?.code === 2002 && e.response?.data?.invalid_fields[0]?.startsWith('language:')) {
+			const err = e as HTTPError
+			if (err.response?.data?.code === 2002 && err.response?.data?.invalid_fields?.[0]?.startsWith('language:')) {
 				return register(credentials, 'en')
 			}
-			
-			if (e.response?.data?.message) {
-				throw e.response.data
+
+			if (err.response?.data?.message) {
+				throw err.response.data
 			}
 
 			throw e
@@ -265,7 +299,7 @@ export const useAuthStore = defineStore('auth', () => {
 		setIsLoading(true)
 		setLoggedInVia(null)
 
-		const fullProvider: IProvider = configStore.auth.openidConnect.providers.find((p: IProvider) => p.key === provider)
+		const fullProvider = configStore.auth.openidConnect.providers.find((p: IProvider) => p.key === provider) as IProvider
 
 		const data: Record<string, string> = {
 			code: code,
@@ -302,7 +336,7 @@ export const useAuthStore = defineStore('auth', () => {
 		}
 	}
 
-	async function linkShareAuth({hash, password}) {
+	async function linkShareAuth({hash, password}: {hash: string, password: string}) {
 		const HTTP = HTTPFactory()
 		const response = await HTTP.post('/shares/' + hash + '/auth', {
 			password: password,
@@ -441,16 +475,17 @@ export const useAuthStore = defineStore('auth', () => {
 
 			return newUser
 		} catch (e) {
-			if((e?.response?.status >= 400 && e?.response?.status < 500) ||
-				e?.response?.data?.message === 'missing, malformed, expired or otherwise invalid token provided') {
+			const err = e as HTTPError
+			if(((err?.response?.status ?? 0) >= 400 && (err?.response?.status ?? 0) < 500) ||
+				err?.response?.data?.message === 'missing, malformed, expired or otherwise invalid token provided') {
 				await logout()
 				return
 			}
-			
-			const cause = {e}
-			
-			if (typeof e?.response?.data?.message !== 'undefined') {
-				cause.message = e.response.data.message
+
+			const cause: {e: unknown, message?: string} = {e}
+
+			if (typeof err?.response?.data?.message !== 'undefined') {
+				cause.message = err.response.data.message
 			}
 			
 			console.error('Error refreshing user info:', e)
@@ -472,7 +507,8 @@ export const useAuthStore = defineStore('auth', () => {
 				await HTTPFactory().post('user/confirm', {token: emailVerifyToken})
 				return true
 			} catch(e) {
-				throw new Error(e.response.data.message, {cause: e})
+				const err = e as HTTPError
+				throw new Error(err.response?.data?.message, {cause: e})
 			} finally {
 				localStorage.removeItem('emailConfirmToken')
 				stopLoading()
@@ -502,16 +538,18 @@ export const useAuthStore = defineStore('auth', () => {
 			}
 			const updateSettingsPromise = userSettingsService.update(settingsUpdate)
 			setUserSettings(settingsUpdate)
-			await setLanguage(settings.language)
+			if (settings.language) {
+				await setLanguage(settings.language)
+			}
 			await updateSettingsPromise
 			if (oldName !== undefined && oldName !== settingsUpdate.name) {
-				const {avatarProvider} = await (new AvatarService()).get({})
+				const {avatarProvider} = await (new AvatarService()).get({} as IAvatar)
 				if (avatarProvider === 'initials') {
 					await reloadAvatar()
 				}
 			}
 			if (showMessage) {
-				success({message: i18n.global.t('user.settings.general.savedSuccess')})
+				success({message: translate('user.settings.general.savedSuccess')})
 			}
 		} catch (e) {
 			error(e)
@@ -545,7 +583,8 @@ export const useAuthStore = defineStore('auth', () => {
 			// — the 401 interceptor will handle it when the token really expires.
 			const nowInSeconds = Date.now() / MILLISECONDS_A_SECOND
 			const isExpired = !info.value?.exp || info.value.exp < nowInSeconds
-			if (isExpired && (e?.cause?.request?.status || e?.cause?.response?.status)) {
+			const err = e as HTTPError
+			if (isExpired && (err?.cause?.request?.status || err?.cause?.response?.status)) {
 				await logout()
 			}
 		}
@@ -606,7 +645,10 @@ export const useAuthStore = defineStore('auth', () => {
 		authenticated: readonly(authenticated),
 		needsTotpPasscode: readonly(needsTotpPasscode),
 
-		info: readonly(info),
+		// Runtime-readonly guard is kept; exposed type stays mutable IUser so
+		// read-only consumers can pass it to IUser-typed helpers without a
+		// DeepReadonly mismatch.
+		info: readonly(info) as unknown as Ref<IUser | null>,
 		avatarUrl: readonly(avatarUrl),
 		settings: readonly(settings),
 

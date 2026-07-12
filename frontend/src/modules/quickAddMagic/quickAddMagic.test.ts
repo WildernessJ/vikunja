@@ -667,7 +667,7 @@ describe('Parse Task Text', () => {
 						return
 					}
 
-					expect(`${date?.getFullYear()}-${date?.getMonth() + 1}-${date?.getDate()}`).toBe(cases[c])
+					expect(`${date!.getFullYear()}-${date!.getMonth() + 1}-${date!.getDate()}`).toBe(cases[c])
 					expect(text.trim()).toBe('Lorem Ipsum')
 				}
 				
@@ -730,21 +730,21 @@ describe('Parse Task Text', () => {
 						return
 					}
 
-					expect(`${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()} ${date.getHours()}:${date.getMinutes()}`).toBe(cases[c])
+					expect(`${date!.getFullYear()}-${date!.getMonth() + 1}-${date!.getDate()} ${date!.getHours()}:${date!.getMinutes()}`).toBe(cases[c])
 				})
 			}
 
 			it('should replace the text in title case', () => {
 				const {date, newText} = parseDate('Some task Mar 8th', now)
 
-				expect(`${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()} ${date.getHours()}:${date.getMinutes()}`).toBe('2021-3-8 12:0')
+				expect(`${date!.getFullYear()}-${date!.getMonth() + 1}-${date!.getDate()} ${date!.getHours()}:${date!.getMinutes()}`).toBe('2021-3-8 12:0')
 				expect(newText).toBe('Some task')
 			})
 
 			it('should replace the text in lowercase', () => {
 				const {date, newText} = parseDate('Some task mar 8th', now)
 
-				expect(`${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()} ${date.getHours()}:${date.getMinutes()}`).toBe('2021-3-8 12:0')
+				expect(`${date!.getFullYear()}-${date!.getMonth() + 1}-${date!.getDate()} ${date!.getHours()}:${date!.getMinutes()}`).toBe('2021-3-8 12:0')
 				expect(newText).toBe('Some task')
 			})
 		})

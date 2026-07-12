@@ -10,6 +10,7 @@ export interface ITeam extends IAbstract {
 	members: ITeamMember[]
 	permission: Permission
 	externalId: string
+	oidcId: string
 	isPublic: boolean
 
 	createdBy: IUser

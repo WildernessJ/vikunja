@@ -304,18 +304,16 @@ function decorateDocument(doc: Node) {
 }
 
 // Helper function to find the position in the document for a given text index
-function findPosForIndex(doc: {
-	descendants: (fn: (node: { isText: boolean, text: string }, nodePos: number) => boolean | void) => void
-}, index: number): number | null {
+function findPosForIndex(doc: Node, index: number): number | null {
 	let pos = 0
 	let found = false
 	let textIndex = 0
 
-	doc.descendants((node: { isText: boolean, text: string }, nodePos: number) => {
+	doc.descendants((node, nodePos) => {
 		if (found) return false
 
 		if (node.isText) {
-			const endIndex = textIndex + node.text.length
+			const endIndex = textIndex + (node.text?.length ?? 0)
 
 			if (textIndex <= index && index <= endIndex) {
 				pos = nodePos + (index - textIndex)

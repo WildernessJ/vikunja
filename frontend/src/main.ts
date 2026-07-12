@@ -1,4 +1,5 @@
 import {createApp} from 'vue'
+import type {Component} from 'vue'
 
 import pinia from './pinia'
 import router from './router'
@@ -70,8 +71,10 @@ setLanguage(browserLanguage).then(() => {
 	app.directive('cy', testid)
 
 	app.component('Icon', FontAwesomeIcon)
-	app.component('XButton', Button)
-	app.component('Modal', Modal)
+	// Cast to Component: these carry FontAwesome IconProp-typed props whose huge
+	// union makes the app.component() overload too complex for TS (TS2590).
+	app.component('XButton', Button as unknown as Component)
+	app.component('Modal', Modal as unknown as Component)
 	app.component('Card', Card)
 
 	app.config.errorHandler = (err, vm, info) => {

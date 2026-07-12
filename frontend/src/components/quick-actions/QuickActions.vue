@@ -695,7 +695,7 @@ function select(parentIndex: number, index: number) {
 		parentIndex--
 		index = results.value[parentIndex].items.length - 1
 	}
-	let elems = resultRefs.value[parentIndex][index]
+	let elems: BaseButtonInstance | null | undefined = resultRefs.value[parentIndex][index]
 	if (results.value[parentIndex].items.length === index) {
 		elems = resultRefs.value[parentIndex + 1] ? resultRefs.value[parentIndex + 1][0] : undefined
 	}

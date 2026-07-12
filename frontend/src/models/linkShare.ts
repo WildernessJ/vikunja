@@ -9,13 +9,14 @@ export default class LinkShareModel extends AbstractModel<ILinkShare> implements
 	id = 0
 	hash = ''
 	permission: Permission = PERMISSIONS.READ
-	sharedBy: IUser = UserModel
 	sharingType = 0 // FIXME: use correct numbers
 	projectId = 0
-	name: ''
-	password: ''
-	created: Date = null
-	updated: Date = null
+	name = ''
+	password = ''
+
+	sharedBy!: IUser
+	created: Date = new Date(0)
+	updated: Date = new Date(0)
 
 	constructor(data: Partial<ILinkShare>) {
 		super()

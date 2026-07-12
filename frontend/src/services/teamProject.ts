@@ -1,6 +1,7 @@
 import AbstractService from './abstractService'
 import TeamProjectModel from '@/models/teamProject'
 import type {ITeamProject} from '@/modelTypes/ITeamProject'
+import type {ITeam} from '@/modelTypes/ITeam'
 import TeamModel from '@/models/team'
 
 export default class TeamProjectService extends AbstractService<ITeamProject> {
@@ -13,11 +14,12 @@ export default class TeamProjectService extends AbstractService<ITeamProject> {
 		})
 	}
 
-	modelFactory(data) {
+	modelFactory(data: Partial<ITeamProject>) {
 		return new TeamProjectModel(data)
 	}
 
-	modelGetAllFactory(data) {
-		return new TeamModel(data)
+	// The get-all route returns teams (not team-project share records), unlike the base factory contract.
+	modelGetAllFactory(data: Partial<ITeamProject>): ITeamProject {
+		return new TeamModel(data as unknown as Partial<ITeam>) as unknown as ITeamProject
 	}
 }

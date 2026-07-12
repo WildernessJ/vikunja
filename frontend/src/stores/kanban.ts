@@ -5,7 +5,7 @@ import {klona} from 'klona/lite'
 import {findById, findIndexById} from '@/helpers/utils'
 
 import BucketService from '@/services/bucket'
-import TaskCollectionService, {type TaskFilterParams} from '@/services/taskCollection'
+import TaskCollectionService, {type ExpandTaskFilterParam, type TaskFilterParams} from '@/services/taskCollection'
 
 import {setModuleLoading} from '@/stores/helper'
 
@@ -19,7 +19,7 @@ import {useBaseStore} from '@/stores/base'
 const TASKS_PER_BUCKET = 25
 
 function getTaskIndicesById(buckets: IBucket[], taskId: ITask['id']) {
-	let taskIndex
+	let taskIndex: number | null = null
 	const bucketIndex = buckets.findIndex(({tasks}) => {
 		taskIndex = findIndexById(tasks, taskId)
 		return taskIndex !== -1
@@ -252,7 +252,7 @@ export const useKanbanStore = defineStore('kanban', () => {
 		allTasksLoadedForBucket.value[bucketId] = true
 	}
 
-	async function loadBucketsForProject(projectId: IProject['id'], viewId: IProjectView['id'], params) {
+	async function loadBucketsForProject(projectId: IProject['id'], viewId: IProjectView['id'], params: Partial<TaskFilterParams>) {
 		const cancel = setModuleLoading(setIsLoading)
 
 		// Clear everything to prevent having old buckets in the project if loading the buckets from this project takes a few moments
@@ -260,12 +260,13 @@ export const useKanbanStore = defineStore('kanban', () => {
 
 		const taskCollectionService = new TaskCollectionService()
 		try {
-			const newBuckets = await taskCollectionService.getAll({projectId, viewId}, {
+			// This view route returns buckets (each with nested tasks), not a flat ITask[] as the generic service type implies.
+			const newBuckets = await taskCollectionService.getAll({projectId, viewId} as unknown as ITask, {
 				...params,
 				expand: ['comment_count', 'is_unread'],
 				per_page: TASKS_PER_BUCKET,
 			})
-			setBuckets(newBuckets)
+			setBuckets(newBuckets as unknown as IBucket[])
 			setProjectId(projectId)
 			return newBuckets
 		} finally {
@@ -301,11 +302,13 @@ export const useKanbanStore = defineStore('kanban', () => {
 		params.filter = `${params.filter === '' ? '' : params.filter + ' && '}bucket_id = ${bucketId}`
 		params.filter_timezone = authStore.settings.timezone
 		params.per_page = TASKS_PER_BUCKET
-		params.expand = ['comment_count', 'is_unread']
+		// TaskFilterParams.expand is typed as a single value, but the query serializer
+		// (prepareParams in abstractService) sends arrays as repeated params just fine.
+		params.expand = ['comment_count', 'is_unread'] as unknown as ExpandTaskFilterParam
 
 		const taskService = new TaskCollectionService()
 		try {
-			const tasks = await taskService.getAll({projectId, viewId}, params, page)
+			const tasks = await taskService.getAll({projectId, viewId} as unknown as ITask, params, page)
 			addTasksToBucket(tasks, bucketId)
 			setTasksLoadedForBucketPage({bucketId, page})
 			if (taskService.totalPages <= page) {
@@ -331,7 +334,7 @@ export const useKanbanStore = defineStore('kanban', () => {
 		}
 	}
 
-	async function deleteBucket({bucket, params}: { bucket: IBucket, params }) {
+	async function deleteBucket({bucket, params}: { bucket: IBucket, params: Partial<TaskFilterParams> }) {
 		const cancel = setModuleLoading(setIsLoading)
 
 		const bucketService = new BucketService()
@@ -348,6 +351,11 @@ export const useKanbanStore = defineStore('kanban', () => {
 
 	async function updateBucket(updatedBucketData: Partial<IBucket>) {
 		const cancel = setModuleLoading(setIsLoading)
+
+		if (updatedBucketData.id === undefined) {
+			cancel()
+			return
+		}
 
 		const bucketIndex = findIndexById(buckets.value, updatedBucketData.id)
 		const oldBucket = klona(buckets.value[bucketIndex])

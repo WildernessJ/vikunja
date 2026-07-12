@@ -81,12 +81,12 @@ export function buildStoredQuery(state: TaskListQueryState): LocationQueryRaw {
 // This makes sure an id sort order is always sorted last.
 // When tasks would be sorted first by id and then by whatever else was specified, the id sort takes
 // precedence over everything else, making any other sort columns pretty useless.
-function formatSortOrder(sortBy, params) {
+function formatSortOrder(sortBy: SortBy, params: TaskFilterParams): TaskFilterParams {
 	let hasIdFilter = false
-	const sortKeys = Object.keys(sortBy)
+	const sortKeys = Object.keys(sortBy) as (keyof SortBy)[]
 	for (const s of sortKeys) {
 		if (s === 'id') {
-			sortKeys.splice(s, 1)
+			sortKeys.splice(Number(s), 1)
 			hasIdFilter = true
 			break
 		}
@@ -94,8 +94,8 @@ function formatSortOrder(sortBy, params) {
 	if (hasIdFilter) {
 		sortKeys.push('id')
 	}
-	params.sort_by = sortKeys
-	params.order_by = sortKeys.map(s => sortBy[s])
+	params.sort_by = sortKeys as TaskFilterParams['sort_by']
+	params.order_by = sortKeys.map(s => sortBy[s]) as TaskFilterParams['order_by']
 
 	return params
 }
@@ -122,8 +122,8 @@ export function useTaskList(
 	const filter = useRouteQuery('filter')
 	const s = useRouteQuery('s')
 
-	watch(filter, v => { params.value.filter = v ?? '' }, { immediate: true })
-	watch(s, v => { params.value.s = v ?? '' }, { immediate: true })
+	watch(filter, v => { params.value.filter = (Array.isArray(v) ? v[0] : v) ?? '' }, { immediate: true })
+	watch(s, v => { params.value.s = (Array.isArray(v) ? v[0] : v) ?? '' }, { immediate: true })
 
 	watch(() => params.value.filter, v => { filter.value = v || undefined })
 	watch(() => params.value.s, v => { s.value = v || undefined })
@@ -208,12 +208,15 @@ export function useTaskList(
 	
 	const authStore = useAuthStore()
 	
-	const getAllTasksParams = computed(() => {
+	// Explicit tuple type (matching taskCollectionService.getAll's params) so the
+	// spread call below doesn't collapse to a same-typed array union.
+	const getAllTasksParams = computed<Parameters<TaskCollectionService['getAll']>>(() => {
 		return [
+			// Only projectId/viewId are used, for URL templating in getReplacedRoute.
 			{
 				projectId: projectId.value,
 				viewId: projectViewId.value,
-			},
+			} as unknown as ITask,
 			{
 				...allParams.value,
 				filter_timezone: authStore.settings.timezone,

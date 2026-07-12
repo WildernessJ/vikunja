@@ -245,10 +245,10 @@ async function load(projectId: IProject['id']) {
 		return
 	}
 
-	linkShares.value = await linkShareService.getAll({projectId})
+	linkShares.value = await linkShareService.getAll({projectId} as ILinkShare)
 }
 
-type SelectedViewMapper = Record<IProject['id'], IProjectView['id']>
+type SelectedViewMapper = Record<IProject['id'], IProjectView['id'] | null>
 
 const selectedViews = ref<SelectedViewMapper>({})
 

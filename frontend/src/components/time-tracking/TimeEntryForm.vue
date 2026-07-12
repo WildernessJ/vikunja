@@ -11,7 +11,7 @@
 		>
 			<div class="field">
 				<label class="label">{{ $t('task.attributes.project') }}</label>
-				<ProjectSearch v-model="selectedProject" />
+				<ProjectSearch v-model="selectedProjectModel" />
 			</div>
 
 			<div class="field">
@@ -25,7 +25,7 @@
 					@search="findTasks"
 				>
 					<template #searchResult="{option}">
-						{{ option.title }}
+						{{ typeof option === 'object' ? option.title : option }}
 					</template>
 				</Multiselect>
 			</div>
@@ -176,6 +176,14 @@ watch(selectedProject, project => {
 	}
 })
 
+// ProjectSearch's modelValue is IProject | undefined (no null); adapt to our null-based state.
+const selectedProjectModel = computed<IProject | undefined>({
+	get: () => selectedProject.value ?? undefined,
+	set: value => {
+		selectedProject.value = value ?? null
+	},
+})
+
 const taskService = shallowReactive(new TaskService())
 const foundTasks = ref<ITask[]>([])
 async function findTasks(query: string) {
@@ -183,7 +191,7 @@ async function findTasks(query: string) {
 		foundTasks.value = []
 		return
 	}
-	const result = await taskService.getAll({}, {s: query, sort_by: 'done'}) as ITask[]
+	const result = await taskService.getAll({} as ITask, {s: query, sort_by: 'done'}) as ITask[]
 	foundTasks.value = selectedProject.value === null
 		? result
 		: result.filter(task => task.projectId === selectedProject.value?.id)

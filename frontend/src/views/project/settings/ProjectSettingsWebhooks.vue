@@ -45,9 +45,13 @@ const availableEvents = ref<string[]>([])
 const loading = ref(false)
 
 async function loadWebhooks() {
+	if (!project.value) {
+		return
+	}
+
 	loading.value = true
 	try {
-		webhooks.value = await webhookService.getAll({projectId: project.value.id})
+		webhooks.value = await webhookService.getAll({projectId: project.value.id} as IWebhook)
 		availableEvents.value = await webhookService.getAvailableEvents()
 	} finally {
 		loading.value = false
@@ -55,16 +59,24 @@ async function loadWebhooks() {
 }
 
 async function handleCreate(webhook: IWebhook) {
+	if (!project.value) {
+		return
+	}
+
 	webhook.projectId = project.value.id
 	const created = await webhookService.create(webhook)
 	webhooks.value.push(created)
 }
 
 async function handleDelete(webhookId: number) {
+	if (!project.value) {
+		return
+	}
+
 	await webhookService.delete({
 		id: webhookId,
 		projectId: project.value.id,
-	})
+	} as IWebhook)
 	success({message: t('project.webhooks.deleteSuccess')})
 	await loadWebhooks()
 }

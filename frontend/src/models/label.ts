@@ -13,12 +13,12 @@ export default class LabelModel extends AbstractModel<ILabel> implements ILabel 
 	// that way it gets never send to the server db and is easier to change in future versions.
 	hexColor = ''
 	description = ''
-	createdBy: IUser
+	createdBy!: IUser
 	projectId = 0
 	textColor = ''
 
-	created: Date = null
-	updated: Date = null
+	created: Date = new Date(0)
+	updated: Date = new Date(0)
 
 	constructor(data: Partial<ILabel> = {}) {
 		super()

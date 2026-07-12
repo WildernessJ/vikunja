@@ -160,9 +160,9 @@ async function addTask() {
 		// Create a map of project indices before creating tasks
 		if (tasksToCreate.length > 1) {
 			for (const {project} of tasksToCreate) {
-				const projectId = project !== null
+				const projectId = (project !== null
 					? await taskStore.findProjectId({project, projectId: 0})
-					: currentProjectId
+					: currentProjectId) ?? 0
 
 				if (!projectIndices.has(projectId)) {
 					const newestTask = await taskCollectionService.getAll(new TaskModel({}), {
@@ -182,14 +182,14 @@ async function addTask() {
 			}
 
 			// If the task has a project specified, make sure to use it
-			const projectId = project !== null
+			const projectId = (project !== null
 				? await taskStore.findProjectId({project, projectId: 0})
-				: currentProjectId
+				: currentProjectId) ?? 0
 
 			// Calculate new index for this task per project
 			let taskIndex: number | undefined
 			if (tasksToCreate.length > 1) {
-				const lastIndex = projectIndices.get(projectId)
+				const lastIndex = projectIndices.get(projectId) ?? 0
 				taskIndex = lastIndex + index + 1
 			}
 
@@ -220,7 +220,7 @@ async function addTask() {
 					return
 				}
 
-				const createdParentTask = createdTasks[t.parent]
+				const createdParentTask = t.parent !== null ? createdTasks[t.parent] : undefined
 				if (typeof createdTask === 'undefined' || typeof createdParentTask === 'undefined') {
 					return
 				}
@@ -263,7 +263,8 @@ async function addTask() {
 			})
 		} catch (e) {
 			newTaskTitle.value = taskTitleBackup
-			if (e?.message === 'NO_PROJECT') {
+			const err = e as { message?: string }
+			if (err.message === 'NO_PROJECT') {
 				errorMessage.value = t('project.create.addProjectRequired')
 				return
 			}

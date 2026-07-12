@@ -396,7 +396,7 @@ async function loadWindowTasks(seq: number, projectId: number, viewId: IProjectV
 		s: '',
 		per_page: 250,
 	}
-	const loaded = await windowTaskService.getAll({projectId, viewId}, params) as ITask[]
+	const loaded = await windowTaskService.getAll({projectId, viewId} as unknown as ITask, params) as ITask[]
 	if (seq !== windowLoadSeq || projectId !== props.projectId || viewId !== props.viewId) {
 		return
 	}
@@ -417,7 +417,7 @@ async function loadUnscheduledTasks(seq: number, projectId: number, viewId: IPro
 		s: '',
 		per_page: 250,
 	}
-	const loaded = await unscheduledTaskService.getAll({projectId, viewId}, params) as ITask[]
+	const loaded = await unscheduledTaskService.getAll({projectId, viewId} as unknown as ITask, params) as ITask[]
 	if (seq !== unscheduledLoadSeq || projectId !== props.projectId || viewId !== props.viewId) {
 		return
 	}

@@ -354,8 +354,8 @@ describe('install / uninstall (sequence handling)', () => {
 		elB = document.createElement('button')
 		clickA = vi.fn()
 		clickB = vi.fn()
-		elA.addEventListener('click', clickA)
-		elB.addEventListener('click', clickB)
+		elA.addEventListener('click', clickA as EventListener)
+		elB.addEventListener('click', clickB as EventListener)
 	})
 
 	afterEach(() => {

@@ -32,7 +32,7 @@ import {computed, ref, watch, nextTick} from 'vue'
 
 import Filters from '@/components/project/partials/Filters.vue'
 
-import {type TaskFilterParams} from '@/services/taskCollection'
+import {getDefaultTaskFilterParams, type TaskFilterParams} from '@/services/taskCollection'
 import {type IProjectView} from '@/modelTypes/IProjectView'
 import {type IProject} from '@/modelTypes/IProject'
 import {useProjectStore} from '@/stores/projects'
@@ -49,7 +49,7 @@ const emit = defineEmits<{
 
 const projectStore = useProjectStore()
 
-const value = ref<TaskFilterParams>({})
+const value = ref<TaskFilterParams>(getDefaultTaskFilterParams())
 const filtersRef = ref()
 
 watch(

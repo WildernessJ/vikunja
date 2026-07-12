@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type {AxiosRequestConfig} from 'axios'
+import type {AxiosRequestConfig, AxiosRequestHeaders} from 'axios'
 import {getToken, refreshToken} from '@/helpers/auth'
 import {AUTH_TYPES} from '@/modelTypes/IUser'
 
@@ -87,7 +87,7 @@ export function AuthenticatedHTTPFactory() {
 		config.headers = {
 			...config.headers,
 			'Content-Type': 'application/json',
-		}
+		} as AxiosRequestHeaders
 
 		// Set the default auth header if we have a token
 		const token = getToken()

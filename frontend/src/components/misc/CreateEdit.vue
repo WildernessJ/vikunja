@@ -37,7 +37,7 @@
 					<XButton
 						v-if="hasPrimaryAction"
 						variant="primary"
-						:icon="primaryIcon"
+						:icon="primaryIcon ?? 'plus'"
 						:disabled="isBusy"
 						class="mis-2"
 						:loading="currentLoading"
@@ -56,7 +56,12 @@ import type {IconProp} from '@fortawesome/fontawesome-svg-core'
 
 import {computed, ref, toRef, watch} from 'vue'
 
-const props = withDefaults(defineProps<{
+// withDefaults' generic instantiation blows up (TS2590) once an IconProp-typed prop
+// is in the mix, regardless of whether IconProp itself gets a default. So this prop
+// set skips withDefaults entirely; defaults for props whose fallback isn't already
+// safe via `||`/`??` at their use site are re-applied below as same-named computeds,
+// which shadow the raw (defaultless) prop in the template.
+const props = defineProps<{
 	title: string,
 	primaryLabel?: string,
 	primaryIcon?: IconProp,
@@ -65,14 +70,7 @@ const props = withDefaults(defineProps<{
 	tertiary?: string,
 	wide?: boolean,
 	loading?: boolean,
-}>(), {
-	primaryLabel: '',
-	primaryIcon: 'plus',
-	primaryDisabled: false,
-	hasPrimaryAction: true,
-	tertiary: '',
-	wide: false,
-})
+}>()
 
 const emit = defineEmits<{
 	'create': [event: MouseEvent],
@@ -80,6 +78,9 @@ const emit = defineEmits<{
 	'tertiary': [event: MouseEvent],
 	'update:loading': [value: boolean],
 }>()
+
+const tertiary = computed(() => props.tertiary ?? '')
+const hasPrimaryAction = computed(() => props.hasPrimaryAction ?? true)
 
 const loadingProp = toRef(props, 'loading')
 const currentLoading = ref(false)

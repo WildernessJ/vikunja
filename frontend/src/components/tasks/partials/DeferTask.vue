@@ -67,8 +67,8 @@ const taskService = shallowReactive(new TaskService())
 const task = ref<ITask>()
 
 // We're saving the due date separately to prevent null errors in very short periods where the task is null.
-const dueDate = ref<Date | null>()
-const lastValue = ref<Date | null>()
+const dueDate = ref<Date | null>(null)
+const lastValue = ref<Date | null>(null)
 const changeInterval = ref<ReturnType<typeof setInterval>>()
 
 watch(
@@ -112,18 +112,18 @@ const flatPickerConfig = computed(() => ({
 }))
 
 function deferDays(days: number) {
-	dueDate.value = new Date(dueDate.value)
-	const currentDate = new Date(dueDate.value).getDate()
-	dueDate.value = new Date(dueDate.value).setDate(currentDate + days)
+	const newDate = dueDate.value ? new Date(dueDate.value) : new Date()
+	newDate.setDate(newDate.getDate() + days)
+	dueDate.value = newDate
 	updateDueDate()
 }
 
 async function updateDueDate() {
-	if (!dueDate.value) {
+	if (!dueDate.value || !task.value) {
 		return
 	}
 
-	if (+new Date(dueDate.value) === +lastValue.value) {
+	if (lastValue.value && +new Date(dueDate.value) === +lastValue.value) {
 		return
 	}
 

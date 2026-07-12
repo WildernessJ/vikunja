@@ -45,10 +45,14 @@ onMounted(async () => {
 })
 
 async function deleteToken() {
+	if (!tokenToDelete.value) {
+		return
+	}
+
 	await service.delete(tokenToDelete.value)
 	showDeleteModal.value = false
-	const index = tokens.value.findIndex(el => el.id === tokenToDelete.value.id)
-	tokenToDelete.value = null
+	const index = tokens.value.findIndex(el => el.id === tokenToDelete.value?.id)
+	tokenToDelete.value = undefined
 	if (index === -1) {
 		return
 	}
@@ -171,7 +175,7 @@ function onTokenCreated(token: IApiToken) {
 
 			<template #text>
 				<p>
-					{{ $t('user.settings.apiTokens.delete.text1', {token: tokenToDelete.title}) }}<br>
+					{{ $t('user.settings.apiTokens.delete.text1', {token: tokenToDelete?.title}) }}<br>
 					{{ $t('user.settings.apiTokens.delete.text2') }}
 				</p>
 			</template>

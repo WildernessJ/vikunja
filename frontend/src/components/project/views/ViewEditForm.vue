@@ -95,6 +95,10 @@ onBeforeMount(() => {
 })
 
 function save() {
+	if (!view.value) {
+		return
+	}
+
 	const transformFilterForApi = (filterInput: IFilters | undefined): IFilters => {
 		const filterString = transformFilterStringForApi(
 			filterInput?.filter || '',
@@ -262,7 +266,7 @@ function handleBubbleSave() {
 				>
 					<button
 						class="is-danger"
-						@click.prevent="() => view.bucketConfiguration.splice(index, 1)"
+						@click.prevent="() => view?.bucketConfiguration.splice(index, 1)"
 					>
 						<Icon icon="trash-alt" />
 					</button>
@@ -298,7 +302,7 @@ function handleBubbleSave() {
 					<XButton
 						variant="secondary"
 						icon="plus"
-						@click="() => view.bucketConfiguration.push({title: '', filter: emptyFilters()})"
+						@click="() => view?.bucketConfiguration.push({title: '', filter: emptyFilters()})"
 					>
 						{{ $t('project.kanban.addBucket') }}
 					</XButton>

@@ -46,6 +46,7 @@
 					for="password"
 				>{{ $t('user.auth.password') }}</label>
 				<Password
+					:model-value="credentials.password"
 					:validate-initially="validatePasswordInitially"
 					autocomplete="new-password"
 					@submit="submit"

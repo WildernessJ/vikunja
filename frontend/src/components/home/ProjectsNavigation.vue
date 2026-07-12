@@ -1,5 +1,5 @@
 <template>
-	<draggable
+	<ProjectDraggable
 		v-model="availableProjects"
 		animation="100"
 		ghost-class="ghost"
@@ -20,17 +20,17 @@
 		@start="onDragStart"
 		@end="saveProjectPosition"
 	>
-		<template #item="{element: project}">
+		<template #item="itemSlotProps">
 			<ProjectsNavigationItem
-				:class="{'drag-disabled': project.id < 0}"
-				:project="project"
-				:is-loading="projectUpdating[project.id]"
+				:class="{'drag-disabled': getItemSlotProps(itemSlotProps).element.id < 0}"
+				:project="getItemSlotProps(itemSlotProps).element"
+				:is-loading="projectUpdating[getItemSlotProps(itemSlotProps).element.id]"
 				:can-collapse="canCollapse"
 				:can-edit-order="canEditOrder"
-				:data-project-id="project.id"
+				:data-project-id="getItemSlotProps(itemSlotProps).element.id"
 			/>
 		</template>
-	</draggable>
+	</ProjectDraggable>
 </template>
 
 <script lang="ts" setup>
@@ -56,6 +56,24 @@ const props = defineProps<{
 const emit = defineEmits<{
 	(e: 'update:modelValue', projects: IProject[]): void
 }>()
+
+// zhyswan-vuedraggable ships no slot types, so the #item scoped slot props type as {}.
+// This reflects the shape it actually passes at runtime (SortableJS list item).
+interface ItemSlotProps {
+	element: IProject,
+}
+
+function getItemSlotProps(slotProps: unknown): ItemSlotProps {
+	return slotProps as ItemSlotProps
+}
+
+// Omit + re-add $slots (rather than intersect over the original) so vue-tsc's
+// `T extends { $slots: infer Slots }` check resolves to our slot, not `{}`.
+const ProjectDraggable = draggable as unknown as new () => Omit<InstanceType<typeof draggable>, '$slots'> & {
+	$slots: {
+		item(props: ItemSlotProps): unknown,
+	},
+}
 
 const drag = ref(false)
 

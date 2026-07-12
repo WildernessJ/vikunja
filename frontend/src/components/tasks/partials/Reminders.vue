@@ -75,8 +75,8 @@ function updateData() {
 	emit('update:modelValue', [...reminders.value])
 }
 
-function addNewReminder(newReminder: ITaskReminder|null) {
-	if (newReminder === null) {
+function addNewReminder(newReminder: ITaskReminder | undefined) {
+	if (newReminder === undefined) {
 		return
 	}
 	reminders.value.push(newReminder)

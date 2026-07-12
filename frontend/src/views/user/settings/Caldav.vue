@@ -134,9 +134,12 @@ service.getAll().then((result: ICaldavToken[]) => {
 	tokens.value = result
 })
 
-const newToken = ref<ICaldavToken>()
+// The create response includes the raw token value once, which ICaldavToken doesn't model.
+type CreatedCaldavToken = ICaldavToken & {token: string}
+
+const newToken = ref<CreatedCaldavToken>()
 async function createToken() {
-	newToken.value = await service.create({}) as ICaldavToken
+	newToken.value = await service.create({} as ICaldavToken) as CreatedCaldavToken
 	tokens.value.push(newToken.value)
 }
 

@@ -1,5 +1,6 @@
 import AbstractModel from '@/models/abstractModel'
 import type {IWebhook} from '@/modelTypes/IWebhook'
+import type {IUser} from '@/modelTypes/IUser'
 import UserModel from '@/models/user'
 
 export default class WebhookModel extends AbstractModel<IWebhook> implements IWebhook {
@@ -10,11 +11,11 @@ export default class WebhookModel extends AbstractModel<IWebhook> implements IWe
 	basicAuthUser = ''
 	basicAuthPassword = ''
 	targetUrl = ''
-	events = []
-	createdBy = null
+	events: string[] = []
 
-	created: Date
-	updated: Date
+	createdBy!: IUser
+	created: Date = new Date(0)
+	updated: Date = new Date(0)
 
 	constructor(data: Partial<IWebhook> = {}) {
 		super()

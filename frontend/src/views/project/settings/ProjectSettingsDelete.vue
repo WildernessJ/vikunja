@@ -40,6 +40,7 @@ import {success} from '@/message'
 import Loading from '@/components/misc/Loading.vue'
 import {useProjectStore} from '@/stores/projects'
 import TaskService from '@/services/task'
+import type {ITask} from '@/modelTypes/ITask'
 
 const {t} = useI18n({useScope: 'global'})
 const projectStore = useProjectStore()
@@ -48,7 +49,7 @@ const router = useRouter()
 
 const totalTasks = ref<number | null>(null)
 
-const project = computed(() => projectStore.projects[route.params.projectId])
+const project = computed(() => projectStore.projects[Number(route.params.projectId)])
 const projectIdsToDelete = ref<number[]>([])
 
 watchEffect(
@@ -58,13 +59,13 @@ watchEffect(
 		}
 
 		projectIdsToDelete.value = projectStore
-			.getChildProjects(parseInt(route.params.projectId))
+			.getChildProjects(parseInt(route.params.projectId as string))
 			.map(p => p.id)
 
-		projectIdsToDelete.value.push(parseInt(route.params.projectId))
+		projectIdsToDelete.value.push(parseInt(route.params.projectId as string))
 
 		const taskService = new TaskService()
-		await taskService.getAll({}, {filter: `project in ${projectIdsToDelete.value.join(',')}`})
+		await taskService.getAll({} as ITask, {filter: `project in ${projectIdsToDelete.value.join(',')}`})
 		totalTasks.value = taskService.totalPages * taskService.resultCount
 	},
 )

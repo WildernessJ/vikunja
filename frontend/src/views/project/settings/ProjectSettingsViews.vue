@@ -80,7 +80,7 @@ async function createView() {
 	}
 }
 
-async function deleteView(viewId: number) {
+async function deleteView(viewId: number | null) {
 	if (!viewId) {
 		return
 	}
@@ -105,7 +105,26 @@ async function saveView(view: IProjectView) {
 	success({message: t('project.views.updateSuccess')})
 }
 
-async function saveViewPosition(e) {
+// zhyswan-vuedraggable ships no slot types, so the #item scoped slot props type as {}.
+// This reflects the shape it actually passes at runtime (SortableJS list item + index).
+interface ItemSlotProps {
+	element: IProjectView,
+	index: number,
+}
+
+function getItemSlotProps(slotProps: unknown): ItemSlotProps {
+	return slotProps as ItemSlotProps
+}
+
+// Omit + re-add $slots (rather than intersect over the original) so vue-tsc's
+// `T extends { $slots: infer Slots }` check resolves to our slot, not `{}`.
+const ViewDraggable = draggable as unknown as new () => Omit<InstanceType<typeof draggable>, '$slots'> & {
+	$slots: {
+		item(props: ItemSlotProps): unknown,
+	},
+}
+
+async function saveViewPosition(e: {newIndex: number}) {
 	const view = views.value[e.newIndex]
 	const viewBefore = views.value[e.newIndex - 1]
 	const viewAfter = views.value[e.newIndex + 1]
@@ -165,7 +184,7 @@ async function saveViewPosition(e) {
 						</th>
 					</tr>
 				</thead>
-				<draggable
+				<ViewDraggable
 					v-model="views"
 					tag="tbody"
 					item-key="id"
@@ -173,9 +192,9 @@ async function saveViewPosition(e) {
 					:animation="100"
 					@end="saveViewPosition"
 				>
-					<template #item="{element: v}">
+					<template #item="itemSlotProps">
 						<tr>
-							<template v-if="viewToEdit !== null && viewToEdit.id === v.id">
+							<template v-if="viewToEdit !== null && viewToEdit.id === getItemSlotProps(itemSlotProps).element.id">
 								<td colspan="3">
 									<ViewEditForm
 										v-model="viewToEdit"
@@ -188,22 +207,22 @@ async function saveViewPosition(e) {
 								</td>
 							</template>
 							<template v-else>
-								<td>{{ v.title }}</td>
-								<td>{{ v.viewKind }}</td>
+								<td>{{ getItemSlotProps(itemSlotProps).element.title }}</td>
+								<td>{{ getItemSlotProps(itemSlotProps).element.viewKind }}</td>
 								<td class="has-text-end actions">
 									<XButton
 										v-if="isAdmin"
 										class="is-danger mie-2"
 										icon="trash-alt"
 										@click="() => {
-											viewIdToDelete = v.id
+											viewIdToDelete = getItemSlotProps(itemSlotProps).element.id
 											showDeleteModal = true
 										}"
 									/>
 									<XButton
 										v-if="isAdmin"
 										icon="pen"
-										@click="viewToEdit = {...v}"
+										@click="viewToEdit = {...getItemSlotProps(itemSlotProps).element}"
 									/>
 									<span class="icon handle">
 										<Icon icon="grip-lines" />
@@ -212,7 +231,7 @@ async function saveViewPosition(e) {
 							</template>
 						</tr>
 					</template>
-				</draggable>
+				</ViewDraggable>
 			</table>
 		</div>
 	</CreateEdit>

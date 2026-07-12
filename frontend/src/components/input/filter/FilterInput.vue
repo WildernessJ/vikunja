@@ -85,7 +85,7 @@ const DateClickHandler = Extension.create({
 const editor = useEditor({
 	extensions: [
 		StarterKit.configure({
-			history: false, // We'll handle history ourselves
+			undoRedo: false, // We'll handle history ourselves
 		}),
 		Placeholder.configure({
 			placeholder: t('filters.query.placeholder'),

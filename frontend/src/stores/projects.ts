@@ -1,4 +1,4 @@
-import {watch, reactive, shallowReactive, toValue, readonly, ref, computed, type MaybeRefOrGetter} from 'vue'
+import {watch, reactive, shallowReactive, toValue, readonly, ref, computed, type MaybeRefOrGetter, type Ref, type ComputedRef} from 'vue'
 import {acceptHMRUpdate, defineStore} from 'pinia'
 import {useI18n} from 'vue-i18n'
 import {useRouter} from 'vue-router'
@@ -265,7 +265,7 @@ export const useProjectStore = defineStore('project', () => {
 		let page = 1
 		try {
 			do {
-				const newProjects = await projectService.getAll({}, {is_archived: true, expand: 'permissions'}, page) as IProject[]
+				const newProjects = await projectService.getAll({} as IProject, {is_archived: true, expand: 'permissions'}, page)
 				loadedProjects.push(...newProjects)
 				page++
 			} while (page <= projectService.totalPages)
@@ -316,7 +316,7 @@ export const useProjectStore = defineStore('project', () => {
 
 		try {
 			const projectService = new ProjectService()
-			const loadedProject = await projectService.get({id: projectId})
+			const loadedProject = await projectService.get({id: projectId} as IProject)
 			setProject(loadedProject)
 			return loadedProject
 		} catch (e) {
@@ -329,12 +329,15 @@ export const useProjectStore = defineStore('project', () => {
 		isLoading: readonly(isLoading),
 		draggedProjectId: readonly(draggedProjectId),
 		setDraggedProjectId,
-		projects: readonly(projects),
-		projectsArray: readonly(projectsArray),
-		notArchivedRootProjects: readonly(notArchivedRootProjects),
-		favoriteProjects: readonly(favoriteProjects),
+		// Runtime-readonly guards are kept; exposed types stay mutable so
+		// read-only consumers can pass projects to IProject-typed helpers
+		// without a DeepReadonly mismatch.
+		projects: readonly(projects) as unknown as Ref<{ [id: IProject['id']]: IProject }>,
+		projectsArray: readonly(projectsArray) as unknown as ComputedRef<IProject[]>,
+		notArchivedRootProjects: readonly(notArchivedRootProjects) as unknown as ComputedRef<IProject[]>,
+		favoriteProjects: readonly(favoriteProjects) as unknown as ComputedRef<IProject[]>,
 		hasProjects: readonly(hasProjects),
-		savedFilterProjects: readonly(savedFilterProjects),
+		savedFilterProjects: readonly(savedFilterProjects) as unknown as ComputedRef<IProject[]>,
 
 		getChildProjects,
 		isOrphanedSubProject,
@@ -394,9 +397,10 @@ export function useProject(projectId: MaybeRefOrGetter<IProject['id']>) {
 		})
 
 		const duplicate = await projectDuplicateService.create(projectDuplicate)
-		if (duplicate.duplicatedProject) {
-			duplicate.duplicatedProject.maxPermission = PERMISSIONS.ADMIN
+		if (!duplicate.duplicatedProject) {
+			throw new Error('Duplicated project is missing from the response')
 		}
+		duplicate.duplicatedProject.maxPermission = PERMISSIONS.ADMIN
 
 		projectStore.setProject(duplicate.duplicatedProject)
 		success({message: t('project.duplicate.success')})

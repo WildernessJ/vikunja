@@ -154,7 +154,7 @@ import {eventToShortcutString} from '@/helpers/shortcut'
 import EditorToolbar from './EditorToolbar.vue'
 
 import StarterKit from '@tiptap/starter-kit'
-import {Extension, mergeAttributes, type SetContentOptions} from '@tiptap/core'
+import {Extension, mergeAttributes, type Editor, type Range, type SetContentOptions} from '@tiptap/core'
 import {EditorContent, type Extensions, useEditor, VueNodeViewRenderer} from '@tiptap/vue-3'
 import {Plugin, PluginKey} from '@tiptap/pm/state'
 import {marked} from 'marked'
@@ -521,7 +521,14 @@ const extensions : Extensions = [
 	}),
 
 	Commands.configure({
-		suggestion: suggestionSetup(t),
+		suggestion: {
+			...suggestionSetup(t),
+			// char/command mirror commands.ts's addOptions() default so the merged runtime config is unchanged
+			char: '/',
+			command: ({editor, range, props}: {editor: Editor, range: Range, props: {command: (params: {editor: Editor, range: Range}) => void}}) => {
+				props.command({editor, range})
+			},
+		},
 	}),
 
 	EmojiExtension,
@@ -727,7 +734,10 @@ async function addImage(event: Event) {
 		return
 	}
 
-	const url = await inputPrompt(event.target.getBoundingClientRect(), '', editor.value)
+	const target = event.target as HTMLElement | null
+	if (!target) return
+
+	const url = await inputPrompt(target.getBoundingClientRect(), '', editor.value)
 
 	if (url) {
 		editor.value?.chain().focus().setImage({src: url}).run()
@@ -812,9 +822,9 @@ function setFocusToEditor(event: KeyboardEvent) {
 	const shortcutString = eventToShortcutString(event)
 	if (!shortcutString) return
 	if (shortcutString !== props.editShortcut ||
-		event.target.tagName.toLowerCase() === 'input' ||
-		event.target.tagName.toLowerCase() === 'textarea' ||
-		event.target.contentEditable === 'true') {
+		target.tagName.toLowerCase() === 'input' ||
+		target.tagName.toLowerCase() === 'textarea' ||
+		target.contentEditable === 'true') {
 		return
 	}
 
@@ -859,7 +869,7 @@ function clickTasklistCheckbox(event: MouseEvent) {
 		return
 	}
 
-	event.target.parentNode.parentNode.firstChild.click()
+	(target.parentNode!.parentNode!.firstChild as HTMLElement).click()
 }
 
 watch(
@@ -886,7 +896,7 @@ watch(
 
 				// We assume the first child contains the label element with the checkbox and the second child the actual label
 				// When the actual label is clicked, we forward that click to the checkbox.
-				const secondChild = check.children[1]
+				const secondChild = check.children[1] as HTMLElement | undefined
 				if (secondChild) {
 					secondChild.removeEventListener('click', clickTasklistCheckbox)
 				}
@@ -902,7 +912,7 @@ watch(
 
 			// We assume the first child contains the label element with the checkbox and the second child the actual label
 			// When the actual label is clicked, we forward that click to the checkbox.
-			const secondChild = check.children[1]
+			const secondChild = check.children[1] as HTMLElement | undefined
 			if (secondChild) {
 				secondChild.removeEventListener('click', clickTasklistCheckbox)
 				secondChild.addEventListener('click', clickTasklistCheckbox)

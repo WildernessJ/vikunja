@@ -6,104 +6,146 @@ import TaskCommentModel from '@/models/taskComment'
 import ProjectModel from '@/models/project'
 import TeamModel from '@/models/team'
 
-import {NOTIFICATION_NAMES, type INotification} from '@/modelTypes/INotification'
+import {
+	NOTIFICATION_NAMES,
+	type INotification,
+	type NotificationTaskComment,
+	type NotificationTask,
+	type NotificationAssigned,
+	type NotificationCreated,
+	type NotificationTaskReminder,
+	type NotificationMemberAdded,
+} from '@/modelTypes/INotification'
 import type { IUser } from '@/modelTypes/IUser'
 
 export default class NotificationModel extends AbstractModel<INotification> implements INotification {
 	id = 0
 	name = ''
-	notification: INotification['notification'] = null
+	notification!: INotification['notification']
 	read = false
 	readAt: Date | null = null
 
-	created: Date
+	created: Date = new Date(0)
 
 	constructor(data: Partial<INotification>) {
 		super()
 		this.assignData(data)
 
 		switch (this.name) {
-			case NOTIFICATION_NAMES.TASK_COMMENT:
+			case NOTIFICATION_NAMES.TASK_COMMENT: {
+				const n = this.notification as NotificationTaskComment
 				this.notification = {
-					doer: new UserModel(this.notification.doer),
-					task: new TaskModel(this.notification.task),
-					comment: new TaskCommentModel(this.notification.comment),
+					doer: new UserModel(n.doer),
+					task: new TaskModel(n.task),
+					comment: new TaskCommentModel(n.comment),
 				}
 				break
-			case NOTIFICATION_NAMES.TASK_ASSIGNED:
+			}
+			case NOTIFICATION_NAMES.TASK_ASSIGNED: {
+				const n = this.notification as NotificationAssigned
 				this.notification = {
-					doer: new UserModel(this.notification.doer),
-					task: new TaskModel(this.notification.task),
-					assignee: new UserModel(this.notification.assignee),
+					doer: new UserModel(n.doer),
+					task: new TaskModel(n.task),
+					assignee: new UserModel(n.assignee),
 				}
 				break
-			case NOTIFICATION_NAMES.TASK_DELETED:
+			}
+			case NOTIFICATION_NAMES.TASK_DELETED: {
+				const n = this.notification as NotificationTask
 				this.notification = {
-					doer: new UserModel(this.notification.doer),
-					task: new TaskModel(this.notification.task),
+					doer: new UserModel(n.doer),
+					task: new TaskModel(n.task),
 				}
 				break
-			case NOTIFICATION_NAMES.PROJECT_CREATED:
+			}
+			case NOTIFICATION_NAMES.PROJECT_CREATED: {
+				const n = this.notification as NotificationCreated
+				// NotificationCreated also declares `task`, but project.created events carry no task; see report.
+				const reconstructed: Pick<NotificationCreated, 'doer' | 'project'> = {
+					doer: new UserModel(n.doer),
+					project: new ProjectModel(n.project),
+				}
+				this.notification = reconstructed as NotificationCreated
+				break
+			}
+			case NOTIFICATION_NAMES.TEAM_MEMBER_ADDED: {
+				const n = this.notification as NotificationMemberAdded
 				this.notification = {
-					doer: new UserModel(this.notification.doer),
-					project: new ProjectModel(this.notification.project),
+					doer: new UserModel(n.doer),
+					member: new UserModel(n.member),
+					team: new TeamModel(n.team),
 				}
 				break
-			case NOTIFICATION_NAMES.TEAM_MEMBER_ADDED:
+			}
+			case NOTIFICATION_NAMES.TASK_REMINDER: {
+				const n = this.notification as NotificationTaskReminder
+				// NotificationTaskReminder also declares `doer`, but reminder events carry no doer; see report.
+				const reconstructed: Pick<NotificationTaskReminder, 'task' | 'project'> = {
+					task: new TaskModel(n.task),
+					project: new ProjectModel(n.project),
+				}
+				this.notification = reconstructed as NotificationTaskReminder
+				break
+			}
+			case NOTIFICATION_NAMES.TASK_MENTIONED: {
+				const n = this.notification as NotificationTask
 				this.notification = {
-					doer: new UserModel(this.notification.doer),
-					member: new UserModel(this.notification.member),
-					team: new TeamModel(this.notification.team),
+					doer: new UserModel(n.doer),
+					task: new TaskModel(n.task),
 				}
 				break
-			case NOTIFICATION_NAMES.TASK_REMINDER:
-				this.notification = {
-					task: new TaskModel(this.notification.task),
-					project: new ProjectModel(this.notification.project),
-				}
-				break
-			case NOTIFICATION_NAMES.TASK_MENTIONED:
-				this.notification = {
-					doer: new UserModel(this.notification.doer),
-					task: new TaskModel(this.notification.task),
-				}
-				break
+			}
 		}
 
 		this.created = new Date(this.created)
-		this.readAt = parseDateOrNull(this.readAt)
+		const readAt = this.readAt
+		this.readAt = readAt === null ? null : parseDateOrNull(readAt)
 	}
 
 	toText(user: IUser | null = null) {
 		let who: string
 
 		switch (this.name) {
-			case NOTIFICATION_NAMES.TASK_COMMENT:
-				return `commented on ${this.notification.task.getTextIdentifier()}`
-			case NOTIFICATION_NAMES.TASK_ASSIGNED:
-				who = `${getDisplayName(this.notification.assignee)}`
+			case NOTIFICATION_NAMES.TASK_COMMENT: {
+				const n = this.notification as NotificationTaskComment
+				return `commented on ${(n.task as TaskModel).getTextIdentifier()}`
+			}
+			case NOTIFICATION_NAMES.TASK_ASSIGNED: {
+				const n = this.notification as NotificationAssigned
+				who = `${getDisplayName(n.assignee)}`
 
-				if (user !== null && user.id === this.notification.assignee.id) {
+				if (user !== null && user.id === n.assignee.id) {
 					who = 'you'
 				}
 
-				return `assigned ${who} to ${this.notification.task.getTextIdentifier()}`
-			case NOTIFICATION_NAMES.TASK_DELETED:
-				return `deleted ${this.notification.task.getTextIdentifier()}`
-			case NOTIFICATION_NAMES.PROJECT_CREATED:
-				return `created ${this.notification.project.title}`
-			case NOTIFICATION_NAMES.TEAM_MEMBER_ADDED:
-				who = `${getDisplayName(this.notification.member)}`
+				return `assigned ${who} to ${(n.task as TaskModel).getTextIdentifier()}`
+			}
+			case NOTIFICATION_NAMES.TASK_DELETED: {
+				const n = this.notification as NotificationTask
+				return `deleted ${(n.task as TaskModel).getTextIdentifier()}`
+			}
+			case NOTIFICATION_NAMES.PROJECT_CREATED: {
+				const n = this.notification as NotificationCreated
+				return `created ${n.project.title}`
+			}
+			case NOTIFICATION_NAMES.TEAM_MEMBER_ADDED: {
+				const n = this.notification as NotificationMemberAdded
+				who = `${getDisplayName(n.member)}`
 
-				if (user !== null && user.id === this.notification.member.id) {
+				if (user !== null && user.id === n.member.id) {
 					who = 'you'
 				}
 
-				return `added ${who} to the ${this.notification.team.name} team`
-			case NOTIFICATION_NAMES.TASK_REMINDER:
-				return `Reminder for ${this.notification.task.getTextIdentifier()} ${this.notification.task.title} (${this.notification.project.title})`
-			case NOTIFICATION_NAMES.TASK_MENTIONED:
-				return `${getDisplayName(this.notification.doer)} mentioned you on ${this.notification.task.getTextIdentifier()}`
+				return `added ${who} to the ${n.team.name} team`
+			}
+			case NOTIFICATION_NAMES.TASK_REMINDER: {
+				const n = this.notification as NotificationTaskReminder
+				return `Reminder for ${(n.task as TaskModel).getTextIdentifier()} ${n.task.title} (${n.project.title})`
+			}
+			case NOTIFICATION_NAMES.TASK_MENTIONED: {
+				const n = this.notification as NotificationTask
+				return `${getDisplayName(n.doer)} mentioned you on ${(n.task as TaskModel).getTextIdentifier()}`
+			}
 		}
 
 		return ''

@@ -113,7 +113,7 @@
 <script lang="ts">
 export default {
 	beforeRouteEnter(to) {
-		if (MIGRATORS[to.params.service as string] === undefined) {
+		if (MIGRATORS[to.params.service as keyof typeof MIGRATORS] === undefined) {
 			return {name: 'not-found'}
 		}
 	},
@@ -129,6 +129,7 @@ import Message from '@/components/misc/Message.vue'
 
 import AbstractMigrationService, {type MigrationConfig} from '@/services/migrator/abstractMigration'
 import AbstractMigrationFileService from '@/services/migrator/abstractMigrationFile'
+import type {IAbstract} from '@/modelTypes/IAbstract'
 
 import {formatDateLong} from '@/helpers/time/formatDate'
 import {parseDateOrNull} from '@/helpers/parseDateOrNull'
@@ -157,7 +158,7 @@ const migratorAuthCode = ref('')
 const migrationJustStarted = ref(false)
 const migrationError = ref('')
 
-const migrator = computed<Migrator>(() => MIGRATORS[props.service])
+const migrator = computed<Migrator>(() => MIGRATORS[props.service as keyof typeof MIGRATORS])
 
 // eslint-disable-next-line vue/no-ref-object-reactivity-loss
 const migrationService = shallowReactive(new AbstractMigrationService(migrator.value.id))
@@ -171,7 +172,8 @@ async function initMigration() {
 		return
 	}
 
-	authUrl.value = await migrationService.getAuthUrl().then(({url}) => url)
+	const authUrlResponse = await migrationService.getAuthUrl()
+	authUrl.value = (authUrlResponse as unknown as MigrationConfig & { url?: string }).url ?? ''
 
 	const TOKEN_HASH_PREFIX = '#token='
 	migratorAuthCode.value = location.hash.startsWith(TOKEN_HASH_PREFIX)
@@ -181,7 +183,10 @@ async function initMigration() {
 	if (!migratorAuthCode.value) {
 		return
 	}
-	const {started_at, finished_at} = await migrationService.getStatus()
+	const {started_at, finished_at} = (await migrationService.getStatus()) as unknown as MigrationConfig & {
+		started_at?: string,
+		finished_at?: string,
+	}
 	if (started_at) {
 		lastMigrationStartedAt.value = parseDateOrNull(started_at)
 	}
@@ -221,7 +226,7 @@ async function migrate() {
 	try {
 		if (migrator.value.isFileMigrator) {
 			const result = await migrationFileService.migrate(migrationConfig as File)
-			message.value = result.message
+			message.value = (result as IAbstract & { message?: string }).message ?? ''
 			const projectStore = useProjectStore()
 			return projectStore.loadAllProjects()
 		}

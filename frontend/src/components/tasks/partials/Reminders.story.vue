@@ -2,10 +2,11 @@
 import reminders from './Reminders.vue'
 import {ref} from 'vue'
 import ReminderDetail from '@/components/tasks/partials/ReminderDetail.vue'
+import type {ITaskReminder} from '@/modelTypes/ITaskReminder'
 
-const reminderNow = ref({reminder: new Date(), relativePeriod: 0, relativeTo: null } )
-const relativeReminder = ref({reminder: null, relativePeriod: 1, relativeTo: 'due_date' } )
-const newReminder = ref(null)
+const reminderNow = ref({reminder: new Date(), relativePeriod: 0, relativeTo: null } as ITaskReminder)
+const relativeReminder = ref({reminder: null, relativePeriod: 1, relativeTo: 'due_date' } as ITaskReminder)
+const newReminder = ref<ITaskReminder | undefined>(undefined)
 </script>
 
 <template>

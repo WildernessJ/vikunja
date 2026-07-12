@@ -28,7 +28,7 @@
 								v-else
 								class="search-result"
 							>
-								{{ result.name }}
+								{{ (result as ITeam).name }}
 							</span>
 						</template>
 					</Multiselect>
@@ -294,7 +294,7 @@ load()
 async function load() {
 	// stuffService's declared Model generic (IUserProject/ITeamProject) doesn't match what
 	// modelGetAllFactory actually returns at runtime (the user/team model plus permission).
-	sharables.value = await stuffService.getAll(stuffModel) as unknown as SharableEntry[]
+	sharables.value = await stuffService.getAll(stuffModel as IUserProject & ITeamProject) as unknown as SharableEntry[]
 	sharables.value.forEach(({id, permission}) =>
 		selectedPermission.value[id] = permission,
 	)

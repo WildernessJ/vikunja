@@ -76,10 +76,10 @@
 				<BaseButton
 					v-for="(data, index) in filteredSearchResults"
 					:key="index"
-					:ref="(el) => setResult(el, index)"
+					:ref="(el) => setResult(el, index as number)"
 					class="search-result-button is-fullwidth"
-					@keydown.up.prevent="() => preSelect(index - 1)"
-					@keydown.down.prevent="() => preSelect(index + 1)"
+					@keydown.up.prevent="() => preSelect((index as number) - 1)"
+					@keydown.down.prevent="() => preSelect((index as number) + 1)"
 					@click.prevent.stop="() => select(data)"
 				>
 					<span>

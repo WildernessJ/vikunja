@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import type { RouteLocation } from 'vue-router'
+import type { RouteLocation, RouterScrollBehavior } from 'vue-router'
 import {saveLastVisited} from '@/helpers/saveLastVisited'
 
 import {getProjectViewId} from '@/helpers/projectView'
@@ -40,7 +40,7 @@ const router = createRouter({
 		return {
 			'inset-inline-start': 0,
 			'inset-block-start': 0,
-		}
+		} as unknown as ReturnType<RouterScrollBehavior>
 	},
 	routes: [
 		{
@@ -512,7 +512,7 @@ const router = createRouter({
 	],
 })
 
-export async function getAuthForRoute(to: RouteLocation, authStore) {
+export async function getAuthForRoute(to: RouteLocation, authStore: ReturnType<typeof useAuthStore>) {
 	// vue-router already decoded to.hash once, so slicing off the prefix yields the original
 	// fullPath (e.g. /oauth/authorize?...) losslessly — no extra decodeURIComponent needed.
 	const redirectDest = to.name === 'user.login' && to.hash.startsWith(REDIRECT_HASH_PREFIX)

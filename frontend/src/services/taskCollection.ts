@@ -2,6 +2,7 @@ import AbstractService from '@/services/abstractService'
 import TaskModel from '@/models/task'
 
 import type {ITask} from '@/modelTypes/ITask'
+import type {IBucket} from '@/modelTypes/IBucket'
 import BucketModel from '@/models/bucket'
 
 export type ExpandTaskFilterParam = 'subtasks' | 'buckets' | 'reactions' | 'comment_count' | 'is_unread' | null
@@ -44,10 +45,10 @@ export default class TaskCollectionService extends AbstractService<ITask> {
 		return super.getReplacedRoute(path, pathparams)
 	}
 
-	modelFactory(data) {
+	modelFactory(data: Partial<ITask> & {project_view_id?: unknown}) {
 		// FIXME: There must be a better way for this…
 		if (typeof data.project_view_id !== 'undefined') {
-			return new BucketModel(data)
+			return new BucketModel(data as unknown as Partial<IBucket>) as unknown as ITask
 		}
 		return new TaskModel(data)
 	}

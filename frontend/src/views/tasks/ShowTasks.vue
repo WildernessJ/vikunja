@@ -41,7 +41,10 @@
 			v-if="!showAll"
 			class="show-tasks-options"
 		>
-			<DatepickerWithRange @update:modelValue="setDate">
+			<DatepickerWithRange
+				:model-value="datepickerModelValue"
+				@update:modelValue="setDate"
+			>
 				<template #trigger="{toggle}">
 					<XButton
 						variant="primary"
@@ -122,7 +125,7 @@ import {useAuthStore} from '@/stores/auth'
 import {useTaskStore} from '@/stores/tasks'
 import {useProjectStore} from '@/stores/projects'
 import {useLabelStore} from '@/stores/labels'
-import type {TaskFilterParams} from '@/services/taskCollection'
+import type {TaskFilterParams, ExpandTaskFilterParam} from '@/services/taskCollection'
 import TaskCollectionService from '@/services/taskCollection'
 import {PERMISSIONS} from '@/constants/permissions'
 import {normalizeOverviewProjectIds, resolveOverviewProjectScope} from '@/helpers/overviewTaskFilter'
@@ -142,8 +145,8 @@ const props = withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{
-	'tasksLoaded': true,
-	'clearLabelFilter': void,
+	tasksLoaded: [value: true],
+	clearLabelFilter: [],
 }>()
 
 const authStore = useAuthStore()
@@ -190,8 +193,8 @@ const pageTitle = computed(() => {
 	return showAll.value
 		? t('task.show.titleCurrent')
 		: t('task.show.fromuntil', {
-			from: formatDate(props.dateFrom, 'LL'),
-			until: formatDate(props.dateTo, 'LL'),
+			from: formatDate(props.dateFrom ?? null, 'LL'),
+			until: formatDate(props.dateTo ?? null, 'LL'),
 		})
 })
 const hasTasks = computed(() => tasks.value && tasks.value.length > 0)
@@ -200,17 +203,24 @@ const loading = computed(() => taskStore.isLoading || taskCollectionService.valu
 const filterIdUsedOnOverview = computed(() => authStore.settings?.frontendSettings?.filterIdUsedOnOverview)
 const overviewProjectIds = computed(() => normalizeOverviewProjectIds(authStore.settings?.frontendSettings?.overviewProjectIds))
 
-interface dateStrings {
-	dateFrom: string,
-	dateTo: string,
+interface DateRangeModelValue {
+	dateFrom: string | Date | null,
+	dateTo: string | Date | null,
 }
 
-function setDate(dates: dateStrings) {
+const datepickerModelValue = computed<DateRangeModelValue>(() => ({
+	dateFrom: props.dateFrom ?? null,
+	dateTo: props.dateTo ?? null,
+}))
+
+function setDate(dates: DateRangeModelValue) {
+	const from = dates.dateFrom ?? props.dateFrom
+	const to = dates.dateTo ?? props.dateTo
 	router.push({
 		name: route.name as string,
 		query: {
-			from: dates.dateFrom ?? props.dateFrom,
-			to: dates.dateTo ?? props.dateTo,
+			from: from instanceof Date ? from.toISOString() : from,
+			to: to instanceof Date ? to.toISOString() : to,
 			showOverdue: props.showOverdue ? 'true' : 'false',
 			showNulls: props.showNulls ? 'true' : 'false',
 		},
@@ -256,7 +266,8 @@ async function loadPendingTasks(from: Date|string, to: Date|string, filterId: nu
 		filter: 'done = false',
 		filter_include_nulls: props.showNulls,
 		s: '',
-		expand: ['comment_count', 'is_unread'],
+		// ExpandTaskFilterParam is typed as a single value; the API accepts multiple, comma-joined server-side.
+		expand: ['comment_count', 'is_unread'] as unknown as ExpandTaskFilterParam,
 	}
 
 	if (!showAll.value) {
@@ -288,7 +299,7 @@ async function loadPendingTasks(from: Date|string, to: Date|string, filterId: nu
 		params.filter += params.filter ? ` && ${projectFilterClause}` : projectFilterClause
 	}
 
-	tasks.value = await taskStore.loadTasks(params, projectId)
+	tasks.value = Object.values(await taskStore.loadTasks(params, projectId))
 	emit('tasksLoaded', true)
 }
 
@@ -316,7 +327,7 @@ function updateTasks(updatedTask: ITask) {
 watch(
 	// join to a stable string so a fresh-but-equal ids array doesn't retrigger the reload
 	[() => props.dateFrom, () => props.dateTo, filterIdUsedOnOverview, () => overviewProjectIds.value.join(',')],
-	([from, to, filterId]) => loadPendingTasks(from, to, filterId),
+	([from, to, filterId]) => loadPendingTasks(from ?? '', to ?? '', filterId),
 	{immediate: true},
 )
 watchEffect(() => setTitle(pageTitle.value))

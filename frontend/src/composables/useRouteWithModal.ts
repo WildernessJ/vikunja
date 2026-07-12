@@ -1,5 +1,5 @@
-import {computed, defineAsyncComponent, h, shallowRef, type VNode, watchEffect} from 'vue'
-import {useRoute, useRouter, type RouteLocationNormalizedGeneric} from 'vue-router'
+import {computed, defineAsyncComponent, h, shallowRef, type AsyncComponentLoader, type VNode, watchEffect} from 'vue'
+import {useRoute, useRouter, type RouteComponent, type RouteLocationNormalizedGeneric} from 'vue-router'
 import {useBaseStore} from '@/stores/base'
 import {useProjectStore} from '@/stores/projects'
 
@@ -49,7 +49,9 @@ export function useRouteWithModal() {
 		let component = route.matched[0]?.components?.default
 
 		if (typeof component === 'function') {
-			component = defineAsyncComponent(component)
+			// Route components can be functional/constructor components, which are also
+			// `typeof === 'function'` but aren't loaders; the route-view lazy-load path is.
+			component = defineAsyncComponent(component as AsyncComponentLoader<RouteComponent>)
 		}
 
 		if (!component) {

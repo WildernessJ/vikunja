@@ -27,7 +27,7 @@
 			<User
 				:avatar-size="24"
 				:show-username="true"
-				:user="user"
+				:user="(user as IUser)"
 			/>
 		</template>
 	</Multiselect>
@@ -47,6 +47,7 @@ import {useAuthStore} from '@/stores/auth'
 import {useTaskStore} from '@/stores/tasks'
 
 import type {IUser} from '@/modelTypes/IUser'
+import type {IAbstract} from '@/modelTypes/IAbstract'
 import {getDisplayName} from '@/models/user'
 import AssigneeList from '@/components/tasks/partials/AssigneeList.vue'
 
@@ -83,7 +84,7 @@ function preloadUsers() {
 watch(
 	() => props.modelValue,
 	(value) => {
-		assignees.value = value
+		assignees.value = value ?? []
 	},
 	{
 		immediate: true,
@@ -136,7 +137,7 @@ async function findUser(query = '') {
 	// project mid-flight, drop this response so it can't repopulate the list with
 	// the previous project's members after the navigation reset.
 	const requestProjectId = props.projectId
-	const response = await projectUserService.getAll({projectId: requestProjectId}, {s: query}) as IUser[]
+	const response = await projectUserService.getAll({projectId: requestProjectId} as unknown as IAbstract, {s: query}) as IUser[]
 
 	if (requestProjectId !== props.projectId) {
 		return

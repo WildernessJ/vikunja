@@ -1,10 +1,11 @@
 import AbstractService from '../abstractService'
+import type {IAbstract} from '@/modelTypes/IAbstract'
 
 export type MigrationConfig = { code: string }
 
 // This service builds on top of the abstract service and basically just hides away method names.
 // It enables migration services to be created with minimal overhead and even better method names.
-export default class AbstractMigrationService extends AbstractService<MigrationConfig> {
+export default class AbstractMigrationService extends AbstractService {
 	serviceUrlKey = ''
 
 	constructor(serviceUrlKey: string) {
@@ -23,6 +24,6 @@ export default class AbstractMigrationService extends AbstractService<MigrationC
 	}
 
 	migrate(data: MigrationConfig) {
-		return this.update(data)
+		return this.update(data as unknown as IAbstract)
 	}
 }
