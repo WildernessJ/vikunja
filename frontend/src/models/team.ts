@@ -18,8 +18,8 @@ export default class TeamModel extends AbstractModel<ITeam> implements ITeam {
 	isPublic: boolean = false
 
 	createdBy!: IUser
-	created!: Date
-	updated!: Date
+	created: Date = new Date(0)
+	updated: Date = new Date(0)
 
 	constructor(data: Partial<ITeam> = {}) {
 		super()

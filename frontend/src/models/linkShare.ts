@@ -15,8 +15,8 @@ export default class LinkShareModel extends AbstractModel<ILinkShare> implements
 	password = ''
 
 	sharedBy!: IUser
-	created!: Date
-	updated!: Date
+	created: Date = new Date(0)
+	updated: Date = new Date(0)
 
 	constructor(data: Partial<ILinkShare>) {
 		super()

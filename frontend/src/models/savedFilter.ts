@@ -19,8 +19,8 @@ export default class SavedFilterModel extends AbstractModel<ISavedFilter> implem
 	isFavorite = false
 
 	owner!: IUser
-	created!: Date
-	updated!: Date
+	created: Date = new Date(0)
+	updated: Date = new Date(0)
 
 	constructor(data: Partial<ISavedFilter> = {}) {
 		super()

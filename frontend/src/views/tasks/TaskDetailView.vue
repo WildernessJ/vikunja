@@ -510,7 +510,7 @@
 							entity="task"
 							:entity-id="task.id"
 							:model-value="task.subscription"
-							@update:modelValue="sub => { if (sub) task.subscription = sub }"
+							@update:modelValue="sub => task.subscription = sub"
 						/>
 						<XButton
 							v-shortcut="'KeyS'"

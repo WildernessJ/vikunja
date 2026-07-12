@@ -14,8 +14,8 @@ export default class WebhookModel extends AbstractModel<IWebhook> implements IWe
 	events: string[] = []
 
 	createdBy!: IUser
-	created!: Date
-	updated!: Date
+	created: Date = new Date(0)
+	updated: Date = new Date(0)
 
 	constructor(data: Partial<IWebhook> = {}) {
 		super()

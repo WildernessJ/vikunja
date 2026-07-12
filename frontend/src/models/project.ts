@@ -22,14 +22,14 @@ export default class ProjectModel extends AbstractModel<IProject> implements IPr
 	identifier = ''
 	backgroundInformation: unknown | null = null
 	isFavorite = false
-	subscription!: ISubscription
+	subscription: ISubscription | null = null
 	position = 0
 	backgroundBlurHash = ''
 	parentProjectId = 0
 	views: IProjectView[] = []
 	
-	created!: Date
-	updated!: Date
+	created: Date = new Date(0)
+	updated: Date = new Date(0)
 
 	constructor(data: Partial<IProject> = {}) {
 		super()

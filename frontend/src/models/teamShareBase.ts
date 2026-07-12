@@ -12,8 +12,8 @@ export default class TeamShareBaseModel extends AbstractModel<ITeamShareBase> im
 	teamId: ITeam['id'] = 0
 	permission: Permission = PERMISSIONS.READ
 
-	created!: Date
-	updated!: Date
+	created: Date = new Date(0)
+	updated: Date = new Date(0)
 
 	constructor(data: Partial<ITeamShareBase>) {
 		super()

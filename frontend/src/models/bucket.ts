@@ -18,8 +18,8 @@ export default class BucketModel extends AbstractModel<IBucket> implements IBuck
 	projectViewId!: IProjectView['id']
 
 	createdBy!: IUser
-	created!: Date
-	updated!: Date
+	created: Date = new Date(0)
+	updated: Date = new Date(0)
 
 	constructor(data: Partial<IBucket>) {
 		super()

@@ -17,8 +17,8 @@ export default class LabelModel extends AbstractModel<ILabel> implements ILabel 
 	projectId = 0
 	textColor = ''
 
-	created!: Date
-	updated!: Date
+	created: Date = new Date(0)
+	updated: Date = new Date(0)
 
 	constructor(data: Partial<ILabel> = {}) {
 		super()

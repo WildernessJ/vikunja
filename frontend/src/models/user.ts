@@ -75,8 +75,8 @@ export default class UserModel extends AbstractModel<IUser> implements IUser {
 	exp = 0
 	type: AuthType = AUTH_TYPES.UNKNOWN
 
-	created!: Date
-	updated!: Date
+	created: Date = new Date(0)
+	updated: Date = new Date(0)
 	settings!: IUserSettings
 
 	isLocalUser!: boolean

@@ -25,7 +25,7 @@ export default class NotificationModel extends AbstractModel<INotification> impl
 	read = false
 	readAt: Date | null = null
 
-	created!: Date
+	created: Date = new Date(0)
 
 	constructor(data: Partial<INotification>) {
 		super()

@@ -13,8 +13,8 @@ export default class TaskCommentModel extends AbstractModel<ITaskComment> implem
 	reactions: IReactionPerEntity = {}
 
 	author!: IUser
-	created!: Date
-	updated!: Date
+	created: Date = new Date(0)
+	updated: Date = new Date(0)
 
 	constructor(data: Partial<ITaskComment> = {}) {
 		super()

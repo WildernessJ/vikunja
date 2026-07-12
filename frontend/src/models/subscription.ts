@@ -10,7 +10,7 @@ export default class SubscriptionModel extends AbstractModel<ISubscription> impl
 	entityId = 0
 	user!: IUser
 
-	created!: Date
+	created: Date = new Date(0)
 
 	constructor(data : Partial<ISubscription>) {
 		super()

@@ -25,7 +25,7 @@ export default class AttachmentModel extends AbstractModel<IAttachment> implemen
 	taskId = 0
 	createdBy!: IUser
 	file!: IFile
-	created!: Date
+	created: Date = new Date(0)
 
 	constructor(data: Partial<IAttachment>) {
 		super()

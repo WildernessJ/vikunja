@@ -89,7 +89,7 @@ export default class TaskModel extends AbstractModel<ITask> implements ITask {
 	identifier = ''
 	index = 0
 	isFavorite = false
-	subscription!: ISubscription
+	subscription: ISubscription | null = null
 
 	position = 0
 
@@ -97,8 +97,8 @@ export default class TaskModel extends AbstractModel<ITask> implements ITask {
 	comments: ITaskComment[] = []
 
 	createdBy!: IUser
-	created!: Date
-	updated!: Date
+	created: Date = new Date(0)
+	updated: Date = new Date(0)
 
 	projectId: IProject['id'] = 0
 	bucketId: IBucket['id'] = 0
