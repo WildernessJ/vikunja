@@ -191,6 +191,7 @@ export const useAuthStore = defineStore('auth', () => {
 				commentSortOrder: 'asc',
 				hiddenNavItems: [],
 				overviewProjectIds: [],
+				overviewProjectsExclude: false,
 				filterIdUsedOnOverview: null,
 				alwaysShowBucketTaskCount: false,
 				quickAddDefaultReminders: [],

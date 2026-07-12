@@ -28,6 +28,7 @@ export default class UserSettingsModel extends AbstractModel<IUserSettings> impl
 		allowIconChanges: true,
 		filterIdUsedOnOverview: null,
 		overviewProjectIds: [],
+		overviewProjectsExclude: false,
 		defaultView: DEFAULT_PROJECT_VIEW_SETTINGS.FIRST,
 		minimumPriority: PRIORITIES.MEDIUM,
 		dateDisplay: DATE_DISPLAY.RELATIVE,

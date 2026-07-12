@@ -18,6 +18,7 @@ export interface IFrontendSettings {
 	allowIconChanges: boolean
 	filterIdUsedOnOverview: IProject['id'] | null
 	overviewProjectIds?: IProject['id'][]
+	overviewProjectsExclude?: boolean
 	defaultView?: DefaultProjectViewKind
 	minimumPriority?: Priority
 	dateDisplay: DateDisplay
