@@ -202,6 +202,7 @@ const userAuthenticated = computed(() => authStore.authenticated)
 const loading = computed(() => taskStore.isLoading || taskCollectionService.value.loading)
 const filterIdUsedOnOverview = computed(() => authStore.settings?.frontendSettings?.filterIdUsedOnOverview)
 const overviewProjectIds = computed(() => normalizeOverviewProjectIds(authStore.settings?.frontendSettings?.overviewProjectIds))
+const overviewProjectsExclude = computed(() => authStore.settings?.frontendSettings?.overviewProjectsExclude ?? false)
 
 interface DateRangeModelValue {
 	dateFrom: string | Date | null,
@@ -290,6 +291,7 @@ async function loadPendingTasks(from: Date|string, to: Date|string, filterId: nu
 
 	const {projectFilterClause, projectId} = resolveOverviewProjectScope({
 		overviewProjectIds: overviewProjectIds.value,
+		exclude: overviewProjectsExclude.value,
 		savedFilterId: filterId,
 		savedFilterExists: !!filterId && typeof projectStore.projects[filterId] !== 'undefined',
 		showAll: showAll.value,
@@ -326,7 +328,7 @@ function updateTasks(updatedTask: ITask) {
 // the same behavior but only triggers when these specific values actually change.
 watch(
 	// join to a stable string so a fresh-but-equal ids array doesn't retrigger the reload
-	[() => props.dateFrom, () => props.dateTo, filterIdUsedOnOverview, () => overviewProjectIds.value.join(',')],
+	[() => props.dateFrom, () => props.dateTo, filterIdUsedOnOverview, () => overviewProjectIds.value.join(','), overviewProjectsExclude],
 	([from, to, filterId]) => loadPendingTasks(from ?? '', to ?? '', filterId),
 	{immediate: true},
 )

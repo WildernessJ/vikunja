@@ -14,6 +14,7 @@ interface OverviewProjectScopeInput {
 	savedFilterExists: boolean
 	showAll: boolean
 	hasLabelFilter: boolean
+	exclude: boolean
 }
 
 interface OverviewProjectScope {
@@ -25,10 +26,11 @@ interface OverviewProjectScope {
 // (composing with any label filter) and forces projectId null to hit the multi-project
 // endpoint, whereas a saved filter is a pseudo-project reachable only via projectId.
 export function resolveOverviewProjectScope(input: OverviewProjectScopeInput): OverviewProjectScope {
-	const {overviewProjectIds, savedFilterId, savedFilterExists, showAll, hasLabelFilter} = input
+	const {overviewProjectIds, savedFilterId, savedFilterExists, showAll, hasLabelFilter, exclude} = input
 
 	if (showAll && overviewProjectIds.length > 0) {
-		return {projectFilterClause: `project in ${overviewProjectIds.join(', ')}`, projectId: null}
+		const operator = exclude ? 'not in' : 'in'
+		return {projectFilterClause: `project ${operator} ${overviewProjectIds.join(', ')}`, projectId: null}
 	}
 
 	if (showAll && savedFilterId && savedFilterExists && !hasLabelFilter) {

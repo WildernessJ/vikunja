@@ -59,11 +59,18 @@
 			<div class="field">
 				<label class="label">{{ $t('user.settings.general.overviewProjects') }}</label>
 				<p class="help">
-					{{ $t('user.settings.general.overviewProjectsDescription') }}
+					{{ settings.frontendSettings.overviewProjectsExclude
+						? $t('user.settings.general.overviewProjectsExcludeDescription')
+						: $t('user.settings.general.overviewProjectsDescription') }}
 				</p>
 				<ProjectSearchMultiple
 					v-model="overviewProjects"
 					data-cy="overviewProjects"
+				/>
+				<FormCheckbox
+					v-model="settings.frontendSettings.overviewProjectsExclude"
+					:label="$t('user.settings.general.overviewProjectsExclude')"
+					data-cy="overviewProjectsExclude"
 				/>
 			</div>
 			<FormField

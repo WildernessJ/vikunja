@@ -38,6 +38,7 @@ describe('resolveOverviewProjectScope', () => {
 		savedFilterExists: false,
 		showAll: true,
 		hasLabelFilter: false,
+		exclude: false,
 	}
 
 	it('scopes nothing when neither projects nor a saved filter are set', () => {
@@ -112,5 +113,34 @@ describe('resolveOverviewProjectScope', () => {
 			overviewProjectIds: [5],
 			showAll: false,
 		})).toEqual({projectFilterClause: '', projectId: null})
+	})
+
+	// --- exclude mode: same rules as include, only the operator flips ---
+
+	it('emits a project-not-in clause in exclude mode', () => {
+		expect(resolveOverviewProjectScope({
+			...base,
+			overviewProjectIds: [1, 2, 3],
+			exclude: true,
+		})).toEqual({projectFilterClause: 'project not in 1, 2, 3', projectId: null})
+	})
+
+	it('lets an exclude list win over a set saved filter', () => {
+		expect(resolveOverviewProjectScope({
+			...base,
+			overviewProjectIds: [5],
+			exclude: true,
+			savedFilterId: 7,
+			savedFilterExists: true,
+		})).toEqual({projectFilterClause: 'project not in 5', projectId: null})
+	})
+
+	it('falls through to the saved filter when the exclude list is empty', () => {
+		expect(resolveOverviewProjectScope({
+			...base,
+			exclude: true,
+			savedFilterId: 7,
+			savedFilterExists: true,
+		})).toEqual({projectFilterClause: '', projectId: 7})
 	})
 })
