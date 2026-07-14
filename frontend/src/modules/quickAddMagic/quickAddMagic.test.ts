@@ -1018,5 +1018,14 @@ describe('Parse Task Text', () => {
 			expect(result.repeats).toBeNull()
 			expect(result.rruleRepeat?.rrule).toBe('FREQ=MONTHLY;INTERVAL=3;BYDAY=-1SA')
 		})
+
+		it('does not corrupt the title or inject a due date for a contradictory pattern', () => {
+			const result = parseTaskText('Water plants every 6 months on friday')
+
+			expect(result.text).toBe('Water plants')
+			expect(result.date).toBeNull()
+			expect(result.repeats).toEqual({amount: 6, type: 'months'})
+			expect(result.rruleRepeat).toBeNull()
+		})
 	})
 })

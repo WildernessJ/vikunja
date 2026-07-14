@@ -117,6 +117,18 @@ func TestNextRRuleOccurrence(t *testing.T) {
 			want:   time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC),
 			wantOk: true,
 		},
+		{
+			// "last Saturday of every 3rd month" — the frontend's headline INTERVAL
+			// combo. Anchored on the last Saturday of July, the next occurrence must
+			// skip August and September (INTERVAL=3) and land on the last Saturday of
+			// October, not the next month.
+			name:   "monthly INTERVAL skips intervening months and keeps the ordinal weekday",
+			rule:   "FREQ=MONTHLY;INTERVAL=3;BYDAY=-1SA",
+			after:  time.Date(2026, 7, 25, 0, 0, 0, 0, time.UTC),
+			loc:    time.UTC,
+			want:   time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC),
+			wantOk: true,
+		},
 	}
 
 	for _, tt := range tests {

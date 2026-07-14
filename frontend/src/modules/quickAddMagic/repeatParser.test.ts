@@ -111,9 +111,11 @@ describe('getRepeats — interval + calendar pattern (RRULE INTERVAL)', () => {
 		expect(result.rruleRepeat?.startDate?.getDate()).toBe(3)
 	})
 
-	it('does not match when the calendar pattern after "on" is invalid', () => {
+	it('degrades an unparseable pattern to a plain interval, consuming the whole phrase', () => {
 		const result = getRepeats('every 3 months on the moon', NOW)
 		expect(result.rruleRepeat).toBeNull()
+		expect(result.repeats).toEqual({amount: 3, type: REPEAT_TYPES.Months})
+		expect(result.textWithoutMatched.trim()).toBe('')
 	})
 
 	it('accepts a spelled-out interval count', () => {
@@ -121,16 +123,21 @@ describe('getRepeats — interval + calendar pattern (RRULE INTERVAL)', () => {
 		expect(result.rruleRepeat?.rrule).toBe('FREQ=MONTHLY;INTERVAL=3;BYDAY=-1SA')
 	})
 
-	it('rejects a unit that contradicts the pattern frequency', () => {
-		// "months" unit but a bare weekday is a weekly pattern — self-contradictory,
-		// must not silently emit an every-6-weeks rule.
+	it('degrades a unit that contradicts the pattern frequency, without leaking the pattern', () => {
+		// "months" unit but a bare weekday is a weekly pattern — self-contradictory.
+		// Must degrade to a plain 6-month interval and consume "on friday" entirely so
+		// the date parser cannot scavenge it into a due date.
 		const result = getRepeats('every 6 months on friday', NOW)
 		expect(result.rruleRepeat).toBeNull()
+		expect(result.repeats).toEqual({amount: 6, type: REPEAT_TYPES.Months})
+		expect(result.textWithoutMatched.trim()).toBe('')
 	})
 
-	it('rejects a weekly unit paired with a monthly pattern', () => {
+	it('degrades a weekly unit paired with a monthly pattern', () => {
 		const result = getRepeats('every 2 weeks on the last saturday', NOW)
 		expect(result.rruleRepeat).toBeNull()
+		expect(result.repeats).toEqual({amount: 2, type: REPEAT_TYPES.Weeks})
+		expect(result.textWithoutMatched.trim()).toBe('')
 	})
 })
 

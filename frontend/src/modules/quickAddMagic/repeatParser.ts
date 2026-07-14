@@ -145,15 +145,19 @@ function getIntervalRRuleRepeat(text: string, now: Date): repeatParsedResult | n
 	clause = clause.replace(/^the\s+/i, '').trim()
 
 	const core = parseRRuleCore(clause)
-	if (core === null) {
-		return null
-	}
 
-	// The unit must agree with the frequency the pattern implies; otherwise the
-	// input is self-contradictory ("every 6 months on friday" — a bare weekday is
-	// weekly, not monthly) and INTERVAL would silently apply to the wrong period.
-	if (wantMonthly !== core.startsWith('FREQ=MONTHLY')) {
-		return null
+	// The "on <pattern>" must parse AND agree with the unit's frequency — a bare
+	// weekday is weekly, not monthly, so "every 6 months on friday" is contradictory.
+	// When it doesn't, consume the whole phrase and degrade to a plain interval
+	// repeat: returning null here would fall through to legacy interval mode, which
+	// leaves the leftover pattern text in the title where the date parser scavenges
+	// it into an unintended due date.
+	if (core === null || wantMonthly !== core.startsWith('FREQ=MONTHLY')) {
+		return {
+			textWithoutMatched: before,
+			repeats: {amount: intervalN, type: wantMonthly ? REPEAT_TYPES.Months : REPEAT_TYPES.Weeks},
+			rruleRepeat: null,
+		}
 	}
 
 	const withInterval = intervalN > 1
