@@ -69,6 +69,71 @@ describe('getRepeats — calendar patterns (RRULE)', () => {
 	})
 })
 
+describe('getRepeats — interval + calendar pattern (RRULE INTERVAL)', () => {
+	it('parses "every 3 months on the last saturday"', () => {
+		const result = getRepeats('every 3 months on the last saturday', NOW)
+		expect(result.rruleRepeat?.rrule).toBe('FREQ=MONTHLY;INTERVAL=3;BYDAY=-1SA')
+		expect(result.repeats).toBeNull()
+		expect(result.textWithoutMatched.trim()).toBe('')
+	})
+
+	it('parses "every 2 weeks on monday, friday"', () => {
+		const result = getRepeats('every 2 weeks on monday, friday', NOW)
+		expect(result.rruleRepeat?.rrule).toBe('FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,FR')
+	})
+
+	it('accepts the ordinal unit form "every 3rd month on the last saturday"', () => {
+		const result = getRepeats('every 3rd month on the last saturday', NOW)
+		expect(result.rruleRepeat?.rrule).toBe('FREQ=MONTHLY;INTERVAL=3;BYDAY=-1SA')
+	})
+
+	it('collapses interval 1, emitting no INTERVAL component', () => {
+		const result = getRepeats('every 1 month on the last saturday', NOW)
+		expect(result.rruleRepeat?.rrule).toBe('FREQ=MONTHLY;BYDAY=-1SA')
+	})
+
+	it('carries the every! from-completion flag', () => {
+		const result = getRepeats('every! 3 months on the last saturday', NOW)
+		expect(result.rruleRepeat?.rrule).toBe('FREQ=MONTHLY;INTERVAL=3;BYDAY=-1SA')
+		expect(result.rruleRepeat?.fromCompletion).toBe(true)
+	})
+
+	it('applies an until bound after the interval', () => {
+		const result = getRepeats('every 3 months on the last saturday until dec 1', NOW)
+		expect(result.rruleRepeat?.rrule).toBe('FREQ=MONTHLY;INTERVAL=3;BYDAY=-1SA;UNTIL=20261201T000000Z')
+		expect(result.textWithoutMatched.trim()).toBe('')
+	})
+
+	it('pulls a starting bound into the start date, leaving the rrule clean', () => {
+		const result = getRepeats('every 2 months on 15 starting aug 3', NOW)
+		expect(result.rruleRepeat?.rrule).toBe('FREQ=MONTHLY;INTERVAL=2;BYMONTHDAY=15')
+		expect(result.rruleRepeat?.startDate?.getMonth()).toBe(7)
+		expect(result.rruleRepeat?.startDate?.getDate()).toBe(3)
+	})
+
+	it('does not match when the calendar pattern after "on" is invalid', () => {
+		const result = getRepeats('every 3 months on the moon', NOW)
+		expect(result.rruleRepeat).toBeNull()
+	})
+
+	it('accepts a spelled-out interval count', () => {
+		const result = getRepeats('every three months on the last saturday', NOW)
+		expect(result.rruleRepeat?.rrule).toBe('FREQ=MONTHLY;INTERVAL=3;BYDAY=-1SA')
+	})
+
+	it('rejects a unit that contradicts the pattern frequency', () => {
+		// "months" unit but a bare weekday is a weekly pattern — self-contradictory,
+		// must not silently emit an every-6-weeks rule.
+		const result = getRepeats('every 6 months on friday', NOW)
+		expect(result.rruleRepeat).toBeNull()
+	})
+
+	it('rejects a weekly unit paired with a monthly pattern', () => {
+		const result = getRepeats('every 2 weeks on the last saturday', NOW)
+		expect(result.rruleRepeat).toBeNull()
+	})
+})
+
 describe('getRepeats — legacy interval mode unchanged', () => {
 	it('keeps "every 2 weeks" as interval mode, not rrule', () => {
 		const result = getRepeats('every 2 weeks', NOW)

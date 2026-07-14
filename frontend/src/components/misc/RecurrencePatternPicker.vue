@@ -26,6 +26,28 @@
 			</div>
 		</div>
 
+		<div class="is-flex is-align-items-center mbe-2">
+			<label
+				:for="`${idPrefix}-interval`"
+				class="is-fullwidth"
+			>
+				{{ $t('task.repeat.repeatEvery') }}:
+			</label>
+			<input
+				:id="`${idPrefix}-interval`"
+				v-model.number="interval"
+				type="number"
+				class="input is-inline-number"
+				min="1"
+				step="1"
+				:disabled="disabled || undefined"
+				@change="emitPattern"
+			>
+			<span class="mis-2">
+				{{ freq === 'weekly' ? $t('task.repeat.unitWeeks') : $t('task.repeat.unitMonths') }}
+			</span>
+		</div>
+
 		<div
 			v-if="freq === 'weekly'"
 			class="weekday-picker mbe-2"
@@ -196,6 +218,7 @@ type MonthlyMode = 'dayOfMonth' | 'nthWeekday' | 'lastDay' | 'lastWorkday'
 const freq = ref<'weekly' | 'monthly'>('weekly')
 const weekdays = ref<string[]>([])
 const monthlyMode = ref<MonthlyMode>('dayOfMonth')
+const interval = ref<number>(1)
 const monthDay = ref<number>(1)
 const nthOrdinal = ref<number>(1)
 const nthWeekday = ref<string>('MO')
@@ -241,6 +264,11 @@ function buildRrule(): string {
 		}
 	}
 
+	// Guard against a non-integer (the number input allows typed decimals): a
+	// fractional INTERVAL is an invalid RRULE the backend rejects.
+	if (Number.isInteger(interval.value) && interval.value > 1) {
+		core = core.replace(/^(FREQ=[A-Z]+)/, `$1;INTERVAL=${interval.value}`)
+	}
 	if (endDate.value !== null) {
 		core += `;UNTIL=${formatUntil(endDate.value)}`
 	}
@@ -265,6 +293,9 @@ function parseRrule(rule: string) {
 
 	const until = getPart(rule, 'UNTIL')
 	endDate.value = until !== null ? parseUntil(until) : null
+
+	const intervalPart = getPart(rule, 'INTERVAL')
+	interval.value = intervalPart !== null ? Number(intervalPart) : 1
 
 	const freqPart = getPart(rule, 'FREQ')
 	const byday = getPart(rule, 'BYDAY')
@@ -328,28 +359,41 @@ const summary = computed(() => {
 		return ''
 	}
 
+	const n = interval.value
+	const many = Number.isInteger(n) && n > 1
 	let base: string
 	if (freq.value === 'weekly') {
 		const labels = WEEKDAY_ORDER
 			.filter(d => weekdays.value.includes(d))
 			.map(d => t(`task.repeat.weekdayShort.${d.toLowerCase()}`))
-		base = t('task.repeat.summaryWeekly', {days: labels.join(', ')})
+		const days = labels.join(', ')
+		base = many
+			? t('task.repeat.summaryIntervalWeekly', {n, days})
+			: t('task.repeat.summaryWeekly', {days})
 	} else {
 		switch (monthlyMode.value) {
 			case 'dayOfMonth':
-				base = t('task.repeat.summaryMonthlyDay', {day: monthDay.value})
+				base = many
+					? t('task.repeat.summaryIntervalMonthlyDay', {n, day: monthDay.value})
+					: t('task.repeat.summaryMonthlyDay', {day: monthDay.value})
 				break
-			case 'nthWeekday':
-				base = t('task.repeat.summaryMonthlyNth', {
-					ordinal: t(`task.repeat.ordinal.${nthOrdinal.value === -1 ? 'last' : nthOrdinal.value}`),
-					weekday: t(`task.repeat.weekdayShort.${nthWeekday.value.toLowerCase()}`),
-				})
+			case 'nthWeekday': {
+				const ordinal = t(`task.repeat.ordinal.${nthOrdinal.value === -1 ? 'last' : nthOrdinal.value}`)
+				const weekday = t(`task.repeat.weekdayShort.${nthWeekday.value.toLowerCase()}`)
+				base = many
+					? t('task.repeat.summaryIntervalMonthlyNth', {n, ordinal, weekday})
+					: t('task.repeat.summaryMonthlyNth', {ordinal, weekday})
 				break
+			}
 			case 'lastDay':
-				base = t('task.repeat.onLastDay')
+				base = many
+					? t('task.repeat.summaryIntervalMonthlyLastDay', {n})
+					: t('task.repeat.onLastDay')
 				break
 			default:
-				base = t('task.repeat.onLastWorkday')
+				base = many
+					? t('task.repeat.summaryIntervalMonthlyLastWorkday', {n})
+					: t('task.repeat.onLastWorkday')
 		}
 	}
 

@@ -1010,5 +1010,13 @@ describe('Parse Task Text', () => {
 				expect(result?.repeats).toBeNull()
 			})
 		})
+
+		it('parses an interval calendar pattern and strips it from the title', () => {
+			const result = parseTaskText('Water plants every 3 months on the last saturday')
+
+			expect(result.text).toBe('Water plants')
+			expect(result.repeats).toBeNull()
+			expect(result.rruleRepeat?.rrule).toBe('FREQ=MONTHLY;INTERVAL=3;BYDAY=-1SA')
+		})
 	})
 })
