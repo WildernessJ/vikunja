@@ -1,37 +1,206 @@
 <template>
 	<div
 		ref="taskAdd"
-		class="task-add"
+		class="task-add quick-add-composer"
 	>
-		<div class="add-task__field field">
-			<p class="control task-input-wrapper">
-				<label
-					class="is-sr-only"
-					:for="textareaId"
-				>
-					{{ $t('project.list.addPlaceholder') }}
-				</label>
-				<span class="icon is-small task-icon">
-					<Icon icon="tasks" />
-				</span>
-				<textarea
-					:id="textareaId"
-					ref="newTaskInput"
-					v-model="newTaskTitle"
-					v-focus
-					class="add-task-textarea input"
-					:class="{'textarea-empty': newTaskTitle === ''}"
-					:placeholder="$t('project.list.addPlaceholder')"
-					rows="1"
-					@keydown="resetEmptyTitleError"
-					@keydown.enter="handleEnter"
-					@keydown.esc="blurTaskInput"
-				/>
-				<QuickAddMagic
-					:highlight-hint-icon="taskAddHovered"
-				/>
+		<div class="qac-card">
+			<div class="add-task__field field">
+				<p class="control task-input-wrapper">
+					<label
+						class="is-sr-only"
+						:for="textareaId"
+					>
+						{{ $t('project.list.addPlaceholder') }}
+					</label>
+					<span class="icon is-small task-icon">
+						<Icon icon="tasks" />
+					</span>
+					<textarea
+						:id="textareaId"
+						ref="newTaskInput"
+						v-model="newTaskTitle"
+						v-focus
+						class="add-task-textarea input"
+						:class="{'textarea-empty': newTaskTitle === ''}"
+						:placeholder="$t('project.list.addPlaceholder')"
+						rows="1"
+						@keydown="resetEmptyTitleError"
+						@keydown.enter="handleEnter"
+						@keydown.esc="blurTaskInput"
+					/>
+					<QuickAddMagic
+						:highlight-hint-icon="taskAddHovered"
+					/>
+				</p>
+			</div>
+
+			<p
+				v-if="isMultiline"
+				class="qac-multiline-hint help"
+			>
+				{{ $t('task.quickAdd.multilineHint') }}
 			</p>
-			<p class="control">
+			<textarea
+				v-else
+				v-model="overrides.description"
+				class="qac-description input"
+				:placeholder="$t('task.quickAdd.descriptionPlaceholder')"
+				rows="1"
+			/>
+
+			<div
+				v-if="!isMultiline"
+				class="qac-chip-row"
+			>
+				<div class="qac-chip">
+					<Popup>
+						<template #trigger="{toggle}">
+							<SimpleButton
+								class="qac-chip-button"
+								@click.stop="toggle()"
+							>
+								<span class="icon is-small"><Icon icon="layer-group" /></span>
+								{{ projectChipLabel }}
+							</SimpleButton>
+						</template>
+						<template #content="{close}">
+							<div class="qac-chip-popup">
+								<ProjectSearch
+									:model-value="overrides.project ?? undefined"
+									@update:modelValue="(project) => onProjectPicked(project, close)"
+								/>
+							</div>
+						</template>
+					</Popup>
+					<BaseButton
+						v-if="overrides.project !== undefined"
+						class="qac-chip-clear"
+						:aria-label="$t('task.quickAdd.clearChip')"
+						@click.stop="clearOverride('project')"
+					>
+						<Icon icon="xmark" />
+					</BaseButton>
+				</div>
+
+				<div class="qac-chip">
+					<Datepicker
+						:model-value="effectiveDate"
+						:choose-date-label="$t('task.quickAdd.dateChip')"
+						@update:modelValue="(val) => setOverride('dueDate', val)"
+					/>
+					<BaseButton
+						v-if="overrides.dueDate !== undefined"
+						class="qac-chip-clear"
+						:aria-label="$t('task.quickAdd.clearChip')"
+						@click.stop="clearOverride('dueDate')"
+					>
+						<Icon icon="xmark" />
+					</BaseButton>
+					<span
+						v-if="repeatsLabel !== null"
+						class="qac-repeats-hint"
+					>
+						{{ repeatsLabel }}
+					</span>
+				</div>
+
+				<div class="qac-chip">
+					<Popup>
+						<template #trigger="{toggle}">
+							<SimpleButton
+								class="qac-chip-button"
+								@click.stop="toggle()"
+							>
+								<span class="icon is-small"><Icon icon="tags" /></span>
+								{{ labelsChipLabel }}
+							</SimpleButton>
+						</template>
+						<template #content>
+							<div class="qac-chip-popup">
+								<EditLabels
+									:model-value="effectiveLabels"
+									:task-id="0"
+									@update:modelValue="(val) => setOverride('labels', val)"
+								/>
+							</div>
+						</template>
+					</Popup>
+					<BaseButton
+						v-if="overrides.labels !== undefined"
+						class="qac-chip-clear"
+						:aria-label="$t('task.quickAdd.clearChip')"
+						@click.stop="clearOverride('labels')"
+					>
+						<Icon icon="xmark" />
+					</BaseButton>
+				</div>
+
+				<div class="qac-chip">
+					<Popup>
+						<template #trigger="{toggle}">
+							<SimpleButton
+								class="qac-chip-button"
+								@click.stop="toggle()"
+							>
+								<PriorityLabel
+									:priority="effectivePriority ?? PRIORITIES.UNSET"
+									:show-all="true"
+								/>
+							</SimpleButton>
+						</template>
+						<template #content>
+							<div class="qac-chip-popup qac-chip-popup-priority">
+								<PrioritySelect
+									:model-value="effectivePriority ?? PRIORITIES.UNSET"
+									@update:modelValue="(val) => setOverride('priority', val)"
+								/>
+							</div>
+						</template>
+					</Popup>
+					<BaseButton
+						v-if="overrides.priority !== undefined"
+						class="qac-chip-clear"
+						:aria-label="$t('task.quickAdd.clearChip')"
+						@click.stop="clearOverride('priority')"
+					>
+						<Icon icon="xmark" />
+					</BaseButton>
+				</div>
+
+				<div class="qac-actions">
+					<BaseButton
+						class="qac-clear-button"
+						:aria-label="$t('task.quickAdd.clear')"
+						@click="clearComposer"
+					>
+						<Icon icon="xmark" />
+					</BaseButton>
+					<XButton
+						class="qac-submit-button add-task-button"
+						:disabled="newTaskTitle === '' || loading || undefined"
+						icon="arrow-up"
+						:loading="loading"
+						:aria-label="$t('project.list.add')"
+						@click="addTask()"
+					>
+						<span class="button-text">
+							{{ $t('project.list.add') }}
+						</span>
+					</XButton>
+				</div>
+			</div>
+
+			<div
+				v-else
+				class="qac-actions qac-actions-multiline"
+			>
+				<BaseButton
+					class="qac-clear-button"
+					:aria-label="$t('task.quickAdd.clear')"
+					@click="clearComposer"
+				>
+					<Icon icon="xmark" />
+				</BaseButton>
 				<XButton
 					class="add-task-button"
 					:disabled="newTaskTitle === '' || loading || undefined"
@@ -44,8 +213,9 @@
 						{{ $t('project.list.add') }}
 					</span>
 				</XButton>
-			</p>
+			</div>
 		</div>
+
 		<Expandable :open="errorMessage !== ''">
 			<p
 				v-if="errorMessage !== ''"
@@ -65,18 +235,32 @@ import {useRouter} from 'vue-router'
 
 import {RELATION_KIND} from '@/types/IRelationKind'
 import type {ITask} from '@/modelTypes/ITask'
+import type {IProject} from '@/modelTypes/IProject'
 
 import Expandable from '@/components/base/Expandable.vue'
+import BaseButton from '@/components/base/BaseButton.vue'
+import Popup from '@/components/misc/Popup.vue'
+import SimpleButton from '@/components/input/SimpleButton.vue'
+import Datepicker from '@/components/input/Datepicker.vue'
 import QuickAddMagic from '@/components/tasks/partials/QuickAddMagic.vue'
+import ProjectSearch from '@/components/tasks/partials/ProjectSearch.vue'
+import EditLabels from '@/components/tasks/partials/EditLabels.vue'
+import PrioritySelect from '@/components/tasks/partials/PrioritySelect.vue'
+import PriorityLabel from '@/components/tasks/partials/PriorityLabel.vue'
 import {parseSubtasksViaIndention} from '@/helpers/parseSubtasksViaIndention'
+import {getProjectTitle} from '@/helpers/getProjectTitle'
 import TaskRelationService from '@/services/taskRelation'
 import TaskRelationModel from '@/models/taskRelation'
 import {getLabelsFromPrefix} from '@/modules/quickAddMagic'
+import {PRIORITIES} from '@/constants/priorities'
+import {buildQuickAddRepeatsLabel} from '@/helpers/recurrencePatternSummary'
 
 import {useAuthStore} from '@/stores/auth'
 import {useTaskStore} from '@/stores/tasks'
+import {useProjectStore} from '@/stores/projects'
 
 import {useAutoHeightTextarea} from '@/composables/useAutoHeightTextarea'
+import {useQuickAddComposer} from '@/composables/useQuickAddComposer'
 import TaskService from '@/services/task'
 import TaskModel from '@/models/task'
 
@@ -96,7 +280,24 @@ const {textarea: newTaskInput} = useAutoHeightTextarea(newTaskTitle)
 const {t} = useI18n({useScope: 'global'})
 const authStore = useAuthStore()
 const taskStore = useTaskStore()
+const projectStore = useProjectStore()
 const router = useRouter()
+
+const quickAddMagicMode = computed(() => authStore.settings.frontendSettings.quickAddMagicMode)
+
+const {
+	overrides,
+	isMultiline,
+	effectiveDate,
+	effectivePriority,
+	effectiveLabels,
+	effectiveProjectName,
+	effectiveRepeats,
+	setOverride,
+	clearOverride,
+	clearAll: clearComposerOverrides,
+	toStoreOverrides,
+} = useQuickAddComposer(newTaskTitle, quickAddMagicMode)
 
 // enable only if we don't have a modal
 // onStartTyping(() => {
@@ -124,6 +325,43 @@ function resetEmptyTitleError() {
 
 const loading = computed(() => taskStore.isLoading)
 
+const currentProjectId = computed(() => {
+	if (typeof router.currentRoute.value.params.projectId !== 'undefined') {
+		return Number(router.currentRoute.value.params.projectId)
+	}
+	return authStore.settings.defaultProjectId
+})
+
+const projectChipLabel = computed(() => {
+	if (overrides.project !== undefined) {
+		return overrides.project === null ? t('task.quickAdd.projectChip') : getProjectTitle(overrides.project)
+	}
+	if (effectiveProjectName.value !== null) {
+		return effectiveProjectName.value
+	}
+	const defaultProject = currentProjectId.value ? projectStore.projects[currentProjectId.value] : undefined
+	return defaultProject ? getProjectTitle(defaultProject) : t('task.quickAdd.projectChip')
+})
+
+const labelsChipLabel = computed(() => {
+	if (effectiveLabels.value.length === 0) {
+		return t('task.quickAdd.labelsChip')
+	}
+	return effectiveLabels.value.map(l => l.title).join(', ')
+})
+
+const repeatsLabel = computed(() => buildQuickAddRepeatsLabel(effectiveRepeats.value, t))
+
+function onProjectPicked(project: IProject | null, close: () => void) {
+	setOverride('project', project)
+	close()
+}
+
+function clearComposer() {
+	newTaskTitle.value = ''
+	clearComposerOverrides()
+}
+
 async function addTask() {
 	if (newTaskTitle.value === '') {
 		errorMessage.value = t('project.create.addTitleRequired')
@@ -141,28 +379,29 @@ async function addTask() {
 		// This allows us to find the tasks with the title they had before being parsed
 		// by quick add magic.
 		const createdTasks: { [key: ITask['title']]: ITask } = {}
-		const tasksToCreate = parseSubtasksViaIndention(newTaskTitle.value, authStore.settings.frontendSettings.quickAddMagicMode)
+		const tasksToCreate = parseSubtasksViaIndention(newTaskTitle.value, quickAddMagicMode.value)
+
+		// The composer's chip overrides only apply to a single-task submission - a
+		// multiline submission falls back to the plain multi-create/subtask path.
+		const composerOverrides = tasksToCreate.length === 1 ? toStoreOverrides() : undefined
 
 		// We ensure all labels exist prior to passing them down to the create task method
-		// In the store it will only ever see one task at a time so there's no way to reliably 
+		// In the store it will only ever see one task at a time so there's no way to reliably
 		// check if a new label was created before (because everything happens async).
-		const allLabels = tasksToCreate.map(({title}) => getLabelsFromPrefix(title, authStore.settings.frontendSettings.quickAddMagicMode) ?? [])
+		const allLabels = tasksToCreate.map(({title}) => getLabelsFromPrefix(title, quickAddMagicMode.value) ?? [])
 		await taskStore.ensureLabelsExist(allLabels.flat())
 
 		const taskCollectionService = new TaskService()
 		const projectIndices = new Map<number, number>()
 
-		let currentProjectId = authStore.settings.defaultProjectId
-		if (typeof router.currentRoute.value.params.projectId !== 'undefined') {
-			currentProjectId = Number(router.currentRoute.value.params.projectId)
-		}
+		const currentProjectIdValue = currentProjectId.value
 
 		// Create a map of project indices before creating tasks
 		if (tasksToCreate.length > 1) {
 			for (const {project} of tasksToCreate) {
 				const projectId = (project !== null
 					? await taskStore.findProjectId({project, projectId: 0})
-					: currentProjectId) ?? 0
+					: currentProjectIdValue) ?? 0
 
 				if (!projectIndices.has(projectId)) {
 					const newestTask = await taskCollectionService.getAll(new TaskModel({}), {
@@ -184,7 +423,7 @@ async function addTask() {
 			// If the task has a project specified, make sure to use it
 			const projectId = (project !== null
 				? await taskStore.findProjectId({project, projectId: 0})
-				: currentProjectId) ?? 0
+				: currentProjectIdValue) ?? 0
 
 			// Calculate new index for this task per project
 			let taskIndex: number | undefined
@@ -198,7 +437,7 @@ async function addTask() {
 				projectId: projectId || authStore.settings.defaultProjectId,
 				position: props.defaultPosition,
 				index: taskIndex,
-			})
+			}, composerOverrides)
 			createdTasks[title] = task
 			return task
 		})
@@ -230,7 +469,7 @@ async function addTask() {
 					otherTaskId: createdParentTask.id,
 					relationKind: RELATION_KIND.PARENTTASK,
 				}))
-			
+
 				if (typeof createdTask.relatedTasks === 'undefined') {
 					createdTask.relatedTasks = {}
 				}
@@ -256,11 +495,15 @@ async function addTask() {
 				return rel
 			})
 			await Promise.all(relations)
-		
+
 			// We're emitting all tasks at once at the end to avoid the same task showing up multiple times
 			Object.values(createdTasks).forEach(task => {
 				emit('taskAdded', task)
 			})
+
+			if (composerOverrides !== undefined) {
+				clearComposerOverrides()
+			}
 		} catch (e) {
 			newTaskTitle.value = taskTitleBackup
 			const err = e as { message?: string }
@@ -276,7 +519,7 @@ async function addTask() {
 }
 
 function handleEnter(e: KeyboardEvent) {
-	// when pressing shift + enter we want to continue as we normally would. Otherwise, we want to create 
+	// when pressing shift + enter we want to continue as we normally would. Otherwise, we want to create
 	// the new task(s). The vue event modifier don't allow this, hence this method.
 	if (e.shiftKey) {
 		return
@@ -310,6 +553,12 @@ defineExpose({
 	margin-block-end: 0;
 }
 
+.qac-card {
+	border: 1px solid var(--grey-200);
+	border-radius: $radius;
+	padding: .5rem;
+}
+
 .task-add .add-task__field {
 	display: flex;
 	justify-content: flex-start;
@@ -317,6 +566,7 @@ defineExpose({
 
 	.control {
 		flex-shrink: 0;
+		flex-grow: 1;
 		margin-block-end: 0;
 	}
 }
@@ -334,7 +584,7 @@ defineExpose({
 		color: var(--grey-300);
 	}
 
-	.task-icon, 
+	.task-icon,
 	:deep(.quick-add-magic-trigger-btn) {
 		position: absolute;
 		inset-block-start: .75rem;
@@ -347,6 +597,83 @@ defineExpose({
 	.task-icon {
 		inset-inline-start: 1rem;
 	}
+}
+
+.qac-description {
+	margin-block-start: .5rem;
+	resize: none;
+	border: none;
+	box-shadow: none;
+	padding-inline: 1rem;
+
+	&:focus {
+		box-shadow: none;
+	}
+}
+
+.qac-multiline-hint {
+	margin-block-start: .5rem;
+	padding-inline: 1rem;
+}
+
+.qac-chip-row {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: .5rem;
+	margin-block-start: .5rem;
+	padding-inline: .5rem;
+}
+
+.qac-chip {
+	position: relative;
+	display: flex;
+	align-items: center;
+}
+
+.qac-chip-button {
+	display: inline-flex;
+	align-items: center;
+	gap: .25rem;
+	font-size: .9rem;
+	inline-size: auto;
+	white-space: nowrap;
+}
+
+.qac-chip-clear {
+	color: var(--grey-400);
+	margin-inline-start: -.25rem;
+}
+
+.qac-chip-popup {
+	inline-size: 260px;
+	background: var(--white);
+	border-radius: $radius;
+	box-shadow: $shadow;
+	padding: .5rem;
+}
+
+.qac-repeats-hint {
+	font-size: .8rem;
+	color: var(--grey-400);
+	margin-inline-start: .25rem;
+}
+
+.qac-actions {
+	display: flex;
+	align-items: center;
+	gap: .5rem;
+	margin-inline-start: auto;
+}
+
+.qac-actions-multiline {
+	margin-block-start: .5rem;
+	padding-inline: .5rem;
+	justify-content: flex-end;
+}
+
+.qac-clear-button {
+	color: var(--grey-400);
 }
 
 .add-task-button {

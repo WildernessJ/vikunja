@@ -1231,6 +1231,16 @@
       "urgent": "Urgent",
       "doNow": "DO NOW"
     },
+    "quickAdd": {
+      "descriptionPlaceholder": "Description",
+      "multilineHint": "Multiple tasks detected - chips and description are disabled for this input.",
+      "projectChip": "Project",
+      "dateChip": "Date",
+      "labelsChip": "Labels",
+      "repeatsEvery": "Repeats every {amount} {type}",
+      "clearChip": "Clear this value",
+      "clear": "Clear"
+    },
     "relation": {
       "add": "Add a New Task Relation",
       "new": "New Task Relation",

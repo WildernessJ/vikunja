@@ -26,6 +26,24 @@ vi.mock('@/stores/auth', () => ({
 	}),
 }))
 
+vi.mock('@/stores/projects', () => ({
+	useProjectStore: () => ({
+		projects: {},
+	}),
+}))
+
+vi.mock('@/services/task', () => ({
+	default: class {
+		getAll = vi.fn().mockResolvedValue([])
+	},
+}))
+
+vi.mock('@/services/taskRelation', () => ({
+	default: class {
+		create = vi.fn().mockResolvedValue({})
+	},
+}))
+
 vi.mock('vue-router', () => ({
 	useRouter: () => ({
 		currentRoute: {value: {params: {}}},
@@ -51,6 +69,14 @@ function mountAddTask() {
 				Expandable: true,
 				Icon: true,
 				XButton: true,
+				ProjectSearch: true,
+				EditLabels: true,
+				PrioritySelect: true,
+				PriorityLabel: true,
+				Datepicker: true,
+				SimpleButton: true,
+				BaseButton: true,
+				CustomTransition: true,
 			},
 		},
 	})
@@ -91,5 +117,75 @@ describe('AddTask double-submit guard', () => {
 		await flushPromises()
 
 		expect(createNewTaskMock).toHaveBeenCalledTimes(2)
+	})
+})
+
+describe('AddTask chip state', () => {
+	beforeEach(() => {
+		createNewTaskMock.mockReset().mockImplementation(async ({title}: {title: string}) => ({id: 1, title}))
+		ensureLabelsExistMock.mockClear()
+		findProjectIdMock.mockReset()
+	})
+
+	it('shows the multiline hint and hides chips once more than one task is detected', async () => {
+		const wrapper = mountAddTask()
+		const textarea = wrapper.find('textarea')
+
+		await textarea.setValue('First task\nSecond task')
+
+		expect(wrapper.find('.qac-multiline-hint').exists()).toBe(true)
+		expect(wrapper.find('.qac-chip-row').exists()).toBe(false)
+	})
+
+	it('shows chips and the description field for single-line input', async () => {
+		const wrapper = mountAddTask()
+		const textarea = wrapper.find('textarea')
+
+		await textarea.setValue('Buy milk')
+
+		expect(wrapper.find('.qac-multiline-hint').exists()).toBe(false)
+		expect(wrapper.find('.qac-chip-row').exists()).toBe(true)
+		expect(wrapper.find('.qac-description').exists()).toBe(true)
+	})
+
+	it('passes chip overrides through to createNewTask on submit for a single-line task', async () => {
+		const wrapper = mountAddTask()
+		const textarea = wrapper.find('textarea')
+
+		await textarea.setValue('Buy milk')
+		textarea.trigger('keydown.enter')
+		await flushPromises()
+
+		expect(createNewTaskMock).toHaveBeenCalledTimes(1)
+		const [, overrides] = createNewTaskMock.mock.calls[0]
+		expect(overrides).toEqual({})
+	})
+
+	it('does not pass composer overrides through for a multiline (multi-task) submission', async () => {
+		const wrapper = mountAddTask()
+		const textarea = wrapper.find('textarea')
+
+		await textarea.setValue('First task\nSecond task')
+		textarea.trigger('keydown.enter')
+		await flushPromises()
+
+		expect(createNewTaskMock).toHaveBeenCalledTimes(2)
+		for (const call of createNewTaskMock.mock.calls) {
+			expect(call[1]).toBeUndefined()
+		}
+	})
+
+	it('shows a clear button in multiline mode that resets the title', async () => {
+		const wrapper = mountAddTask()
+		const textarea = wrapper.find('textarea')
+
+		await textarea.setValue('First task\nSecond task')
+
+		const clearButton = wrapper.find('.qac-actions-multiline .qac-clear-button')
+		expect(clearButton.exists()).toBe(true)
+
+		await clearButton.trigger('click')
+
+		expect((textarea.element as HTMLTextAreaElement).value).toBe('')
 	})
 })

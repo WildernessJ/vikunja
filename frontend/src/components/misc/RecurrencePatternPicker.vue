@@ -193,6 +193,7 @@ import {ref, computed, toRef, watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 
 import Datepicker from '@/components/input/Datepicker.vue'
+import {buildRecurrencePatternSummary} from '@/helpers/recurrencePatternSummary'
 
 const props = withDefaults(defineProps<{
 	modelValue: string,
@@ -353,55 +354,7 @@ watch(
 	{immediate: true},
 )
 
-const summary = computed(() => {
-	const rule = buildRrule()
-	if (rule === '') {
-		return ''
-	}
-
-	const n = interval.value
-	const many = Number.isInteger(n) && n > 1
-	let base: string
-	if (freq.value === 'weekly') {
-		const labels = WEEKDAY_ORDER
-			.filter(d => weekdays.value.includes(d))
-			.map(d => t(`task.repeat.weekdayShort.${d.toLowerCase()}`))
-		const days = labels.join(', ')
-		base = many
-			? t('task.repeat.summaryIntervalWeekly', {n, days})
-			: t('task.repeat.summaryWeekly', {days})
-	} else {
-		switch (monthlyMode.value) {
-			case 'dayOfMonth':
-				base = many
-					? t('task.repeat.summaryIntervalMonthlyDay', {n, day: monthDay.value})
-					: t('task.repeat.summaryMonthlyDay', {day: monthDay.value})
-				break
-			case 'nthWeekday': {
-				const ordinal = t(`task.repeat.ordinal.${nthOrdinal.value === -1 ? 'last' : nthOrdinal.value}`)
-				const weekday = t(`task.repeat.weekdayShort.${nthWeekday.value.toLowerCase()}`)
-				base = many
-					? t('task.repeat.summaryIntervalMonthlyNth', {n, ordinal, weekday})
-					: t('task.repeat.summaryMonthlyNth', {ordinal, weekday})
-				break
-			}
-			case 'lastDay':
-				base = many
-					? t('task.repeat.summaryIntervalMonthlyLastDay', {n})
-					: t('task.repeat.onLastDay')
-				break
-			default:
-				base = many
-					? t('task.repeat.summaryIntervalMonthlyLastWorkday', {n})
-					: t('task.repeat.onLastWorkday')
-		}
-	}
-
-	if (endDate.value !== null) {
-		base += ` — ${t('task.repeat.endsOn')} ${endDate.value.toLocaleDateString()}`
-	}
-	return base
-})
+const summary = computed(() => buildRecurrencePatternSummary(buildRrule(), t))
 </script>
 
 <style lang="scss" scoped>

@@ -46,6 +46,17 @@ interface MatchedAssignee extends IUser {
 	match: string,
 }
 
+// Structured values from the quick add composer's chip pickers. Present keys take
+// precedence over whatever `parseTaskText` found in the title; absent (undefined)
+// keys fall back to the parsed value. `null` is a deliberate "cleared" override.
+export interface CreateNewTaskOverrides {
+	dueDate?: Date | string | null,
+	priority?: number | null,
+	labels?: ILabel[],
+	projectId?: IProject['id'] | null,
+	description?: string,
+}
+
 export function buildDefaultRemindersForQuickAdd(
 	defaults: readonly ITaskReminder[] | undefined,
 	dueDate: string | null,
@@ -491,12 +502,17 @@ export const useTaskStore = defineStore('task', () => {
 		// title is required here even though ITask fields are otherwise optional -
 		// quick add magic parsing has nothing meaningful to parse without it.
 		Partial<ITask> & Pick<ITask, 'title'>,
+	overrides?: CreateNewTaskOverrides,
 	) {
 		const cancel = setModuleLoading(setIsLoading)
 		const quickAddMagicMode = authStore.settings.frontendSettings.quickAddMagicMode
 		const parsedTask = parseTaskText(title, quickAddMagicMode)
 
-		if(parsedTask.text === '') {
+		// A key being present (even with a `null` value, a deliberate clear) means the
+		// composer chip overrode that field; an absent key means "use the parsed value".
+		const hasOverride = (key: keyof CreateNewTaskOverrides) => overrides !== undefined && key in overrides
+
+		if(parsedTask.text === '' && !(overrides !== undefined && Object.keys(overrides).length > 0)) {
 			const taskService = new TaskService()
 			try {
 				return taskService.create(new TaskModel({
@@ -510,12 +526,13 @@ export const useTaskStore = defineStore('task', () => {
 				cancel()
 			}
 		}
-	
-		const foundProjectId = await findProjectId({
-			project: parsedTask.project,
-			projectId: projectId || 0,
-		})
-		
+
+		const foundProjectId = hasOverride('projectId')
+			? (overrides?.projectId !== null
+				? (overrides?.projectId as IProject['id'])
+				: await findProjectId({project: null, projectId: projectId || 0}))
+			: await findProjectId({project: parsedTask.project, projectId: projectId || 0})
+
 		if(foundProjectId === null || foundProjectId === 0) {
 			cancel()
 			throw new Error('NO_PROJECT')
@@ -523,8 +540,9 @@ export const useTaskStore = defineStore('task', () => {
 
 		const assignees = await findAssignees(parsedTask.assignees, foundProjectId)
 
-		// Only clean up those assignees from the task title which actually exist
-		let cleanedTitle = parsedTask.text
+		// A pure-magic input (e.g. just "!3") parses down to empty text; keep the raw
+		// title rather than creating a title-less task.
+		let cleanedTitle = parsedTask.text !== '' ? parsedTask.text : title
 		if (assignees.length > 0) {
 			const assigneePrefix = PREFIXES[quickAddMagicMode]?.assignee
 			if (assigneePrefix) {
@@ -536,7 +554,10 @@ export const useTaskStore = defineStore('task', () => {
 		// on the task's due date when no explicit due date was parsed.
 		const anchorDate = parsedTask.date ?? parsedTask.rruleRepeat?.startDate ?? null
 		// I don't know why, but it all goes up in flames when I just pass in the date normally.
-		const dueDate = anchorDate !== null ? new Date(anchorDate).toISOString() : null
+		const parsedDueDate = anchorDate !== null ? new Date(anchorDate).toISOString() : null
+		const dueDate = overrides?.dueDate !== undefined
+			? (overrides.dueDate !== null ? new Date(overrides.dueDate).toISOString() : null)
+			: parsedDueDate
 
 		const deadline = parsedTask.deadline !== null ? new Date(parsedTask.deadline).toISOString() : null
 
@@ -545,7 +566,8 @@ export const useTaskStore = defineStore('task', () => {
 			projectId: foundProjectId,
 			dueDate: dueDate as unknown as Date | null,
 			deadline: deadline as unknown as Date | null,
-			priority: (parsedTask.priority ?? undefined) as Priority | undefined,
+			priority: ((hasOverride('priority') ? overrides!.priority : parsedTask.priority) ?? undefined) as Priority | undefined,
+			description: overrides?.description ?? undefined,
 			assignees,
 			bucketId: bucketId || 0,
 			position,
@@ -573,7 +595,7 @@ export const useTaskStore = defineStore('task', () => {
 			void projectCountsStore.loadCounts()
 			return await addLabelsToTask({
 				task: createdTask,
-				parsedLabels: parsedTask.labels,
+				parsedLabels: hasOverride('labels') ? overrides!.labels!.map(l => l.title) : parsedTask.labels,
 			})
 		} finally {
 			cancel()
