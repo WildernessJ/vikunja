@@ -24,7 +24,23 @@ const ORDINALS: Record<string, number> = {
 	last: -1,
 }
 
+// Spelled-out interval counts, mirroring the words getIntervalRepeats accepts
+// ("every three months …") so the combined "on <pattern>" form stays consistent.
+const CARDINALS: Record<string, number> = {
+	one: 1, two: 2, three: 3, four: 4, five: 5,
+	six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+}
+
 export const getRepeats = (text: string, now: Date = new Date()): repeatParsedResult => {
+	// A unit + "on <pattern>" ("every 3 months on the last saturday") is a calendar
+	// pattern repeating every Nth period — must be tried before the legacy interval
+	// mode below, whose regex would otherwise swallow "every 3 months" and drop the
+	// pattern.
+	const intervalPattern = getIntervalRRuleRepeat(text, now)
+	if (intervalPattern !== null) {
+		return intervalPattern
+	}
+
 	// Legacy fixed-interval mode takes precedence: "every 2 weeks", "every month",
 	// "monthly", … keep producing an IRepeatAfter, never a calendar pattern.
 	const interval = getIntervalRepeats(text)
@@ -86,6 +102,79 @@ function parseRRuleCore(clause: string): string | null {
 	}
 
 	return null
+}
+
+// getIntervalRRuleRepeat handles the combined form "every N <unit> on <pattern>"
+// (e.g. "every 3 months on the last saturday"), producing an RRULE whose calendar
+// pattern comes from parseRRuleCore and whose repeat period is carried as INTERVAL.
+// The pattern's own FREQ wins; the unit word ("months"/"weeks") is for readability.
+function getIntervalRRuleRepeat(text: string, now: Date): repeatParsedResult | null {
+	const trigger = /(^|\s)(every|each)(!)?\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten)(?:st|nd|rd|th)?\s+(weeks?|months?)\s+on\s+(.+)$/i.exec(text)
+	if (trigger === null) {
+		return null
+	}
+
+	const before = text.slice(0, trigger.index).trim()
+	const fromCompletion = trigger[3] === '!'
+	const countToken = trigger[4].toLowerCase()
+	const intervalN = CARDINALS[countToken] ?? parseInt(countToken, 10)
+	const wantMonthly = trigger[5].toLowerCase().startsWith('month')
+	let clause = trigger[6].trim()
+
+	let until: string | null = null
+	const untilMatch = /\b(?:until|till|til)\b\s+(.+)$/i.exec(clause)
+	if (untilMatch !== null) {
+		const {date} = getDateFromText(untilMatch[1], now)
+		if (date !== null) {
+			until = formatUntil(date)
+		}
+		clause = clause.slice(0, untilMatch.index).trim()
+	}
+
+	let startDate: Date | null = null
+	const startMatch = /\b(?:starting|start|from)\b\s+(.+)$/i.exec(clause)
+	if (startMatch !== null) {
+		const {date} = getDateFromText(startMatch[1], now)
+		if (date !== null) {
+			startDate = date
+		}
+		clause = clause.slice(0, startMatch.index).trim()
+	}
+
+	// parseRRuleCore expects no leading article: "the last saturday" → "last saturday".
+	clause = clause.replace(/^the\s+/i, '').trim()
+
+	const core = parseRRuleCore(clause)
+
+	// The "on <pattern>" must parse AND agree with the unit's frequency — a bare
+	// weekday is weekly, not monthly, so "every 6 months on friday" is contradictory.
+	// When it doesn't, consume the whole phrase and degrade to a plain interval
+	// repeat: returning null here would fall through to legacy interval mode, which
+	// leaves the leftover pattern text in the title where the date parser scavenges
+	// it into an unintended due date.
+	if (core === null || wantMonthly !== core.startsWith('FREQ=MONTHLY')) {
+		return {
+			textWithoutMatched: before,
+			repeats: {amount: intervalN, type: wantMonthly ? REPEAT_TYPES.Months : REPEAT_TYPES.Weeks},
+			rruleRepeat: null,
+		}
+	}
+
+	const withInterval = intervalN > 1
+		? core.replace(/^(FREQ=[A-Z]+)/, `$1;INTERVAL=${intervalN}`)
+		: core
+	const rrule = until !== null ? `${withInterval};UNTIL=${until}` : withInterval
+
+	return {
+		textWithoutMatched: before,
+		repeats: null,
+		rruleRepeat: {
+			mode: TASK_REPEAT_MODES.REPEAT_MODE_RRULE,
+			rrule,
+			fromCompletion,
+			startDate,
+		},
+	}
 }
 
 function getRRuleRepeat(text: string, now: Date): repeatParsedResult | null {
