@@ -133,14 +133,20 @@ async function removeLabel(label: ILabel) {
 }
 
 async function createAndAddLabel(title: string) {
-	if (props.taskId === 0) {
-		return
-	}
-
 	const newLabel = await labelStore.createLabel(new LabelModel({
 		title,
 		hexColor: getRandomColorHex(),
 	}))
+
+	if (props.taskId === 0) {
+		// No task to persist the relation to yet (e.g. the quick-add composer); the
+		// label still needs to exist server-side so the create-task flow can attach it.
+		labels.value.push(newLabel)
+		emit('update:modelValue', labels.value)
+		success({message: t('task.label.addCreateSuccess')})
+		return
+	}
+
 	addLabel(newLabel, false)
 	labels.value.push(newLabel)
 	success({message: t('task.label.addCreateSuccess')})
