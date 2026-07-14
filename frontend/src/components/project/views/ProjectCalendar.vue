@@ -691,6 +691,12 @@ async function onQuickTaskAdded(day: CalendarDay, task: ITask) {
 	border-radius: $radius;
 	overflow: hidden;
 
+	// The quick-add composer's chip popups are absolutely positioned inside a day
+	// cell; overflow: hidden would clip them at the grid edge while composing.
+	&:has(.calendar-quick-add) {
+		overflow: visible;
+	}
+
 	&.is-month {
 		grid-auto-rows: minmax(6.5rem, 1fr);
 	}

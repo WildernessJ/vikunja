@@ -250,6 +250,24 @@ test.describe('Project View Calendar', () => {
 		).toContainText('dentist')
 	})
 
+	test('Quick-add chip popups are not clipped by the calendar grid', async ({authenticatedPage: page}) => {
+		const project = await createCalendarProject()
+		await page.goto(`/projects/${project.id}/1`)
+
+		// Bottom-row cell: its popups open downward past the grid edge, where the
+		// grid's overflow: hidden would clip them without the :has() escape hatch.
+		const cell = page.locator('.calendar-day[data-date="2026-07-29"]')
+		await cell.locator('.calendar-day-body').click()
+		await expect(cell.locator('.add-task-textarea')).toBeVisible()
+
+		await cell.locator('.qac-chip-button').first().click()
+		const searchInput = cell.locator('.popup.is-open .qac-chip-popup .multiselect input')
+		// A real pointer click hit-tests at the element's coordinates and fails
+		// if the popup is painted clipped by an overflow: hidden ancestor.
+		await searchInput.click()
+		await expect(searchInput).toBeFocused()
+	})
+
 	test('Switches to week mode showing seven day columns', async ({authenticatedPage: page}) => {
 		const project = await createCalendarProject()
 		await page.goto(`/projects/${project.id}/1`)
