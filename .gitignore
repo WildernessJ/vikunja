@@ -51,6 +51,10 @@ devenv.local.nix
 
 # AI Tools
 /.claude/settings.local.json
+# Personal memory-spine mechanics — local-only, kept out of the public fork.
+# (Project dev skills under .claude/skills/ stay tracked; these two are private tooling.)
+/.claude/hooks/
+/.claude/skills/checkpoint/
 PLAN.md
 plans/
 docs/context/
