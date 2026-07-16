@@ -134,5 +134,12 @@ describe('tasks store createNewTask', () => {
 			// TaskModel maps a null/undefined priority to its UNSET default (0).
 			expect(created.priority).toBe(PRIORITIES.UNSET)
 		})
+
+		it('carries overrides.description through to the created task', async () => {
+			const store = useTaskStore()
+			const created = await store.createNewTask({title: 'Buy milk', projectId: 1}, {description: 'from the store, oat milk'})
+
+			expect(created.description).toBe('from the store, oat milk')
+		})
 	})
 })

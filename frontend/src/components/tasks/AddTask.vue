@@ -72,14 +72,10 @@
 							</div>
 						</template>
 					</Popup>
-					<BaseButton
-						v-if="overrides.project !== undefined"
-						class="qac-chip-clear"
-						:aria-label="$t('task.quickAdd.clearChip')"
-						@click.stop="clearOverride('project')"
-					>
-						<Icon icon="xmark" />
-					</BaseButton>
+					<QacChipClear
+						:show="overrides.project !== undefined"
+						@clear="clearOverride('project')"
+					/>
 				</div>
 
 				<div class="qac-chip">
@@ -88,14 +84,10 @@
 						:choose-date-label="$t('task.quickAdd.dateChip')"
 						@update:modelValue="(val) => setOverride('dueDate', val)"
 					/>
-					<BaseButton
-						v-if="overrides.dueDate !== undefined"
-						class="qac-chip-clear"
-						:aria-label="$t('task.quickAdd.clearChip')"
-						@click.stop="clearOverride('dueDate')"
-					>
-						<Icon icon="xmark" />
-					</BaseButton>
+					<QacChipClear
+						:show="overrides.dueDate !== undefined"
+						@clear="clearOverride('dueDate')"
+					/>
 					<span
 						v-if="repeatsLabel !== null"
 						class="qac-repeats-hint"
@@ -125,14 +117,10 @@
 							</div>
 						</template>
 					</Popup>
-					<BaseButton
-						v-if="overrides.labels !== undefined"
-						class="qac-chip-clear"
-						:aria-label="$t('task.quickAdd.clearChip')"
-						@click.stop="clearOverride('labels')"
-					>
-						<Icon icon="xmark" />
-					</BaseButton>
+					<QacChipClear
+						:show="overrides.labels !== undefined"
+						@clear="clearOverride('labels')"
+					/>
 				</div>
 
 				<div class="qac-chip">
@@ -157,14 +145,10 @@
 							</div>
 						</template>
 					</Popup>
-					<BaseButton
-						v-if="overrides.priority !== undefined"
-						class="qac-chip-clear"
-						:aria-label="$t('task.quickAdd.clearChip')"
-						@click.stop="clearOverride('priority')"
-					>
-						<Icon icon="xmark" />
-					</BaseButton>
+					<QacChipClear
+						:show="overrides.priority !== undefined"
+						@clear="clearOverride('priority')"
+					/>
 				</div>
 
 				<div class="qac-actions">
@@ -247,6 +231,7 @@ import ProjectSearch from '@/components/tasks/partials/ProjectSearch.vue'
 import EditLabels from '@/components/tasks/partials/EditLabels.vue'
 import PrioritySelect from '@/components/tasks/partials/PrioritySelect.vue'
 import PriorityLabel from '@/components/tasks/partials/PriorityLabel.vue'
+import QacChipClear from '@/components/tasks/partials/QacChipClear.vue'
 import {parseSubtasksViaIndention} from '@/helpers/parseSubtasksViaIndention'
 import {getProjectTitle} from '@/helpers/getProjectTitle'
 import TaskRelationService from '@/services/taskRelation'

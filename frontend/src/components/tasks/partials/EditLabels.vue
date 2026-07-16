@@ -102,12 +102,16 @@ const {getLabelStyles} = useLabelStyles()
 const foundLabels = computed(() => labelStore.filterLabelsByQuery(labels.value, query.value))
 const loading = computed(() => labelTaskService.loading || labelStore.isLoading)
 
+// taskId 0 means there's no persisted task yet to relate labels to (e.g. the
+// quick-add composer) - label add/remove then only touches local state.
+const hasPersistedTask = computed(() => props.taskId !== 0)
+
 function findLabel(newQuery: string) {
 	query.value = newQuery
 }
 
 async function addLabel(label: ILabel, showNotification = true) {
-	if (props.taskId === 0) {
+	if (!hasPersistedTask.value) {
 		emit('update:modelValue', labels.value)
 		return
 	}
@@ -120,7 +124,7 @@ async function addLabel(label: ILabel, showNotification = true) {
 }
 
 async function removeLabel(label: ILabel) {
-	if (props.taskId !== 0) {
+	if (hasPersistedTask.value) {
 		await taskStore.removeLabel({label, taskId: props.taskId})
 	}
 
@@ -138,9 +142,7 @@ async function createAndAddLabel(title: string) {
 		hexColor: getRandomColorHex(),
 	}))
 
-	if (props.taskId === 0) {
-		// No task to persist the relation to yet (e.g. the quick-add composer); the
-		// label still needs to exist server-side so the create-task flow can attach it.
+	if (!hasPersistedTask.value) {
 		labels.value.push(newLabel)
 		emit('update:modelValue', labels.value)
 		success({message: t('task.label.addCreateSuccess')})

@@ -41,14 +41,14 @@ import {getRandomColorHex} from '@/helpers/color/randomColor'
 import {REPEAT_TYPES} from '@/types/IRepeatAfter'
 import {TASK_REPEAT_MODES} from '@/types/IRepeatMode'
 import type {Priority} from '@/constants/priorities'
+import {resolveOverride} from '@/helpers/resolveOverride'
 
 interface MatchedAssignee extends IUser {
 	match: string,
 }
 
-// Structured values from the quick add composer's chip pickers. Present keys take
-// precedence over whatever `parseTaskText` found in the title; absent (undefined)
-// keys fall back to the parsed value. `null` is a deliberate "cleared" override.
+// Structured values from the quick add composer's chip pickers. See
+// resolveOverride for the present-vs-absent precedence rule these follow.
 export interface CreateNewTaskOverrides {
 	dueDate?: Date | string | null,
 	priority?: number | null,
@@ -508,10 +508,6 @@ export const useTaskStore = defineStore('task', () => {
 		const quickAddMagicMode = authStore.settings.frontendSettings.quickAddMagicMode
 		const parsedTask = parseTaskText(title, quickAddMagicMode)
 
-		// A key being present (even with a `null` value, a deliberate clear) means the
-		// composer chip overrode that field; an absent key means "use the parsed value".
-		const hasOverride = (key: keyof CreateNewTaskOverrides) => overrides !== undefined && key in overrides
-
 		if(parsedTask.text === '' && !(overrides !== undefined && Object.keys(overrides).length > 0)) {
 			const taskService = new TaskService()
 			try {
@@ -527,9 +523,10 @@ export const useTaskStore = defineStore('task', () => {
 			}
 		}
 
-		const foundProjectId = hasOverride('projectId')
-			? (overrides?.projectId !== null
-				? (overrides?.projectId as IProject['id'])
+		const overrideProjectId = resolveOverride(overrides, 'projectId', undefined)
+		const foundProjectId = overrideProjectId !== undefined
+			? (overrideProjectId !== null
+				? overrideProjectId
 				: await findProjectId({project: null, projectId: projectId || 0}))
 			: await findProjectId({project: parsedTask.project, projectId: projectId || 0})
 
@@ -554,10 +551,8 @@ export const useTaskStore = defineStore('task', () => {
 		// on the task's due date when no explicit due date was parsed.
 		const anchorDate = parsedTask.date ?? parsedTask.rruleRepeat?.startDate ?? null
 		// I don't know why, but it all goes up in flames when I just pass in the date normally.
-		const parsedDueDate = anchorDate !== null ? new Date(anchorDate).toISOString() : null
-		const dueDate = overrides?.dueDate !== undefined
-			? (overrides.dueDate !== null ? new Date(overrides.dueDate).toISOString() : null)
-			: parsedDueDate
+		const resolvedDueDate = resolveOverride(overrides, 'dueDate', anchorDate)
+		const dueDate = resolvedDueDate !== null ? new Date(resolvedDueDate).toISOString() : null
 
 		const deadline = parsedTask.deadline !== null ? new Date(parsedTask.deadline).toISOString() : null
 
@@ -566,7 +561,7 @@ export const useTaskStore = defineStore('task', () => {
 			projectId: foundProjectId,
 			dueDate: dueDate as unknown as Date | null,
 			deadline: deadline as unknown as Date | null,
-			priority: ((hasOverride('priority') ? overrides!.priority : parsedTask.priority) ?? undefined) as Priority | undefined,
+			priority: (resolveOverride(overrides, 'priority', parsedTask.priority) ?? undefined) as Priority | undefined,
 			description: overrides?.description ?? undefined,
 			assignees,
 			bucketId: bucketId || 0,
@@ -593,9 +588,10 @@ export const useTaskStore = defineStore('task', () => {
 		try {
 			const createdTask = await taskService.create(task)
 			void projectCountsStore.loadCounts()
+			const overrideLabels = resolveOverride(overrides, 'labels', undefined)
 			return await addLabelsToTask({
 				task: createdTask,
-				parsedLabels: hasOverride('labels') ? overrides!.labels!.map(l => l.title) : parsedTask.labels,
+				parsedLabels: overrideLabels !== undefined ? overrideLabels.map(l => l.title) : parsedTask.labels,
 			})
 		} finally {
 			cancel()
