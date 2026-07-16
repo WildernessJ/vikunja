@@ -5,7 +5,7 @@
 	>
 		<div class="qac-card">
 			<div class="add-task__field field">
-				<p class="control task-input-wrapper">
+				<div class="control task-input-wrapper">
 					<label
 						class="is-sr-only"
 						:for="textareaId"
@@ -24,14 +24,34 @@
 						:class="{'textarea-empty': newTaskTitle === ''}"
 						:placeholder="$t('project.list.addPlaceholder')"
 						rows="1"
-						@keydown="resetEmptyTitleError"
-						@keydown.enter="handleEnter"
-						@keydown.esc="blurTaskInput"
+						role="combobox"
+						aria-autocomplete="list"
+						:aria-expanded="autocomplete.isOpen.value"
+						:aria-controls="autocompleteListboxId"
+						:aria-activedescendant="autocomplete.isOpen.value ? autocompleteResults?.activeOptionId : undefined"
+						@input="onTextareaActivity"
+						@click="onTextareaActivity"
+						@keyup="onTextareaActivity"
+						@keydown="onTextareaKeydown"
 					/>
 					<QuickAddMagic
 						:highlight-hint-icon="taskAddHovered"
 					/>
-				</p>
+					<div
+						v-if="autocomplete.isOpen.value"
+						ref="autocompleteWrapper"
+						class="qac-autocomplete-wrapper"
+						:style="{left: `${autocompletePosition.x}px`, top: `${autocompletePosition.y}px`}"
+					>
+						<QuickAddAutocompleteResults
+							ref="autocompleteResults"
+							:items="autocomplete.items.value"
+							:listbox-id="autocompleteListboxId"
+							@select="onAutocompleteSelect"
+							@close="autocomplete.close()"
+						/>
+					</div>
+				</div>
 			</div>
 
 			<p
@@ -212,10 +232,11 @@
 </template>
 
 <script setup lang="ts">
-import {computed, ref} from 'vue'
+import {computed, nextTick, onBeforeUnmount, ref, watch} from 'vue'
 import {useI18n} from 'vue-i18n'
-import {useElementHover} from '@vueuse/core'
+import {onClickOutside, useElementHover} from '@vueuse/core'
 import {useRouter} from 'vue-router'
+import {autoUpdate, computePosition, flip, offset, shift} from '@floating-ui/dom'
 
 import {RELATION_KIND} from '@/types/IRelationKind'
 import type {ITask} from '@/modelTypes/ITask'
@@ -232,6 +253,7 @@ import EditLabels from '@/components/tasks/partials/EditLabels.vue'
 import PrioritySelect from '@/components/tasks/partials/PrioritySelect.vue'
 import PriorityLabel from '@/components/tasks/partials/PriorityLabel.vue'
 import QacChipClear from '@/components/tasks/partials/QacChipClear.vue'
+import QuickAddAutocompleteResults from '@/components/tasks/partials/QuickAddAutocompleteResults.vue'
 import {parseSubtasksViaIndention} from '@/helpers/parseSubtasksViaIndention'
 import {getProjectTitle} from '@/helpers/getProjectTitle'
 import TaskRelationService from '@/services/taskRelation'
@@ -246,6 +268,7 @@ import {useProjectStore} from '@/stores/projects'
 
 import {useAutoHeightTextarea} from '@/composables/useAutoHeightTextarea'
 import {useQuickAddComposer} from '@/composables/useQuickAddComposer'
+import {useQuickAddAutocomplete, type AutocompleteItem} from '@/composables/useQuickAddAutocomplete'
 import TaskService from '@/services/task'
 import TaskModel from '@/models/task'
 
@@ -316,6 +339,86 @@ const currentProjectId = computed(() => {
 	}
 	return authStore.settings.defaultProjectId
 })
+
+// Mirrors createNewTask's own project-id fallback (chip override, else route/default):
+// an explicit chip clear (`null`, "use default") falls through same as no override.
+const assigneeProjectId = computed<number | null>(() => {
+	if (overrides.project !== undefined && overrides.project !== null) {
+		return overrides.project.id
+	}
+	return currentProjectId.value || null
+})
+
+const autocomplete = useQuickAddAutocomplete({
+	title: newTaskTitle,
+	mode: quickAddMagicMode,
+	isMultiline,
+	assigneeProjectId,
+})
+
+const autocompleteWrapper = ref<HTMLElement | null>(null)
+const autocompleteResults = ref<InstanceType<typeof QuickAddAutocompleteResults> | null>(null)
+const autocompletePosition = ref({x: 0, y: 0})
+const autocompleteListboxId = computed(() => `${textareaId.value}-listbox`)
+
+async function updateAutocompletePosition() {
+	if (!newTaskInput.value || !autocompleteWrapper.value) {
+		return
+	}
+	const {x, y} = await computePosition(newTaskInput.value, autocompleteWrapper.value, {
+		placement: 'bottom-start',
+		strategy: 'absolute',
+		middleware: [offset(4), flip(), shift({padding: 8})],
+	})
+	autocompletePosition.value = {x, y}
+}
+
+// autoUpdate (not a one-shot computePosition) so the dropdown stays put as the
+// textarea auto-grows or the result list's own height changes while it's open.
+let stopAutoUpdate: (() => void) | null = null
+
+watch(autocomplete.isOpen, async (isOpen) => {
+	if (!isOpen) {
+		stopAutoUpdate?.()
+		stopAutoUpdate = null
+		return
+	}
+	await nextTick()
+	if (!newTaskInput.value || !autocompleteWrapper.value) {
+		return
+	}
+	stopAutoUpdate = autoUpdate(newTaskInput.value, autocompleteWrapper.value, updateAutocompletePosition)
+})
+
+onBeforeUnmount(() => {
+	stopAutoUpdate?.()
+	stopAutoUpdate = null
+})
+
+onClickOutside(autocompleteWrapper, () => {
+	autocomplete.close()
+}, {ignore: [newTaskInput]})
+
+function onTextareaActivity() {
+	if (newTaskInput.value) {
+		autocomplete.setCaretOffset(newTaskInput.value.selectionStart ?? 0)
+	}
+}
+
+function onAutocompleteSelect(item: AutocompleteItem) {
+	const result = autocomplete.insertItem(item)
+	if (result === null) {
+		return
+	}
+
+	newTaskTitle.value = result.text
+	autocomplete.setCaretOffset(result.caret)
+
+	nextTick(() => {
+		newTaskInput.value?.setSelectionRange(result.caret, result.caret)
+		newTaskInput.value?.focus()
+	})
+}
 
 const projectChipLabel = computed(() => {
 	if (overrides.project !== undefined) {
@@ -518,6 +621,27 @@ function handleEnter(e: KeyboardEvent) {
 	addTask()
 }
 
+function onTextareaKeydown(e: KeyboardEvent) {
+	resetEmptyTitleError()
+
+	// The dropdown gets first refusal on every keydown: if it consumes the event
+	// (arrows/Enter/Tab/Esc while open) we must not fall through to submit-on-enter
+	// or blur-on-esc below - autocompleteResults.onKeyDown() already called
+	// preventDefault(), so Enter neither submits the task nor inserts a newline.
+	if (autocomplete.isOpen.value && autocompleteResults.value?.onKeyDown(e)) {
+		return
+	}
+
+	// `e.code` (not `e.key`) so this keeps matching keydown.enter/.esc events
+	// synthesized by @vue/test-utils' trigger(), which only sets a real `code`.
+	// NumpadEnter is included so the numeric keypad still submits.
+	if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+		handleEnter(e)
+	} else if (e.code === 'Escape') {
+		blurTaskInput()
+	}
+}
+
 function focusTaskInput() {
 	newTaskInput.value?.focus()
 }
@@ -582,6 +706,11 @@ defineExpose({
 	.task-icon {
 		inset-inline-start: 1rem;
 	}
+}
+
+.qac-autocomplete-wrapper {
+	position: absolute;
+	z-index: 20;
 }
 
 .qac-description {

@@ -1239,7 +1239,8 @@
       "labelsChip": "Labels",
       "repeatsEvery": "Repeats every {amount} {type}",
       "clearChip": "Clear this value",
-      "clear": "Clear"
+      "clear": "Clear",
+      "autocompleteNoResults": "No results"
     },
     "relation": {
       "add": "Add a New Task Relation",
