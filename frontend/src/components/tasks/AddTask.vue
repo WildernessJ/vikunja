@@ -5,7 +5,7 @@
 	>
 		<div class="qac-card">
 			<div class="add-task__field field">
-				<p class="control task-input-wrapper">
+				<div class="control task-input-wrapper">
 					<label
 						class="is-sr-only"
 						:for="textareaId"
@@ -24,14 +24,34 @@
 						:class="{'textarea-empty': newTaskTitle === ''}"
 						:placeholder="$t('project.list.addPlaceholder')"
 						rows="1"
-						@keydown="resetEmptyTitleError"
-						@keydown.enter="handleEnter"
-						@keydown.esc="blurTaskInput"
+						role="combobox"
+						aria-autocomplete="list"
+						:aria-expanded="autocomplete.isOpen.value"
+						:aria-controls="autocompleteListboxId"
+						:aria-activedescendant="autocomplete.isOpen.value ? autocompleteResults?.activeOptionId : undefined"
+						@input="onTextareaActivity"
+						@click="onTextareaActivity"
+						@keyup="onTextareaActivity"
+						@keydown="onTextareaKeydown"
 					/>
 					<QuickAddMagic
 						:highlight-hint-icon="taskAddHovered"
 					/>
-				</p>
+					<div
+						v-if="autocomplete.isOpen.value"
+						ref="autocompleteWrapper"
+						class="qac-autocomplete-wrapper"
+						:style="{left: `${autocompletePosition.x}px`, top: `${autocompletePosition.y}px`}"
+					>
+						<QuickAddAutocompleteResults
+							ref="autocompleteResults"
+							:items="autocomplete.items.value"
+							:listbox-id="autocompleteListboxId"
+							@select="onAutocompleteSelect"
+							@close="autocomplete.close()"
+						/>
+					</div>
+				</div>
 			</div>
 
 			<p
@@ -72,14 +92,10 @@
 							</div>
 						</template>
 					</Popup>
-					<BaseButton
-						v-if="overrides.project !== undefined"
-						class="qac-chip-clear"
-						:aria-label="$t('task.quickAdd.clearChip')"
-						@click.stop="clearOverride('project')"
-					>
-						<Icon icon="xmark" />
-					</BaseButton>
+					<QacChipClear
+						:show="overrides.project !== undefined"
+						@clear="clearOverride('project')"
+					/>
 				</div>
 
 				<div class="qac-chip">
@@ -88,14 +104,10 @@
 						:choose-date-label="$t('task.quickAdd.dateChip')"
 						@update:modelValue="(val) => setOverride('dueDate', val)"
 					/>
-					<BaseButton
-						v-if="overrides.dueDate !== undefined"
-						class="qac-chip-clear"
-						:aria-label="$t('task.quickAdd.clearChip')"
-						@click.stop="clearOverride('dueDate')"
-					>
-						<Icon icon="xmark" />
-					</BaseButton>
+					<QacChipClear
+						:show="overrides.dueDate !== undefined"
+						@clear="clearOverride('dueDate')"
+					/>
 					<span
 						v-if="repeatsLabel !== null"
 						class="qac-repeats-hint"
@@ -125,14 +137,10 @@
 							</div>
 						</template>
 					</Popup>
-					<BaseButton
-						v-if="overrides.labels !== undefined"
-						class="qac-chip-clear"
-						:aria-label="$t('task.quickAdd.clearChip')"
-						@click.stop="clearOverride('labels')"
-					>
-						<Icon icon="xmark" />
-					</BaseButton>
+					<QacChipClear
+						:show="overrides.labels !== undefined"
+						@clear="clearOverride('labels')"
+					/>
 				</div>
 
 				<div class="qac-chip">
@@ -157,14 +165,37 @@
 							</div>
 						</template>
 					</Popup>
-					<BaseButton
-						v-if="overrides.priority !== undefined"
-						class="qac-chip-clear"
-						:aria-label="$t('task.quickAdd.clearChip')"
-						@click.stop="clearOverride('priority')"
-					>
-						<Icon icon="xmark" />
-					</BaseButton>
+					<QacChipClear
+						:show="overrides.priority !== undefined"
+						@clear="clearOverride('priority')"
+					/>
+				</div>
+
+				<div class="qac-chip">
+					<Popup has-overflow>
+						<template #trigger="{toggle}">
+							<SimpleButton
+								class="qac-chip-button"
+								@click.stop="toggle()"
+							>
+								<span class="icon is-small"><Icon :icon="['far', 'clock']" /></span>
+								{{ remindersChipLabel }}
+							</SimpleButton>
+						</template>
+						<template #content>
+							<div class="qac-chip-popup">
+								<Reminders
+									:model-value="effectiveReminders"
+									:default-relative-to="remindersDefaultRelativeTo"
+									@update:modelValue="(val) => setOverride('reminders', val)"
+								/>
+							</div>
+						</template>
+					</Popup>
+					<QacChipClear
+						:show="overrides.reminders !== undefined"
+						@clear="clearOverride('reminders')"
+					/>
 				</div>
 
 				<div class="qac-actions">
@@ -228,10 +259,11 @@
 </template>
 
 <script setup lang="ts">
-import {computed, ref} from 'vue'
+import {computed, nextTick, onBeforeUnmount, ref, watch} from 'vue'
 import {useI18n} from 'vue-i18n'
-import {useElementHover} from '@vueuse/core'
+import {onClickOutside, useElementHover} from '@vueuse/core'
 import {useRouter} from 'vue-router'
+import {autoUpdate, computePosition, flip, offset, shift} from '@floating-ui/dom'
 
 import {RELATION_KIND} from '@/types/IRelationKind'
 import type {ITask} from '@/modelTypes/ITask'
@@ -247,6 +279,9 @@ import ProjectSearch from '@/components/tasks/partials/ProjectSearch.vue'
 import EditLabels from '@/components/tasks/partials/EditLabels.vue'
 import PrioritySelect from '@/components/tasks/partials/PrioritySelect.vue'
 import PriorityLabel from '@/components/tasks/partials/PriorityLabel.vue'
+import Reminders from '@/components/tasks/partials/Reminders.vue'
+import QacChipClear from '@/components/tasks/partials/QacChipClear.vue'
+import QuickAddAutocompleteResults from '@/components/tasks/partials/QuickAddAutocompleteResults.vue'
 import {parseSubtasksViaIndention} from '@/helpers/parseSubtasksViaIndention'
 import {getProjectTitle} from '@/helpers/getProjectTitle'
 import TaskRelationService from '@/services/taskRelation'
@@ -254,6 +289,7 @@ import TaskRelationModel from '@/models/taskRelation'
 import {getLabelsFromPrefix} from '@/modules/quickAddMagic'
 import {PRIORITIES} from '@/constants/priorities'
 import {buildQuickAddRepeatsLabel} from '@/helpers/recurrencePatternSummary'
+import {REMINDER_PERIOD_RELATIVE_TO_TYPES} from '@/types/IReminderPeriodRelativeTo'
 
 import {useAuthStore} from '@/stores/auth'
 import {useTaskStore} from '@/stores/tasks'
@@ -261,6 +297,7 @@ import {useProjectStore} from '@/stores/projects'
 
 import {useAutoHeightTextarea} from '@/composables/useAutoHeightTextarea'
 import {useQuickAddComposer} from '@/composables/useQuickAddComposer'
+import {useQuickAddAutocomplete, type AutocompleteItem} from '@/composables/useQuickAddAutocomplete'
 import TaskService from '@/services/task'
 import TaskModel from '@/models/task'
 
@@ -293,6 +330,7 @@ const {
 	effectiveLabels,
 	effectiveProjectName,
 	effectiveRepeats,
+	effectiveReminders,
 	setOverride,
 	clearOverride,
 	clearAll: clearComposerOverrides,
@@ -332,6 +370,94 @@ const currentProjectId = computed(() => {
 	return authStore.settings.defaultProjectId
 })
 
+// Mirrors createNewTask's project-id resolution so assignee suggestions are scoped
+// to the same project the task will land in: chip override, else a typed +project
+// resolved by name (findProjectId tries the parsed name before the route default),
+// else route/default. An explicit chip clear (`null`) falls through like no override.
+const assigneeProjectId = computed<number | null>(() => {
+	if (overrides.project !== undefined && overrides.project !== null) {
+		return overrides.project.id
+	}
+	if (effectiveProjectName.value !== null) {
+		const matched = projectStore.findProjectByExactname(effectiveProjectName.value)
+		if (matched !== null) {
+			return matched.id
+		}
+	}
+	return currentProjectId.value || null
+})
+
+const autocomplete = useQuickAddAutocomplete({
+	title: newTaskTitle,
+	mode: quickAddMagicMode,
+	isMultiline,
+	assigneeProjectId,
+})
+
+const autocompleteWrapper = ref<HTMLElement | null>(null)
+const autocompleteResults = ref<InstanceType<typeof QuickAddAutocompleteResults> | null>(null)
+const autocompletePosition = ref({x: 0, y: 0})
+const autocompleteListboxId = computed(() => `${textareaId.value}-listbox`)
+
+async function updateAutocompletePosition() {
+	if (!newTaskInput.value || !autocompleteWrapper.value) {
+		return
+	}
+	const {x, y} = await computePosition(newTaskInput.value, autocompleteWrapper.value, {
+		placement: 'bottom-start',
+		strategy: 'absolute',
+		middleware: [offset(4), flip(), shift({padding: 8})],
+	})
+	autocompletePosition.value = {x, y}
+}
+
+// autoUpdate (not a one-shot computePosition) so the dropdown stays put as the
+// textarea auto-grows or the result list's own height changes while it's open.
+let stopAutoUpdate: (() => void) | null = null
+
+watch(autocomplete.isOpen, async (isOpen) => {
+	if (!isOpen) {
+		stopAutoUpdate?.()
+		stopAutoUpdate = null
+		return
+	}
+	await nextTick()
+	if (!newTaskInput.value || !autocompleteWrapper.value) {
+		return
+	}
+	stopAutoUpdate = autoUpdate(newTaskInput.value, autocompleteWrapper.value, updateAutocompletePosition)
+})
+
+onBeforeUnmount(() => {
+	stopAutoUpdate?.()
+	stopAutoUpdate = null
+})
+
+onClickOutside(autocompleteWrapper, () => {
+	autocomplete.close()
+}, {ignore: [newTaskInput]})
+
+function onTextareaActivity() {
+	if (newTaskInput.value) {
+		autocomplete.setCaretOffset(newTaskInput.value.selectionStart ?? 0)
+	}
+}
+
+function onAutocompleteSelect(item: AutocompleteItem) {
+	const result = autocomplete.insertItem(item)
+	if (result === null) {
+		return
+	}
+
+	newTaskTitle.value = result.text
+	autocomplete.setCaretOffset(result.caret)
+
+	nextTick(() => {
+		newTaskInput.value?.setSelectionRange(result.caret, result.caret)
+		newTaskInput.value?.focus()
+	})
+}
+
 const projectChipLabel = computed(() => {
 	if (overrides.project !== undefined) {
 		return overrides.project === null ? t('task.quickAdd.projectChip') : getProjectTitle(overrides.project)
@@ -351,6 +477,18 @@ const labelsChipLabel = computed(() => {
 })
 
 const repeatsLabel = computed(() => buildQuickAddRepeatsLabel(effectiveRepeats.value, t))
+
+const remindersChipLabel = computed(() => {
+	if (effectiveReminders.value.length === 0) {
+		return t('task.quickAdd.remindersChip')
+	}
+	return t('task.quickAdd.remindersChipCount', effectiveReminders.value.length)
+})
+
+// Quick-add reminders only ever relate to the due date - there's no start/end date chip here.
+const remindersDefaultRelativeTo = computed(() => (
+	effectiveDate.value ? REMINDER_PERIOD_RELATIVE_TO_TYPES.DUEDATE : null
+))
 
 function onProjectPicked(project: IProject | null, close: () => void) {
 	setOverride('project', project)
@@ -533,6 +671,27 @@ function handleEnter(e: KeyboardEvent) {
 	addTask()
 }
 
+function onTextareaKeydown(e: KeyboardEvent) {
+	resetEmptyTitleError()
+
+	// The dropdown gets first refusal on every keydown: if it consumes the event
+	// (arrows/Enter/Tab/Esc while open) we must not fall through to submit-on-enter
+	// or blur-on-esc below - autocompleteResults.onKeyDown() already called
+	// preventDefault(), so Enter neither submits the task nor inserts a newline.
+	if (autocomplete.isOpen.value && autocompleteResults.value?.onKeyDown(e)) {
+		return
+	}
+
+	// `e.code` (not `e.key`) so this keeps matching keydown.enter/.esc events
+	// synthesized by @vue/test-utils' trigger(), which only sets a real `code`.
+	// NumpadEnter is included so the numeric keypad still submits.
+	if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+		handleEnter(e)
+	} else if (e.code === 'Escape') {
+		blurTaskInput()
+	}
+}
+
 function focusTaskInput() {
 	newTaskInput.value?.focus()
 }
@@ -597,6 +756,11 @@ defineExpose({
 	.task-icon {
 		inset-inline-start: 1rem;
 	}
+}
+
+.qac-autocomplete-wrapper {
+	position: absolute;
+	z-index: 20;
 }
 
 .qac-description {

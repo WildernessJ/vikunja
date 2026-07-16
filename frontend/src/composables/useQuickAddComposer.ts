@@ -2,21 +2,25 @@ import {computed, reactive, type Ref} from 'vue'
 
 import {parseTaskText, PrefixMode} from '@/modules/quickAddMagic'
 import {parseSubtasksViaIndention} from '@/helpers/parseSubtasksViaIndention'
+import {resolveOverride} from '@/helpers/resolveOverride'
 import type {ILabel} from '@/modelTypes/ILabel'
 import type {IProject} from '@/modelTypes/IProject'
+import type {ITaskReminder} from '@/modelTypes/ITaskReminder'
 import type {CreateNewTaskOverrides} from '@/stores/tasks'
 
-// A chip's structured pick. Present (even `null`, a deliberate clear) beats the
-// text-parsed value; absent (undefined) falls back to it.
+// See resolveOverride for the present-vs-absent precedence rule this composer's
+// chips rely on.
 export interface ComposerOverrides {
 	dueDate?: Date | null,
 	priority?: number | null,
 	labels?: ILabel[],
 	project?: IProject | null,
 	description?: string,
+	reminders?: ITaskReminder[],
 }
 
 const EMPTY_LABEL_LIST: ILabel[] = []
+const EMPTY_REMINDER_LIST: ITaskReminder[] = []
 
 export function useQuickAddComposer(title: Ref<string>, mode: Ref<PrefixMode>) {
 	const overrides = reactive<ComposerOverrides>({})
@@ -31,10 +35,10 @@ export function useQuickAddComposer(title: Ref<string>, mode: Ref<PrefixMode>) {
 	})
 
 	const effectiveDate = computed<Date | null>(
-		() => overrides.dueDate !== undefined ? overrides.dueDate : parsed.value.date,
+		() => resolveOverride(overrides, 'dueDate', parsed.value.date),
 	)
 	const effectivePriority = computed<number | null>(
-		() => overrides.priority !== undefined ? overrides.priority : parsed.value.priority,
+		() => resolveOverride(overrides, 'priority', parsed.value.priority),
 	)
 	const effectiveLabels = computed<ILabel[]>(
 		() => overrides.labels ?? (parsed.value.labels.length > 0
@@ -42,12 +46,15 @@ export function useQuickAddComposer(title: Ref<string>, mode: Ref<PrefixMode>) {
 			: EMPTY_LABEL_LIST),
 	)
 	const effectiveProject = computed<IProject | null>(
-		() => overrides.project !== undefined ? overrides.project : null,
+		() => resolveOverride(overrides, 'project', null),
 	)
 	const effectiveProjectName = computed<string | null>(
 		() => overrides.project !== undefined ? null : parsed.value.project,
 	)
 	const effectiveRepeats = computed(() => parsed.value.repeats ?? parsed.value.rruleRepeat)
+	const effectiveReminders = computed<ITaskReminder[]>(
+		() => overrides.reminders ?? EMPTY_REMINDER_LIST,
+	)
 
 	function setOverride<K extends keyof ComposerOverrides>(key: K, value: ComposerOverrides[K]) {
 		overrides[key] = value
@@ -78,6 +85,9 @@ export function useQuickAddComposer(title: Ref<string>, mode: Ref<PrefixMode>) {
 		if (overrides.description !== undefined) {
 			result.description = overrides.description
 		}
+		if (overrides.reminders !== undefined) {
+			result.reminders = overrides.reminders
+		}
 		return result
 	}
 
@@ -90,6 +100,7 @@ export function useQuickAddComposer(title: Ref<string>, mode: Ref<PrefixMode>) {
 		effectiveProject,
 		effectiveProjectName,
 		effectiveRepeats,
+		effectiveReminders,
 		setOverride,
 		clearOverride,
 		clearAll,
