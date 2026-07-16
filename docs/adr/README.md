@@ -34,10 +34,11 @@ history lives in `../context/RUN_LOG.md`. Upstream's own decisions don't need AD
 | ID | Title | Status | Date | Relations |
 |---|---|---|---|---|
 | [ADR-0001](ADR-0001-api-v2-only-new-routes.md) | New API work goes on `/api/v2` (Huma); v1 frozen | Enacted | 2026-05-30 | — |
+| [ADR-0002](ADR-0002-no-textarea-overlay-mirror.md) | Quick-add composer uses chips + under-anchored dropdown, no textarea overlay-mirror | Enacted | 2026-07-16 | — |
 
 ## How to add a new ADR
 
-1. **Pick the next number** (never reused, even if an ADR is later superseded) — next is **0002**.
+1. **Pick the next number** (never reused, even if an ADR is later superseded) — next is **0003**.
 2. **Copy [`ADR-TEMPLATE.md`](ADR-TEMPLATE.md)** to `ADR-NNNN-<short-slug>.md`; fill in front matter + body (MADR).
 3. If it **supersedes** an existing ADR, set `supersedes:` here and `superseded-by:` + `status:` on the old one.
 4. **Add a row above** and link it from `../context/PROJECT_STATE.md` → References.
