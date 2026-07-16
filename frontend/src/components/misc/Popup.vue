@@ -5,6 +5,8 @@
 		:toggle="toggle"
 		:close="close"
 	/>
+	<!-- Content mounts once and only toggles inert; a v-focus/autofocus inside content would
+	     fire at first mount while inert and silently fail - focus on open explicitly instead. -->
 	<div
 		ref="popup"
 		class="popup"

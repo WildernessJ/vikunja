@@ -370,11 +370,19 @@ const currentProjectId = computed(() => {
 	return authStore.settings.defaultProjectId
 })
 
-// Mirrors createNewTask's own project-id fallback (chip override, else route/default):
-// an explicit chip clear (`null`, "use default") falls through same as no override.
+// Mirrors createNewTask's project-id resolution so assignee suggestions are scoped
+// to the same project the task will land in: chip override, else a typed +project
+// resolved by name (findProjectId tries the parsed name before the route default),
+// else route/default. An explicit chip clear (`null`) falls through like no override.
 const assigneeProjectId = computed<number | null>(() => {
 	if (overrides.project !== undefined && overrides.project !== null) {
 		return overrides.project.id
+	}
+	if (effectiveProjectName.value !== null) {
+		const matched = projectStore.findProjectByExactname(effectiveProjectName.value)
+		if (matched !== null) {
+			return matched.id
+		}
 	}
 	return currentProjectId.value || null
 })

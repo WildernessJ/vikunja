@@ -1,0 +1,8 @@
+{
+  "suite_green": true,
+  "code_review": "no-blocker",
+  "has_runtime_surface": true,
+  "head_sha": "650b52550bfe996a2154fc597c925f5b7026940c",
+  "session_audit_ran": true,
+  "session_audit_path": ".flow-audit.md"
+}

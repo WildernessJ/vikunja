@@ -5,6 +5,7 @@ const createNewTaskMock = vi.fn()
 const ensureLabelsExistMock = vi.fn().mockResolvedValue(undefined)
 const findProjectIdMock = vi.fn()
 const searchProjectMock = vi.fn()
+const findProjectByExactnameMock = vi.fn().mockReturnValue(null)
 const filterLabelsByQueryMock = vi.fn()
 const getLabelsByExactTitlesMock = vi.fn().mockReturnValue([])
 const getAllAssigneesMock = vi.fn().mockResolvedValue([])
@@ -34,6 +35,7 @@ vi.mock('@/stores/projects', () => ({
 	useProjectStore: () => ({
 		projects: {},
 		searchProject: searchProjectMock,
+		findProjectByExactname: findProjectByExactnameMock,
 	}),
 }))
 
@@ -119,6 +121,7 @@ describe('AddTask quick-add autocomplete', () => {
 		ensureLabelsExistMock.mockClear()
 		findProjectIdMock.mockReset()
 		searchProjectMock.mockReset().mockReturnValue([])
+		findProjectByExactnameMock.mockReset().mockReturnValue(null)
 		filterLabelsByQueryMock.mockReset().mockReturnValue([])
 		getLabelsByExactTitlesMock.mockReset().mockReturnValue([])
 		getAllAssigneesMock.mockReset().mockResolvedValue([])
@@ -182,6 +185,23 @@ describe('AddTask quick-add autocomplete', () => {
 		expect(wrapper.find('.qac-autocomplete-wrapper').exists()).toBe(false)
 		expect((textarea.element as HTMLTextAreaElement).value).toBe('+Project')
 		expect(createNewTaskMock).not.toHaveBeenCalled()
+	})
+
+	it('scopes assignee suggestions to a typed +project, not just the route/default', async () => {
+		vi.useFakeTimers()
+		try {
+			findProjectByExactnameMock.mockReturnValue({id: 42, title: 'Work'})
+			getAllAssigneesMock.mockResolvedValue([])
+			const wrapper = mountAddTask()
+
+			await typeAndPlaceCaretAtEnd(null, wrapper, '+Work @a')
+			await vi.advanceTimersByTimeAsync(300)
+
+			expect(findProjectByExactnameMock).toHaveBeenCalledWith('Work')
+			expect(getAllAssigneesMock).toHaveBeenCalledWith({projectId: 42}, {s: 'a'})
+		} finally {
+			vi.useRealTimers()
+		}
 	})
 
 	it('does not open the dropdown for multiline input', async () => {
