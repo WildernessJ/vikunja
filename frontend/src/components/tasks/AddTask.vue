@@ -171,6 +171,33 @@
 					/>
 				</div>
 
+				<div class="qac-chip">
+					<Popup>
+						<template #trigger="{toggle}">
+							<SimpleButton
+								class="qac-chip-button"
+								@click.stop="toggle()"
+							>
+								<span class="icon is-small"><Icon :icon="['far', 'clock']" /></span>
+								{{ remindersChipLabel }}
+							</SimpleButton>
+						</template>
+						<template #content>
+							<div class="qac-chip-popup">
+								<Reminders
+									:model-value="effectiveReminders"
+									:default-relative-to="remindersDefaultRelativeTo"
+									@update:modelValue="(val) => setOverride('reminders', val)"
+								/>
+							</div>
+						</template>
+					</Popup>
+					<QacChipClear
+						:show="overrides.reminders !== undefined"
+						@clear="clearOverride('reminders')"
+					/>
+				</div>
+
 				<div class="qac-actions">
 					<BaseButton
 						class="qac-clear-button"
@@ -252,6 +279,7 @@ import ProjectSearch from '@/components/tasks/partials/ProjectSearch.vue'
 import EditLabels from '@/components/tasks/partials/EditLabels.vue'
 import PrioritySelect from '@/components/tasks/partials/PrioritySelect.vue'
 import PriorityLabel from '@/components/tasks/partials/PriorityLabel.vue'
+import Reminders from '@/components/tasks/partials/Reminders.vue'
 import QacChipClear from '@/components/tasks/partials/QacChipClear.vue'
 import QuickAddAutocompleteResults from '@/components/tasks/partials/QuickAddAutocompleteResults.vue'
 import {parseSubtasksViaIndention} from '@/helpers/parseSubtasksViaIndention'
@@ -261,6 +289,7 @@ import TaskRelationModel from '@/models/taskRelation'
 import {getLabelsFromPrefix} from '@/modules/quickAddMagic'
 import {PRIORITIES} from '@/constants/priorities'
 import {buildQuickAddRepeatsLabel} from '@/helpers/recurrencePatternSummary'
+import {REMINDER_PERIOD_RELATIVE_TO_TYPES} from '@/types/IReminderPeriodRelativeTo'
 
 import {useAuthStore} from '@/stores/auth'
 import {useTaskStore} from '@/stores/tasks'
@@ -301,6 +330,7 @@ const {
 	effectiveLabels,
 	effectiveProjectName,
 	effectiveRepeats,
+	effectiveReminders,
 	setOverride,
 	clearOverride,
 	clearAll: clearComposerOverrides,
@@ -439,6 +469,18 @@ const labelsChipLabel = computed(() => {
 })
 
 const repeatsLabel = computed(() => buildQuickAddRepeatsLabel(effectiveRepeats.value, t))
+
+const remindersChipLabel = computed(() => {
+	if (effectiveReminders.value.length === 0) {
+		return t('task.quickAdd.remindersChip')
+	}
+	return t('task.quickAdd.remindersChipCount', effectiveReminders.value.length)
+})
+
+// Quick-add reminders only ever relate to the due date - there's no start/end date chip here.
+const remindersDefaultRelativeTo = computed(() => (
+	effectiveDate.value ? REMINDER_PERIOD_RELATIVE_TO_TYPES.DUEDATE : null
+))
 
 function onProjectPicked(project: IProject | null, close: () => void) {
 	setOverride('project', project)

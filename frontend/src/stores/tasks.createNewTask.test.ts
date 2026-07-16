@@ -3,6 +3,10 @@ import {describe, it, expect, beforeEach, vi} from 'vitest'
 
 import ProjectModel from '@/models/project'
 import {PRIORITIES} from '@/constants/priorities'
+import type {ITaskReminder} from '@/modelTypes/ITaskReminder'
+
+// Mutable so tests can toggle quick-add default reminders without re-mocking the module.
+const quickAddDefaultRemindersMock = vi.hoisted((): {value: ITaskReminder[]} => ({value: []}))
 
 const taskCreateMock = vi.fn()
 vi.mock('@/services/task', () => ({
@@ -43,7 +47,9 @@ vi.mock('@/stores/auth', () => ({
 		settings: {
 			frontendSettings: {
 				quickAddMagicMode: 'vikunja',
-				quickAddDefaultReminders: [],
+				get quickAddDefaultReminders() {
+					return quickAddDefaultRemindersMock.value
+				},
 			},
 		},
 	}),
@@ -57,6 +63,7 @@ describe('tasks store createNewTask', () => {
 		taskCreateMock.mockReset().mockImplementation(async (task) => task)
 		findProjectByExactnameMock.mockReset().mockReturnValue(null)
 		findProjectByIdentifierMock.mockReset().mockReturnValue(null)
+		quickAddDefaultRemindersMock.value = []
 	})
 
 	describe('finding #1: empty-title fast path', () => {
@@ -140,6 +147,45 @@ describe('tasks store createNewTask', () => {
 			const created = await store.createNewTask({title: 'Buy milk', projectId: 1}, {description: 'from the store, oat milk'})
 
 			expect(created.description).toBe('from the store, oat milk')
+		})
+
+		it('carries overrides.reminders through to the created task, overriding the quick-add defaults', async () => {
+			quickAddDefaultRemindersMock.value = [{reminder: null, relativePeriod: -3600, relativeTo: 'due_date'} as ITaskReminder]
+
+			const store = useTaskStore()
+			const explicitReminder = {reminder: null, relativePeriod: -900, relativeTo: 'due_date'} as ITaskReminder
+			const created = await store.createNewTask(
+				{title: 'Buy milk', projectId: 1},
+				{dueDate: new Date('2026-12-25'), reminders: [explicitReminder]},
+			)
+
+			expect(created.reminders).toHaveLength(1)
+			expect(created.reminders?.[0].relativePeriod).toBe(-900)
+		})
+
+		it('honors an explicitly cleared ([]) reminders override instead of falling back to the quick-add defaults', async () => {
+			quickAddDefaultRemindersMock.value = [{reminder: null, relativePeriod: -3600, relativeTo: 'due_date'} as ITaskReminder]
+
+			const store = useTaskStore()
+			const created = await store.createNewTask(
+				{title: 'Buy milk', projectId: 1},
+				{dueDate: new Date('2026-12-25'), reminders: []},
+			)
+
+			expect(created.reminders).toEqual([])
+		})
+
+		it('falls back to the quick-add default reminders when the reminders override is absent', async () => {
+			quickAddDefaultRemindersMock.value = [{reminder: null, relativePeriod: -3600, relativeTo: 'due_date'} as ITaskReminder]
+
+			const store = useTaskStore()
+			const created = await store.createNewTask(
+				{title: 'Buy milk', projectId: 1},
+				{dueDate: new Date('2026-12-25')},
+			)
+
+			expect(created.reminders).toHaveLength(1)
+			expect(created.reminders?.[0].relativePeriod).toBe(-3600)
 		})
 	})
 })

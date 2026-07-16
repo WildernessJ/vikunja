@@ -5,6 +5,7 @@ import {parseSubtasksViaIndention} from '@/helpers/parseSubtasksViaIndention'
 import {resolveOverride} from '@/helpers/resolveOverride'
 import type {ILabel} from '@/modelTypes/ILabel'
 import type {IProject} from '@/modelTypes/IProject'
+import type {ITaskReminder} from '@/modelTypes/ITaskReminder'
 import type {CreateNewTaskOverrides} from '@/stores/tasks'
 
 // See resolveOverride for the present-vs-absent precedence rule this composer's
@@ -15,9 +16,11 @@ export interface ComposerOverrides {
 	labels?: ILabel[],
 	project?: IProject | null,
 	description?: string,
+	reminders?: ITaskReminder[],
 }
 
 const EMPTY_LABEL_LIST: ILabel[] = []
+const EMPTY_REMINDER_LIST: ITaskReminder[] = []
 
 export function useQuickAddComposer(title: Ref<string>, mode: Ref<PrefixMode>) {
 	const overrides = reactive<ComposerOverrides>({})
@@ -49,6 +52,9 @@ export function useQuickAddComposer(title: Ref<string>, mode: Ref<PrefixMode>) {
 		() => overrides.project !== undefined ? null : parsed.value.project,
 	)
 	const effectiveRepeats = computed(() => parsed.value.repeats ?? parsed.value.rruleRepeat)
+	const effectiveReminders = computed<ITaskReminder[]>(
+		() => overrides.reminders ?? EMPTY_REMINDER_LIST,
+	)
 
 	function setOverride<K extends keyof ComposerOverrides>(key: K, value: ComposerOverrides[K]) {
 		overrides[key] = value
@@ -79,6 +85,9 @@ export function useQuickAddComposer(title: Ref<string>, mode: Ref<PrefixMode>) {
 		if (overrides.description !== undefined) {
 			result.description = overrides.description
 		}
+		if (overrides.reminders !== undefined) {
+			result.reminders = overrides.reminders
+		}
 		return result
 	}
 
@@ -91,6 +100,7 @@ export function useQuickAddComposer(title: Ref<string>, mode: Ref<PrefixMode>) {
 		effectiveProject,
 		effectiveProjectName,
 		effectiveRepeats,
+		effectiveReminders,
 		setOverride,
 		clearOverride,
 		clearAll,

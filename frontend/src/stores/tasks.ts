@@ -55,6 +55,7 @@ export interface CreateNewTaskOverrides {
 	labels?: ILabel[],
 	projectId?: IProject['id'] | null,
 	description?: string,
+	reminders?: ITaskReminder[],
 }
 
 export function buildDefaultRemindersForQuickAdd(
@@ -571,7 +572,8 @@ export const useTaskStore = defineStore('task', () => {
 		if (parsedTask.repeats !== null) {
 			task.repeatAfter = parsedTask.repeats
 		}
-		task.reminders = buildDefaultRemindersForQuickAdd(
+		// Present (even empty []) overrides the quick-add default reminders; absent falls back.
+		task.reminders = resolveOverride(overrides, 'reminders', undefined) ?? buildDefaultRemindersForQuickAdd(
 			authStore.settings.frontendSettings.quickAddDefaultReminders,
 			dueDate,
 		)
