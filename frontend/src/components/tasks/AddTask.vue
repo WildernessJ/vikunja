@@ -172,7 +172,7 @@
 				</div>
 
 				<div class="qac-chip">
-					<Popup>
+					<Popup has-overflow>
 						<template #trigger="{toggle}">
 							<SimpleButton
 								class="qac-chip-button"
