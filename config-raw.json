@@ -1107,6 +1107,31 @@
                     "comment": "The license key for Vikunja. If empty or absent, Vikunja runs in community mode with all non-licensed features available."
                 }
             ]
+        },
+        {
+            "key": "backup",
+            "children": [
+                {
+                    "key": "enabled",
+                    "default_value": "false",
+                    "comment": "Enables a recurring scheduled backup which reuses the same dump format as the \"vikunja dump\" CLI command (config + database + files). Off by default."
+                },
+                {
+                    "key": "schedule",
+                    "default_value": "0 2 * * *",
+                    "comment": "A 5-field cron expression for when to run the scheduled backup. Defaults to daily at 02:00 server time. The schedule runs in the server's local timezone; it does NOT use the service.timezone config value."
+                },
+                {
+                    "key": "path",
+                    "default_value": "",
+                    "comment": "The directory in which scheduled backups are stored. Defaults to a \"backups\" folder inside service.rootpath when empty. Every dump contains config.yml, which includes database credentials and service.secret, so this must be a restricted directory not exposed publicly. Manual dumps made with \"vikunja dump\" also count toward the keep-N prune below if they share the \"vikunja-dump_*.zip\" name and live in this directory, so it's recommended to use a dedicated directory just for scheduled backups. In Docker, the default service.rootpath is the install directory inside the container, so leaving this empty may store backups on ephemeral container storage that is lost when the container is recreated; point this at a mounted volume instead."
+                },
+                {
+                    "key": "keep",
+                    "default_value": "7",
+                    "comment": "The number of most recent backups to keep; older ones are pruned automatically after each successful backup. Set to 0 to keep all backups indefinitely."
+                }
+            ]
         }
     ]
 }
