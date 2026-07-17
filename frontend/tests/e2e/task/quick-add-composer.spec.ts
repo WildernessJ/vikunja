@@ -23,13 +23,12 @@ test.describe('Quick add composer', () => {
 		// With quick add magic disabled, chips are pure structured pickers - opening the
 		// priority chip must not attempt any text parsing of the title.
 		await page.locator('.qac-chip-button').filter({hasText: 'Unset'}).click()
-		await page.locator('.popup.is-open .qac-chip-popup-priority select').selectOption(String(PRIORITIES.HIGH))
+		await page.locator('.popup .qac-chip-popup-priority select').selectOption(String(PRIORITIES.HIGH))
 
 		await page.locator('.qac-chip-button').filter({hasText: 'Labels' }).click()
-		// Popup.vue keeps closed popup content in the DOM (clipped, but Playwright
-		// still deems it visible), so scope to the open popup or .first() matches
-		// the project chip's search input instead.
-		const labelInput = page.locator('.popup.is-open .qac-chip-popup .multiselect input')
+		// Only the open popup's content is mounted (Popup.vue v-if), so `.popup`
+		// uniquely targets it - closed chip popups aren't in the DOM.
+		const labelInput = page.locator('.popup .qac-chip-popup .multiselect input')
 		await labelInput.fill('errand')
 		await labelInput.press('Enter')
 
@@ -61,7 +60,7 @@ test.describe('Quick add composer', () => {
 		await page.locator('.add-task-textarea').fill('Buy milk !3')
 
 		await page.locator('.qac-chip-button').filter({hasText: 'High' }).click()
-		await page.locator('.popup.is-open .qac-chip-popup-priority select').selectOption(String(PRIORITIES.URGENT))
+		await page.locator('.popup .qac-chip-popup-priority select').selectOption(String(PRIORITIES.URGENT))
 
 		const createTaskPromise = page.waitForResponse(response =>
 			response.url().includes('/projects/') &&

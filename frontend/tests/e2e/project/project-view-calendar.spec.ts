@@ -261,7 +261,7 @@ test.describe('Project View Calendar', () => {
 		await expect(cell.locator('.add-task-textarea')).toBeVisible()
 
 		await cell.locator('.qac-chip-button').first().click()
-		const searchInput = cell.locator('.popup.is-open .qac-chip-popup .multiselect input')
+		const searchInput = cell.locator('.popup .qac-chip-popup .multiselect input')
 		// A real pointer click hit-tests at the element's coordinates and fails
 		// if the popup is painted clipped by an overflow: hidden ancestor.
 		await searchInput.click()

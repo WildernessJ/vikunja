@@ -5,24 +5,21 @@
 		:toggle="toggle"
 		:close="close"
 	/>
-	<!-- Content mounts once and only toggles inert; a v-focus/autofocus inside content would
-	     fire at first mount while inert and silently fail - focus on open explicitly instead. -->
-	<div
-		ref="popup"
-		class="popup"
-		:inert="!openValue"
-		:class="{
-			'is-open': openValue,
-			'has-overflow': hasOverflow && openValue
-		}"
-	>
-		<slot
-			name="content"
-			:is-open="openValue"
-			:toggle="toggle"
-			:close="close"
-		/>
-	</div>
+	<Transition name="popup">
+		<div
+			v-if="openValue"
+			ref="popup"
+			class="popup"
+			:class="{'has-overflow': hasOverflow}"
+		>
+			<slot
+				name="content"
+				:is-open="openValue"
+				:toggle="toggle"
+				:close="close"
+			/>
+		</div>
+	</Transition>
 </template>
 
 <script setup lang="ts">
@@ -90,17 +87,23 @@ onClickOutside(popup, (event) => {
 
 <style scoped lang="scss">
 .popup {
-	transition: opacity $transition;
-	opacity: 0;
-	block-size: 0;
 	overflow: hidden;
 	position: absolute;
 	inset-block-start: 1rem;
 	z-index: 100;
 
-	&.is-open {
-		opacity: 1;
-		block-size: auto;
+	&.has-overflow {
+		overflow: visible;
 	}
+}
+
+.popup-enter-active,
+.popup-leave-active {
+	transition: opacity $transition;
+}
+
+.popup-enter-from,
+.popup-leave-to {
+	opacity: 0;
 }
 </style>
