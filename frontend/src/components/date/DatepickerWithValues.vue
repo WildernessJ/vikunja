@@ -181,11 +181,8 @@ const customRangeActive = computed<boolean>(() => {
 	border: 1px solid var(--grey-200);
 	background-color: var(--white);
 	box-shadow: $shadow;
-
-	&.is-open {
-		inline-size: 500px;
-		block-size: 320px;
-	}
+	inline-size: 500px;
+	block-size: 320px;
 }
 
 .datepicker-with-range {
