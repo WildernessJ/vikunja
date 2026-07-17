@@ -33,6 +33,14 @@ func TestGetRootpathLocation(t *testing.T) {
 	assert.Equal(t, expected, result)
 }
 
+func TestBackupDefaults(t *testing.T) {
+	InitDefaultConfig()
+	assert.False(t, BackupEnabled.GetBool())
+	assert.Equal(t, "0 2 * * *", BackupSchedule.GetString())
+	assert.Empty(t, BackupPath.GetString())
+	assert.Equal(t, 7, BackupKeep.GetInt())
+}
+
 func TestResolvePath(t *testing.T) {
 	// Save and restore rootpath
 	original := ServiceRootpath.GetString()

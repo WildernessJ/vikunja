@@ -243,6 +243,11 @@ const (
 	// LicenseKey gates optional paid features and funds Vikunja's development.
 	// See the package comment in pkg/license/license.go before removing.
 	LicenseKey Key = `license.key`
+
+	BackupEnabled  Key = `backup.enabled`
+	BackupSchedule Key = `backup.schedule`
+	BackupPath     Key = `backup.path`
+	BackupKeep     Key = `backup.keep`
 )
 
 var maxFileSizeInBytes uint64
@@ -523,6 +528,12 @@ func InitDefaultConfig() {
 	}
 	// License
 	LicenseKey.setDefault("")
+
+	// Backups
+	BackupEnabled.setDefault(false)
+	BackupSchedule.setDefault("0 2 * * *")
+	BackupPath.setDefault("")
+	BackupKeep.setDefault(7)
 }
 
 // ResolvePath resolves a path relative to service.rootpath.

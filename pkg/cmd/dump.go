@@ -19,7 +19,6 @@ package cmd
 import (
 	"path/filepath"
 	"strings"
-	"time"
 
 	"code.vikunja.io/api/pkg/config"
 	"code.vikunja.io/api/pkg/initialize"
@@ -45,7 +44,7 @@ var dumpCmd = &cobra.Command{
 		initialize.FullInitWithoutAsync()
 	},
 	Run: func(_ *cobra.Command, _ []string) {
-		filename := "vikunja-dump_" + time.Now().Format("2006-01-02_15-03-05") + ".zip"
+		filename := dump.DefaultDumpFilename()
 		if dumpFilenameFlag != "" {
 			filename = dumpFilenameFlag
 			if !strings.HasSuffix(filename, ".zip") {

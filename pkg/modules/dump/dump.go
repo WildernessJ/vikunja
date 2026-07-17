@@ -22,6 +22,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"code.vikunja.io/api/pkg/db"
 	"code.vikunja.io/api/pkg/files"
@@ -31,9 +32,14 @@ import (
 	"github.com/spf13/viper"
 )
 
+// DefaultDumpFilename returns the timestamped default filename for a dump zip.
+func DefaultDumpFilename() string {
+	return "vikunja-dump_" + time.Now().Format("2006-01-02_15-04-05") + ".zip"
+}
+
 // Dump creates a zip file with all vikunja files at filename
 func Dump(filename string) error {
-	dumpFile, err := os.Create(filename)
+	dumpFile, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return fmt.Errorf("error opening dump file: %w", err)
 	}
