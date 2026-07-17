@@ -5,7 +5,6 @@ const {
 	ipcMain,
 	Menu,
 	nativeImage,
-	nativeTheme,
 	shell,
 	Tray,
 	screen,
@@ -523,20 +522,13 @@ ipcMain.on('desktop:set-badge-count', (_event, count) => {
 
 // ─── App lifecycle ───────────────────────────────────────────────────
 app.whenReady().then(() => {
-	// macOS ignores BrowserWindow's icon option and uses the bundle/dock icon,
-	// which in an unpackaged dev run is Electron's own. Set it explicitly so the
-	// dev dock icon matches the packaged app (electron-builder uses build/icon.icns).
-	if (process.platform === 'darwin') {
-		// macOS ignores BrowserWindow's icon option and uses the dock icon, which in
-		// an unpackaged dev run is Electron's own. The icon-dock-*.png tiles inset the
-		// llama on a rounded square to match macOS sizing; icon.png stays full-bleed
-		// for the tray/Linux window. Swap the tile to match the system theme live.
-		const applyDockIcon = () => {
-			const tile = nativeTheme.shouldUseDarkColors ? 'icon-dock-dark.png' : 'icon-dock-light.png'
-			app.dock.setIcon(nativeImage.createFromPath(path.join(__dirname, tile)))
-		}
-		applyDockIcon()
-		nativeTheme.on('updated', applyDockIcon)
+	// Packaged builds use the bundle icon (build/icon.icns) for the dock in both the
+	// running and closed states, so no override is needed — and setting one here would
+	// render at a different size than the bundle icon, causing a size jump on quit.
+	// Unpackaged dev runs show Electron's own icon, so point the dock at the shipped
+	// icon to match what users see.
+	if (process.platform === 'darwin' && !app.isPackaged) {
+		app.dock.setIcon(nativeImage.createFromPath(path.join(__dirname, 'build/icon.png')))
 	}
 
 	zoomLevel = loadZoomLevel()
