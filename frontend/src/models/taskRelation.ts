@@ -13,7 +13,7 @@ export default class TaskRelationModel extends AbstractModel<ITaskRelation> impl
 	relationKind: IRelationKind = RELATION_KIND.RELATED
 
 	createdBy: IUser = new UserModel()
-	created: Date = new Date
+	created: Date = new Date(0)
 
 	constructor(data: Partial<ITaskRelation>) {
 		super()

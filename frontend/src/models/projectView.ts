@@ -21,16 +21,19 @@ export default class ProjectViewModel extends AbstractModel<IProjectView> implem
 	defaultBucketId = 0
 	doneBucketId = 0
 
-	created: Date = new Date()
-	updated: Date = new Date()
+	created: Date = new Date(0)
+	updated: Date = new Date(0)
 
 	constructor(data: Partial<IProjectView>) {
 		super()
 		this.assignData(data)
-		
+
 		if (!this.bucketConfiguration) {
 			this.bucketConfiguration = []
 		}
+
+		this.created = new Date(this.created)
+		this.updated = new Date(this.updated)
 	}
 
 	static createWithDefaultFilter(data: Partial<IProjectView> = {}): ProjectViewModel {
