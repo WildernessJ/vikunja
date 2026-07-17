@@ -22,7 +22,7 @@ test.describe('Quick add composer', () => {
 
 		// With quick add magic disabled, chips are pure structured pickers - opening the
 		// priority chip must not attempt any text parsing of the title.
-		await page.locator('.qac-chip-button').filter({hasText: 'Unset'}).click()
+		await page.locator('.qac-chip-button').filter({hasText: 'No Priority'}).click()
 		await page.locator('.popup .qac-chip-popup-priority select').selectOption(String(PRIORITIES.HIGH))
 
 		await page.locator('.qac-chip-button').filter({hasText: 'Labels' }).click()

@@ -1224,7 +1224,7 @@
       }
     },
     "priority": {
-      "unset": "Unset",
+      "unset": "No Priority",
       "low": "Low",
       "medium": "Medium",
       "high": "High",
