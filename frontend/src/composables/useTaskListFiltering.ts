@@ -38,3 +38,12 @@ export function shouldShowTaskInListView(
 	// Show task if parent is NOT in the current view (cross-project subtask)
 	return !hasParentInView
 }
+
+/**
+ * Whether a task rolled up from a descendant project should show the
+ * project-origin chip. Only foreign rows (task.projectId differs from the
+ * project being viewed) get it — the parent's own rows stay unlabeled.
+ */
+export function isTaskFromSubproject(task: ITask, currentProjectId: number): boolean {
+	return task.projectId !== currentProjectId
+}

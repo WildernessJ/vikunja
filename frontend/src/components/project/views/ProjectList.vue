@@ -17,6 +17,13 @@
 					:project-id="projectId"
 					@update:modelValue="loadTasks()"
 				/>
+				<FancyCheckbox
+					v-if="!isPseudoProject"
+					v-model="showSubprojectTasks"
+					is-block
+				>
+					{{ $t('project.list.showSubprojectTasks') }}
+				</FancyCheckbox>
 			</div>
 		</template>
 
@@ -76,6 +83,7 @@
 								:show-list-color="false"
 								:can-mark-as-done="canWrite || isPseudoProject"
 								:the-task="getItemSlotProps(itemSlotProps).element"
+								:show-project="!isPseudoProject && isTaskFromSubproject(getItemSlotProps(itemSlotProps).element, projectId)"
 								:all-tasks="allTasks"
 								@taskUpdated="updateTasks"
 								@taskDeleted="onTaskDeleted"
@@ -110,6 +118,7 @@ import ButtonLink from '@/components/misc/ButtonLink.vue'
 import AddTask from '@/components/tasks/AddTask.vue'
 import SingleTaskInProject from '@/components/tasks/partials/SingleTaskInProject.vue'
 import FilterPopup from '@/components/project/partials/FilterPopup.vue'
+import FancyCheckbox from '@/components/input/FancyCheckbox.vue'
 import Nothing from '@/components/misc/Nothing.vue'
 import Pagination from '@/components/misc/Pagination.vue'
 import SortPopup from '@/components/project/partials/SortPopup.vue'
@@ -117,7 +126,8 @@ import SortPopup from '@/components/project/partials/SortPopup.vue'
 import {useTaskList} from '@/composables/useTaskList'
 import type {ExpandTaskFilterParam} from '@/services/taskCollection'
 import {useTaskDragToProject} from '@/composables/useTaskDragToProject'
-import {shouldShowTaskInListView} from '@/composables/useTaskListFiltering'
+import {shouldShowTaskInListView, isTaskFromSubproject} from '@/composables/useTaskListFiltering'
+import {getShowSubprojectTasksState, saveShowSubprojectTasksState} from '@/helpers/showSubprojectTasksState'
 import {PERMISSIONS as Permissions} from '@/constants/permissions'
 import {calculateItemPosition} from '@/helpers/calculateItemPosition'
 import type {ITask} from '@/modelTypes/ITask'
@@ -161,6 +171,19 @@ const {
 		? ['comment_count', 'is_unread']
 		: ['subtasks', 'comment_count', 'is_unread']) as unknown as ExpandTaskFilterParam,
 )
+
+const showSubprojectTasks = ref(false)
+
+// Restore per-project on mount/switch before syncing back into params, so a
+// stale `true` from a previous project id can't leak into the initial request.
+watch(projectId, id => {
+	showSubprojectTasks.value = getShowSubprojectTasksState(id)
+}, {immediate: true})
+
+watch(showSubprojectTasks, show => {
+	params.value.include_child_projects = show
+	saveShowSubprojectTasksState(projectId.value, show)
+}, {immediate: true})
 
 const taskPositionService = ref(new TaskPositionService())
 
@@ -211,7 +234,9 @@ onMounted(async () => {
 	ctaVisible.value = true
 })
 
-const canDragTasks = computed(() => canWrite.value || isSavedFilter(project.value))
+// No manual reordering while sub-project tasks are rolled up: foreign rows have
+// no task_positions entry in this view, so a drag would write a mis-scoped row.
+const canDragTasks = computed(() => (canWrite.value || isSavedFilter(project.value)) && !showSubprojectTasks.value)
 
 const isTouchDevice = ref(false)
 if (typeof window !== 'undefined') {

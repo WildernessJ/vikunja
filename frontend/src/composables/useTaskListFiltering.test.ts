@@ -1,5 +1,5 @@
 import {describe, it, expect} from 'vitest'
-import {shouldShowTaskInListView} from './useTaskListFiltering'
+import {shouldShowTaskInListView, isTaskFromSubproject} from './useTaskListFiltering'
 import type {ITask} from '@/modelTypes/ITask'
 
 describe('shouldShowTaskInListView', () => {
@@ -224,5 +224,19 @@ describe('shouldShowTaskInListView', () => {
 		const allTasks = [subtask] as ITask[]
 
 		expect(shouldShowTaskInListView(subtask as ITask, allTasks, true)).toBe(true)
+	})
+})
+
+describe('isTaskFromSubproject', () => {
+	it('is false for a task belonging to the currently viewed project', () => {
+		const task: Partial<ITask> = {id: 1, projectId: 100}
+
+		expect(isTaskFromSubproject(task as ITask, 100)).toBe(false)
+	})
+
+	it('is true for a task rolled up from a descendant project', () => {
+		const task: Partial<ITask> = {id: 1, projectId: 200}
+
+		expect(isTaskFromSubproject(task as ITask, 100)).toBe(true)
 	})
 })

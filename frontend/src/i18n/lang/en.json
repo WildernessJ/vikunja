@@ -533,7 +533,8 @@
       "empty": "This project is currently empty.",
       "newTaskCta": "Create a task.",
       "editTask": "Edit Task",
-      "sort": "Sort"
+      "sort": "Sort",
+      "showSubprojectTasks": "Show sub-project tasks"
     },
     "gantt": {
       "title": "Gantt",

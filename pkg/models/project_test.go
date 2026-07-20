@@ -672,7 +672,10 @@ func TestProject_ReadAll(t *testing.T) {
 		projects, _, err := getAllProjectsForUser(s, 6, &projectOptions{})
 		require.NoError(t, err)
 		// +1 for the reparent-escalation fixture child (project 43, owner=6).
-		assert.Len(t, projects, 28)
+		// +1 for the subproject-task-rollup grandchild (project 44, cascades
+		// under 41->42). Project 46 (archived, under 41) is excluded by the
+		// default getArchived=false.
+		assert.Len(t, projects, 29)
 	})
 	t.Run("all projects for user", func(t *testing.T) {
 		db.LoadAndAssertFixtures(t)
