@@ -11,6 +11,7 @@
 			:data-is-overdue="isOverdue || undefined"
 			@click="openTaskDetail"
 			@keyup.enter="openTaskDetail"
+			@contextmenu.prevent="openContextMenu"
 		>
 			<span
 				v-tooltip="!canMarkAsDone ? $t('task.readOnlyCheckbox') : ''"
@@ -197,6 +198,17 @@
 			</BaseButton>
 			<slot />
 		</div>
+
+		<TaskContextMenu
+			:task="task"
+			:open="contextMenuOpen"
+			:position="contextMenuPosition"
+			@update:open="contextMenuOpen = $event"
+			@complete="markAsDone(!task.done)"
+			@taskUpdated="onContextMenuTaskUpdated"
+			@deleted="onContextMenuTaskDeleted"
+		/>
+
 		<template v-if="typeof task.relatedTasks?.subtask !== 'undefined'">
 			<template v-for="subtask in task.relatedTasks.subtask">
 				<template v-if="getTaskById(subtask.id)">
@@ -207,6 +219,8 @@
 						:can-mark-as-done="canMarkAsDone"
 						:all-tasks="allTasks"
 						class="subtask-nested"
+						@taskUpdated="emit('taskUpdated', $event)"
+						@taskDeleted="emit('taskDeleted', $event)"
 					/>
 				</template>
 			</template>
@@ -225,6 +239,7 @@ import PriorityLabel from '@/components/tasks/partials/PriorityLabel.vue'
 import Labels from '@/components/tasks/partials/Labels.vue'
 import TaskGlanceTooltip from '@/components/tasks/partials/TaskGlanceTooltip.vue'
 import DeferTask from '@/components/tasks/partials/DeferTask.vue'
+import TaskContextMenu from '@/components/tasks/partials/TaskContextMenu.vue'
 import ChecklistSummary from '@/components/tasks/partials/ChecklistSummary.vue'
 import CommentCount from '@/components/tasks/partials/CommentCount.vue'
 
@@ -267,6 +282,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
 	'taskUpdated': [task: ITask],
+	'taskDeleted': [task: ITask],
 }>()
 
 function getTaskById(taskId: number): ITask | undefined {
@@ -437,6 +453,23 @@ function deferTaskUpdate(newTask: ITask) {
 async function toggleFavorite() {
 	task.value = await taskStore.toggleFavorite(task.value)
 	emit('taskUpdated', task.value)
+}
+
+const contextMenuOpen = ref(false)
+const contextMenuPosition = ref({x: 0, y: 0})
+
+function openContextMenu(event: MouseEvent) {
+	contextMenuPosition.value = {x: event.clientX, y: event.clientY}
+	contextMenuOpen.value = true
+}
+
+function onContextMenuTaskUpdated(newTask: ITask) {
+	task.value = newTask
+	emit('taskUpdated', newTask)
+}
+
+function onContextMenuTaskDeleted(deletedTask: ITask) {
+	emit('taskDeleted', deletedTask)
 }
 
 const taskRoot = ref<HTMLElement | null>(null)

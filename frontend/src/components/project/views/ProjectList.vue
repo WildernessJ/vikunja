@@ -78,6 +78,7 @@
 								:the-task="getItemSlotProps(itemSlotProps).element"
 								:all-tasks="allTasks"
 								@taskUpdated="updateTasks"
+								@taskDeleted="onTaskDeleted"
 							>
 								<span
 									v-if="canDragTasks && isPositionSorting"
@@ -245,12 +246,25 @@ function updateTasks(updatedTask: ITask) {
 		return
 	}
 
-	for (let t = 0; t < tasks.value.length; t++) {
-		if (tasks.value[t].id === updatedTask.id) {
-			tasks.value[t] = updatedTask
-			break
-		}
+	const idx = tasks.value.findIndex(t => t.id === updatedTask.id)
+	if (idx === -1) {
+		return
 	}
+
+	// Moved out of this project (e.g. via the context menu) — drop it rather than
+	// leave it visible here, matching the drag-to-project path in saveTaskPosition.
+	// Guard on the row's *previous* projectId so a cross-project subtask that was
+	// always foreign to this view isn't dropped on an unrelated edit.
+	if (tasks.value[idx].projectId === projectId.value && updatedTask.projectId !== projectId.value) {
+		tasks.value = tasks.value.filter(t => t.id !== updatedTask.id)
+		return
+	}
+
+	tasks.value[idx] = updatedTask
+}
+
+function onTaskDeleted(deletedTask: ITask) {
+	tasks.value = tasks.value.filter(t => t.id !== deletedTask.id)
 }
 
 function handleDragStart(e: { item: HTMLElement }) {
