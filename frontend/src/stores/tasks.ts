@@ -167,10 +167,9 @@ async function findAssignees(parsedTaskAssignees: string[], projectId: number): 
 export const useTaskStore = defineStore('task', () => {
 	const baseStore = useBaseStore()
 	const kanbanStore = useKanbanStore()
-	// Sidebar/Today count refresh is wired into this store's create/update/delete
-	// only. Call sites that hit taskService directly (e.g. DeferTask) won't
-	// refresh the badges immediately; they self-heal on the next store mutation
-	// or reload. Known, accepted gap.
+	// Sidebar/Today count refresh is wired into this store's create/update/delete.
+	// Call sites that reschedule tasks (DeferTask, Gantt drag) route through
+	// update() rather than hitting taskService directly, so the badges stay current.
 	const projectCountsStore = useProjectCountsStore()
 	const labelStore = useLabelStore()
 	const projectStore = useProjectStore()
