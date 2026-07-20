@@ -1231,6 +1231,21 @@
       "urgent": "Urgent",
       "doNow": "DO NOW"
     },
+    "contextMenu": {
+      "complete": "Complete",
+      "markUndone": "Mark undone",
+      "priority": "Priority",
+      "dueDate": "Due date",
+      "dueToday": "Today",
+      "dueTomorrow": "Tomorrow",
+      "dueNextWeek": "Next week",
+      "dueNoDate": "No date",
+      "pickDate": "Pick date…",
+      "moveProject": "Move to project…",
+      "labels": "Labels…",
+      "assignees": "Assignees…",
+      "delete": "Delete"
+    },
     "quickAdd": {
       "descriptionPlaceholder": "Description",
       "multilineHint": "Multiple tasks detected - chips and description are disabled for this input.",
