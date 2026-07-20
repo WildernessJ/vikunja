@@ -87,10 +87,15 @@ export default class UserModel extends AbstractModel<IUser> implements IUser {
 	constructor(data: Partial<IUser> = {}) {
 		super()
 		this.assignData(data)
+		this.normalize()
+	}
 
+	// Subclass field initializers run after super() and clobber base-assigned
+	// values, so subclasses must re-run assignData() + normalize() to restore
+	// these derived fields (#51).
+	protected normalize() {
 		this.created = new Date(this.created)
 		this.updated = new Date(this.updated)
-
 		this.settings = new UserSettingsModel(this.settings || {})
 	}
 
