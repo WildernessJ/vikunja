@@ -55,13 +55,14 @@ type bucketsWithTasksBody struct {
 // taskListViewInput is shared by both view-scoped endpoints.
 type TaskListQueryParams struct {
 	ListParams
-	Filter             string   `query:"filter" doc:"Filter query to match tasks by. See https://vikunja.io/docs/filters."`
-	FilterTimezone     string   `query:"filter_timezone" doc:"Timezone used to resolve relative date filters like \"now\"."`
-	FilterIncludeNulls bool     `query:"filter_include_nulls" doc:"If true, also include tasks whose filtered field is null."`
-	SortBy             []string `query:"sort_by,explode" doc:"Fields to sort by (e.g. done, priority). Repeatable; pair positionally with order_by."`
-	OrderBy            []string `query:"order_by,explode" doc:"Sort order per sort_by field, asc or desc. Repeatable; defaults to asc."`
-	Expand             []string `query:"expand,explode" enum:"subtasks,buckets,reactions,comments,comment_count,time_entries_count,is_unread" doc:"Embed extra, more expensive data per task. Repeatable."`
-	Format             string   `query:"format" enum:"html,markdown" doc:"How rich-text fields are exchanged. See the API description."`
+	Filter               string   `query:"filter" doc:"Filter query to match tasks by. See https://vikunja.io/docs/filters."`
+	FilterTimezone       string   `query:"filter_timezone" doc:"Timezone used to resolve relative date filters like \"now\"."`
+	FilterIncludeNulls   bool     `query:"filter_include_nulls" doc:"If true, also include tasks whose filtered field is null."`
+	IncludeChildProjects bool     `query:"include_child_projects" doc:"If true and viewing a project, also include tasks from all descendant (sub-)projects the user can read. Archived descendants are excluded."`
+	SortBy               []string `query:"sort_by,explode" doc:"Fields to sort by (e.g. done, priority). Repeatable; pair positionally with order_by."`
+	OrderBy              []string `query:"order_by,explode" doc:"Sort order per sort_by field, asc or desc. Repeatable; defaults to asc."`
+	Expand               []string `query:"expand,explode" enum:"subtasks,buckets,reactions,comments,comment_count,time_entries_count,is_unread" doc:"Embed extra, more expensive data per task. Repeatable."`
+	Format               string   `query:"format" enum:"html,markdown" doc:"How rich-text fields are exchanged. See the API description."`
 }
 
 type taskListAllInput struct {
@@ -82,25 +83,26 @@ type taskListViewInput struct {
 // taskListFilters is the bound query carried into the shared collection builder.
 // The three input structs convert into it so the collection logic lives once.
 type taskListFilters struct {
-	Q                  string
-	Filter             string
-	FilterTimezone     string
-	FilterIncludeNulls bool
-	SortBy             []string
-	OrderBy            []string
-	Expand             []string
+	Q                    string
+	Filter               string
+	FilterTimezone       string
+	FilterIncludeNulls   bool
+	IncludeChildProjects bool
+	SortBy               []string
+	OrderBy              []string
+	Expand               []string
 }
 
 func (in taskListAllInput) filters() taskListFilters {
-	return taskListFilters{in.Q, in.Filter, in.FilterTimezone, in.FilterIncludeNulls, in.SortBy, in.OrderBy, in.Expand}
+	return taskListFilters{in.Q, in.Filter, in.FilterTimezone, in.FilterIncludeNulls, in.IncludeChildProjects, in.SortBy, in.OrderBy, in.Expand}
 }
 
 func (in taskListProjectInput) filters() taskListFilters {
-	return taskListFilters{in.Q, in.Filter, in.FilterTimezone, in.FilterIncludeNulls, in.SortBy, in.OrderBy, in.Expand}
+	return taskListFilters{in.Q, in.Filter, in.FilterTimezone, in.FilterIncludeNulls, in.IncludeChildProjects, in.SortBy, in.OrderBy, in.Expand}
 }
 
 func (in taskListViewInput) filters() taskListFilters {
-	return taskListFilters{in.Q, in.Filter, in.FilterTimezone, in.FilterIncludeNulls, in.SortBy, in.OrderBy, in.Expand}
+	return taskListFilters{in.Q, in.Filter, in.FilterTimezone, in.FilterIncludeNulls, in.IncludeChildProjects, in.SortBy, in.OrderBy, in.Expand}
 }
 
 // collection turns the bound query into a TaskCollection. The search term
@@ -113,14 +115,15 @@ func (f taskListFilters) collection(projectID, viewID int64, forceFlat bool) (*m
 		return nil, translateDomainError(err)
 	}
 	tc := &models.TaskCollection{
-		ProjectID:          projectID,
-		ProjectViewID:      viewID,
-		Filter:             f.Filter,
-		FilterTimezone:     f.FilterTimezone,
-		FilterIncludeNulls: f.FilterIncludeNulls,
-		SortBy:             f.SortBy,
-		OrderBy:            f.OrderBy,
-		Expand:             expand,
+		ProjectID:            projectID,
+		ProjectViewID:        viewID,
+		Filter:               f.Filter,
+		FilterTimezone:       f.FilterTimezone,
+		FilterIncludeNulls:   f.FilterIncludeNulls,
+		IncludeChildProjects: f.IncludeChildProjects,
+		SortBy:               f.SortBy,
+		OrderBy:              f.OrderBy,
+		Expand:               expand,
 	}
 	if forceFlat {
 		tc.SetForceFlatTasks()

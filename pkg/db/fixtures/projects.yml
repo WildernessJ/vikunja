@@ -393,3 +393,26 @@
   position: 4300
   updated: 2018-12-02 15:13:12
   created: 2018-12-01 15:13:12
+# Grandchild of project 41 via 42, owned by user 6 (subproject task rollup test).
+-
+  id: 44
+  title: HierarchyGrandchild
+  description: Grandchild project for subproject task rollup test
+  identifier: HIER3
+  owner_id: 6
+  parent_project_id: 42
+  position: 44
+  updated: 2018-12-02 15:13:12
+  created: 2018-12-01 15:13:12
+# Archived child of project 41, owned by user 6 (subproject task rollup test).
+-
+  id: 46
+  title: HierarchyChildArchived
+  description: Archived child project
+  identifier: HIER5
+  owner_id: 6
+  parent_project_id: 41
+  is_archived: 1
+  position: 46
+  updated: 2018-12-02 15:13:12
+  created: 2018-12-01 15:13:12

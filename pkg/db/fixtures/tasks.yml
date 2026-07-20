@@ -447,3 +447,21 @@
   index: 1
   created: 2018-12-01 01:12:04
   updated: 2018-12-01 01:12:04
+# Task in grandchild project 44 (subproject task rollup test)
+- id: 51
+  title: 'task #51 in hierarchy grandchild'
+  done: false
+  created_by_id: 6
+  project_id: 44
+  index: 1
+  created: 2018-12-01 01:12:04
+  updated: 2018-12-01 01:12:04
+# Task in project 46, an archived child of 41 (subproject task rollup test)
+- id: 53
+  title: 'task #53 in hierarchy archived child'
+  done: false
+  created_by_id: 6
+  project_id: 46
+  index: 1
+  created: 2018-12-01 01:12:04
+  updated: 2018-12-01 01:12:04

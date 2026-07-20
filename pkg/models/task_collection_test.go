@@ -2339,3 +2339,96 @@ func TestTaskCollection_TemplateFilterExclusion(t *testing.T) {
 			"a favorited task inside a template must not leak into task collections")
 	}
 }
+
+// Projects 41 -> 42 -> 44 are a three-level hierarchy owned by user6 (see fixtures).
+// Project 46 is an archived child of 41 owned by user6.
+func TestTaskCollection_ReadAll_IncludeChildProjects(t *testing.T) {
+	u := &user.User{ID: 6}
+
+	t.Run("union across all levels when flag is on", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		c := &TaskCollection{
+			ProjectID:            41,
+			IncludeChildProjects: true,
+		}
+		got, _, _, err := c.ReadAll(s, u, "", 0, 50)
+		require.NoError(t, err)
+		tasks, ok := got.([]*Task)
+		require.True(t, ok)
+
+		gotIDs := make([]int64, 0, len(tasks))
+		for _, task := range tasks {
+			gotIDs = append(gotIDs, task.ID)
+		}
+		assert.Contains(t, gotIDs, int64(49), "parent project's own task should be included")
+		assert.Contains(t, gotIDs, int64(50), "direct child project's task should be included")
+		assert.Contains(t, gotIDs, int64(51), "grandchild project's task should be included")
+	})
+
+	t.Run("flag off returns only the parent project's tasks", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		c := &TaskCollection{
+			ProjectID: 41,
+		}
+		got, _, _, err := c.ReadAll(s, u, "", 0, 50)
+		require.NoError(t, err)
+		tasks, ok := got.([]*Task)
+		require.True(t, ok)
+
+		gotIDs := make([]int64, 0, len(tasks))
+		for _, task := range tasks {
+			gotIDs = append(gotIDs, task.ID)
+		}
+		assert.Contains(t, gotIDs, int64(49))
+		assert.NotContains(t, gotIDs, int64(50), "child project's task must not leak when the flag is off")
+		assert.NotContains(t, gotIDs, int64(51), "grandchild project's task must not leak when the flag is off")
+	})
+
+	// Vikunja's permission model cascades read access down the whole project
+	// tree: whoever can read a project can read every descendant of it (see
+	// checkPermissionsForProjects in project_permissions.go), so a descendant
+	// under a readable parent is never itself unreadable. The boundary that
+	// actually matters is that the flag can't be used to bypass the CanRead
+	// gate on the viewed (parent) project itself - project 20 is owned by
+	// user13 and user1 has no grant on it (see comment in projects.yml fixture).
+	t.Run("flag does not bypass the CanRead gate on the viewed project", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		u1 := &user.User{ID: 1}
+		c := &TaskCollection{
+			ProjectID:            20,
+			IncludeChildProjects: true,
+		}
+		_, _, _, err := c.ReadAll(s, u1, "", 0, 50)
+		require.Error(t, err)
+		assert.True(t, IsErrUserDoesNotHaveAccessToProject(err), "expected ErrUserDoesNotHaveAccessToProject, got %v", err)
+	})
+
+	t.Run("archived descendant is excluded", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		c := &TaskCollection{
+			ProjectID:            41,
+			IncludeChildProjects: true,
+		}
+		got, _, _, err := c.ReadAll(s, u, "", 0, 50)
+		require.NoError(t, err)
+		tasks, ok := got.([]*Task)
+		require.True(t, ok)
+
+		for _, task := range tasks {
+			assert.NotEqual(t, int64(53), task.ID,
+				"task from an archived descendant project must not be included")
+		}
+	})
+}

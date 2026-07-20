@@ -47,6 +47,8 @@ type TaskCollection struct {
 	// If set to true, the result will also include null values
 	FilterIncludeNulls bool `query:"filter_include_nulls" json:"filter_include_nulls" doc:"If true, the result also includes tasks whose filtered field is null."`
 
+	IncludeChildProjects bool `query:"include_child_projects" json:"include_child_projects" doc:"If true and viewing a project, also include tasks from all descendant (sub-)projects the user can read. Archived descendants are excluded."`
+
 	// If set to `subtasks`, Vikunja will fetch only tasks which do not have subtasks and then in a
 	// second step, will fetch all of these subtasks. This may result in more tasks than the
 	// pagination limit being returned, but all subtasks will be present in the response.
@@ -208,7 +210,59 @@ func getRelevantProjectsFromCollection(s *xorm.Session, a web.Auth, tf *TaskColl
 		}
 	}
 
-	return []*Project{{ID: tf.ProjectID}}, nil
+	if !tf.IncludeChildProjects {
+		return []*Project{{ID: tf.ProjectID}}, nil
+	}
+
+	descendants, err := getDescendantProjectsForUser(s, a, tf.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+
+	return append([]*Project{{ID: tf.ProjectID}}, descendants...), nil
+}
+
+// getDescendantProjectsForUser returns every descendant (all levels) of parentProjectID
+// that the acting user can read, archived ones excluded. It reuses getRawProjectsForUser's
+// permission-filtered, archived-cascade-aware project set so the tree walk can't surface
+// a project the user has no access to.
+func getDescendantProjectsForUser(s *xorm.Session, a web.Auth, parentProjectID int64) (descendants []*Project, err error) {
+	accessible, _, _, err := getRawProjectsForUser(
+		s,
+		&projectOptions{
+			user: &user.User{ID: a.GetID()},
+			page: -1,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	childrenByParent := make(map[int64][]*Project)
+	for _, p := range accessible {
+		childrenByParent[p.ParentProjectID] = append(childrenByParent[p.ParentProjectID], p)
+	}
+
+	// visited guards against a parent-chain cycle in corrupt/imported data
+	// (cycle detection on Create/Update normally prevents one) turning the walk
+	// into an unbounded loop.
+	visited := map[int64]bool{parentProjectID: true}
+	queue := []int64{parentProjectID}
+	for len(queue) > 0 {
+		id := queue[0]
+		queue = queue[1:]
+
+		for _, child := range childrenByParent[id] {
+			if visited[child.ID] {
+				continue
+			}
+			visited[child.ID] = true
+			descendants = append(descendants, child)
+			queue = append(queue, child.ID)
+		}
+	}
+
+	return descendants, nil
 }
 
 func getFilterValueForBucketFilter(filter string, view *ProjectView) (newFilter string, err error) {
