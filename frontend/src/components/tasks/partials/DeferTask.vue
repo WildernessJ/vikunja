@@ -1,6 +1,6 @@
 <template>
 	<div
-		:class="{ 'is-loading': taskService.loading }"
+		:class="{ 'is-loading': saving }"
 		class="defer-task loading-container"
 		@click.stop
 		@mousedown.stop
@@ -33,20 +33,20 @@
 		</div>
 		<flat-pickr
 			v-model="dueDate"
-			:class="{ disabled: taskService.loading }"
+			:class="{ disabled: saving }"
 			:config="flatPickerConfig"
-			:disabled="taskService.loading || undefined"
+			:disabled="saving || undefined"
 			class="input"
 		/>
 	</div>
 </template>
 
 <script setup lang="ts">
-import {ref, shallowReactive, computed, watch, onMounted, onBeforeUnmount} from 'vue'
+import {ref, computed, watch, onMounted, onBeforeUnmount} from 'vue'
 import {useI18n} from 'vue-i18n'
 import flatPickr from 'vue-flatpickr-component'
 
-import TaskService from '@/services/task'
+import {useTaskStore} from '@/stores/tasks'
 import type {ITask} from '@/modelTypes/ITask'
 import {useFlatpickrLanguage} from '@/helpers/useFlatpickrLanguage'
 import {useTimeFormat} from '@/composables/useTimeFormat'
@@ -63,8 +63,11 @@ const emit = defineEmits<{
 const {t} = useI18n({useScope: 'global'})
 const {store: timeFormat} = useTimeFormat()
 
-const taskService = shallowReactive(new TaskService())
+const taskStore = useTaskStore()
 const task = ref<ITask>()
+// Scope the loading indicator to this widget's own save; taskStore.isLoading is
+// global and would flip on any app-wide task activity.
+const saving = ref(false)
 
 // We're saving the due date separately to prevent null errors in very short periods where the task is null.
 const dueDate = ref<Date | null>(null)
@@ -127,13 +130,18 @@ async function updateDueDate() {
 		return
 	}
 
-	const newTask = await taskService.update({
-		...task.value,
-		dueDate: new Date(dueDate.value),
-	})
-	lastValue.value = newTask.dueDate
-	task.value = newTask
-	emit('update:modelValue', newTask)
+	saving.value = true
+	try {
+		const newTask = await taskStore.update({
+			...task.value,
+			dueDate: new Date(dueDate.value),
+		})
+		lastValue.value = newTask.dueDate
+		task.value = newTask
+		emit('update:modelValue', newTask)
+	} finally {
+		saving.value = false
+	}
 }
 </script>
 

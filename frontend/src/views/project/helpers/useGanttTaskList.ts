@@ -104,7 +104,7 @@ export function useGanttTaskList<F extends Filters>(
 		tasks.value.set(newTask.id, newTask)
 
 		try {
-			const updatedTask = await taskService.update(newTask)
+			const updatedTask = await taskStore.update(newTask)
 			// update the task with possible changes from server
 			tasks.value.set(updatedTask.id, updatedTask)
 			success('Saved')
