@@ -1,6 +1,6 @@
 {
   "name": "vikunja-desktop",
-  "version": "v0.1.7",
+  "version": "v0.1.8",
   "description": "Vikunja's frontend as a standalone desktop application.",
   "main": "main.js",
   "repository": "https://code.vikunja.io/desktop",
