@@ -38,6 +38,7 @@ history lives in `../context/RUN_LOG.md`. Upstream's own decisions don't need AD
 | [ADR-0003](ADR-0003-model-date-column-convention.md) | One date-column convention for frontend models, enforced by an auto-enumerating test | Enacted | 2026-07-17 | — |
 | [ADR-0004](ADR-0004-popup-renders-content-only-when-open.md) | Shared Popup renders content only when open (v-if + Transition), not always-mounted | Enacted | 2026-07-17 | — |
 | [ADR-0005](ADR-0005-config-driven-cron-fails-soft.md) | Config-driven cron schedules fail soft (Critical log + disable), not fatal | Enacted | 2026-07-17 | — |
+| [ADR-0006](ADR-0006-upstream-sync-via-merge.md) | Sync with upstream via full merge commits, not cherry-picks | Enacted | 2026-07-21 | — |
 
 ## How to add a new ADR
 
