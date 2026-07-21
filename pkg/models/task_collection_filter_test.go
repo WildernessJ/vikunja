@@ -20,8 +20,10 @@ import (
 	"testing"
 	"time"
 
+	"code.vikunja.io/api/pkg/config"
 	"code.vikunja.io/api/pkg/db"
 
+	datemath "github.com/jszwedko/go-datemath"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"xorm.io/builder"
@@ -250,6 +252,29 @@ func TestParseFilter(t *testing.T) {
 		resultTime := result[0].value.(time.Time)
 		assert.Equal(t, expectedDate.Format(time.RFC3339), resultTime.Format(time.RFC3339))
 	})
+	t.Run("date field with non-zero-padded date", func(t *testing.T) {
+		result, err := getTaskFiltersFromFilterString("start_date = 2023-6-5", "UTC")
+
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+		assert.Equal(t, "start_date", result[0].field)
+		assert.Equal(t, taskFilterComparatorEquals, result[0].comparator)
+		expectedDate, err := time.ParseInLocation("2006-01-02", "2023-06-05", time.UTC)
+		require.NoError(t, err)
+		resultTime := result[0].value.(time.Time)
+		assert.Equal(t, expectedDate.Format(time.RFC3339), resultTime.Format(time.RFC3339))
+	})
+	t.Run("date field with non-zero-padded day", func(t *testing.T) {
+		result, err := getTaskFiltersFromFilterString("due_date = 2022-11-1", "UTC")
+
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+		assert.Equal(t, "due_date", result[0].field)
+		expectedDate, err := time.ParseInLocation("2006-01-02", "2022-11-01", time.UTC)
+		require.NoError(t, err)
+		resultTime := result[0].value.(time.Time)
+		assert.Equal(t, expectedDate.Format(time.RFC3339), resultTime.Format(time.RFC3339))
+	})
 	t.Run("in query with multiple values", func(t *testing.T) {
 		result, err := getTaskFiltersFromFilterString("priority in 1,3,5", "UTC")
 
@@ -317,5 +342,49 @@ func TestParseFilter(t *testing.T) {
 		// wrapper must recover from this panic and return an error instead.
 		_, err := getTaskFiltersFromFilterString("due_date = no", "UTC")
 		require.Error(t, err)
+	})
+}
+
+// Date filter boundaries must be emitted in UTC — the driver drops a bound
+// parameter's offset against the naive UTC column, so a service-timezone wall
+// clock shifts the boundary. https://github.com/go-vikunja/vikunja/issues/3181
+func TestDateFilterTimezone(t *testing.T) {
+	la, err := time.LoadLocation("America/Los_Angeles")
+	require.NoError(t, err)
+
+	orig := config.ServiceTimeZone.GetString()
+	config.ServiceTimeZone.Set("America/Los_Angeles")
+	defer config.ServiceTimeZone.Set(orig)
+
+	for _, expr := range []string{"now/d", "now/d+1d", "now+1d/d"} {
+		t.Run(expr, func(t *testing.T) {
+			filters, err := getTaskFiltersFromFilterString("due_date < "+expr, "America/Los_Angeles")
+			require.NoError(t, err)
+			require.Len(t, filters, 1)
+
+			got, ok := filters[0].value.(time.Time)
+			require.True(t, ok)
+
+			assert.Equal(t, time.UTC, got.Location(), "filter boundary must be in UTC, got %s", got.Location())
+
+			want := datemath.MustParse(expr).Time(datemath.WithLocation(la)).UTC()
+			assert.Equal(t,
+				want.Format("2006-01-02 15:04:05"),
+				got.Format("2006-01-02 15:04:05"),
+				"boundary should be local %s midnight expressed in UTC", expr)
+		})
+	}
+
+	// 2026-07-15 00:00 PDT (UTC-7) = 07:00 UTC
+	t.Run("absolute date", func(t *testing.T) {
+		filters, err := getTaskFiltersFromFilterString("due_date < 2026-07-15", "America/Los_Angeles")
+		require.NoError(t, err)
+		require.Len(t, filters, 1)
+
+		got, ok := filters[0].value.(time.Time)
+		require.True(t, ok)
+
+		assert.Equal(t, time.UTC, got.Location(), "filter boundary must be in UTC, got %s", got.Location())
+		assert.Equal(t, "2026-07-15 07:00:00", got.Format("2006-01-02 15:04:05"))
 	})
 }

@@ -36,7 +36,7 @@
 						@start="() => dragBucket = true"
 					>
 						<template #item="{element: bucket, index: bucketIndex }">
-							<div
+							<li
 								class="bucket"
 								:class="{'is-collapsed': collapsedBuckets[bucket.id]}"
 							>
@@ -97,6 +97,7 @@
 											<div class="control">
 												<XButton
 													v-cy="'setBucketLimit'"
+													:aria-label="$t('misc.save')"
 													:disabled="bucket.limit < 0"
 													:icon="['far', 'save']"
 													:shadow="false"
@@ -165,7 +166,7 @@
 									@end="updateTaskPosition"
 								>
 									<template #footer>
-										<div
+										<li
 											v-if="canCreateTasks"
 											class="bucket-footer"
 										>
@@ -211,11 +212,11 @@
 													bucket.tasks.length === 0 ? $t('project.kanban.addTask') : $t('project.kanban.addAnotherTask')
 												}}
 											</XButton>
-										</div>
+										</li>
 									</template>
 
 									<template #item="{element: task}">
-										<div
+										<li
 											class="task-item"
 											:data-task-id="task.id"
 										>
@@ -233,10 +234,10 @@
 												:project-id="projectId"
 												@taskCompletedRecurring="handleRecurringTaskCompletion"
 											/>
-										</div>
+										</li>
 									</template>
 								</TaskDraggable>
-							</div>
+							</li>
 						</template>
 					</BucketDraggable>
 
@@ -1014,6 +1015,7 @@ $filter-container-height: '1rem - #{$switch-view-height}';
 
 	&-bucket-container {
 		display: flex;
+		list-style: none;
 	}
 
 	.ghost {
@@ -1055,6 +1057,7 @@ $filter-container-height: '1rem - #{$switch-view-height}';
 		.tasks {
 			overflow: hidden auto;
 			block-size: 100%;
+			list-style: none;
 		}
 
 		.task-item {
@@ -1136,7 +1139,7 @@ $filter-container-height: '1rem - #{$switch-view-height}';
 			font-weight: bold;
 
 			&.is-max {
-				color: var(--danger);
+				color: var(--danger-text);
 			}
 		}
 

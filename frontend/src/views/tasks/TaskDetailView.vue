@@ -140,6 +140,7 @@
 									<BaseButton
 										v-if="task.dueDate && canWrite"
 										class="remove"
+										:aria-label="$t('task.detail.removeDueDate')"
 										@click="() => {task.dueDate = null;saveTask()}"
 									>
 										<span class="icon is-small">
@@ -176,6 +177,7 @@
 									<BaseButton
 										v-if="task.deadline && canWrite"
 										class="remove"
+										:aria-label="$t('task.detail.removeDeadline')"
 										@click="() => {task.deadline = null;saveTask()}"
 									>
 										<span class="icon is-small">
@@ -251,6 +253,7 @@
 									<BaseButton
 										v-if="task.startDate && canWrite"
 										class="remove"
+										:aria-label="$t('task.detail.removeStartDate')"
 										@click="() => {task.startDate = null;saveTask()}"
 									>
 										<span class="icon is-small">
@@ -284,6 +287,7 @@
 									<BaseButton
 										v-if="task.endDate && canWrite"
 										class="remove"
+										:aria-label="$t('task.detail.removeEndDate')"
 										@click="() => {task.endDate = null;saveTask()}"
 									>
 										<span class="icon is-small">
@@ -332,6 +336,7 @@
 									<BaseButton
 										v-if="canWrite"
 										class="remove"
+										:aria-label="$t('task.detail.removeRepeat')"
 										@click="removeRepeatAfter"
 									>
 										<span class="icon is-small">
@@ -387,6 +392,7 @@
 							:disabled="!canWrite"
 							:task-id="taskId"
 							:creatable="!authStore.isLinkShareAuth"
+							:creation-disabled-message="authStore.isLinkShareAuth ? $t('task.label.linkShareCannotCreate') : ''"
 						/>
 					</div>
 
@@ -437,12 +443,12 @@
 						v-if="activeFields.relatedTasks"
 						class="content details mbe-0"
 					>
-						<h3>
+						<h2 class="task-section-title">
 							<span class="icon is-grey">
 								<Icon icon="sitemap" />
 							</span>
 							{{ $t('task.attributes.relatedTasks') }}
-						</h3>
+						</h2>
 						<RelatedTasks
 							:ref="e => setFieldRef('relatedTasks', e)"
 							:edit-enabled="canWrite"
@@ -458,12 +464,12 @@
 						v-if="activeFields.moveProject"
 						class="content details"
 					>
-						<h3>
+						<h2 class="task-section-title">
 							<span class="icon is-grey">
 								<Icon icon="list" />
 							</span>
 							{{ $t('task.detail.move') }}
-						</h3>
+						</h2>
 						<div class="field has-addons">
 							<div class="control is-expanded">
 								<ProjectSearch
@@ -1059,7 +1065,9 @@ watch(
 			}
 		} catch (caughtError) {
 			const e = caughtError as HTTPErrorResponse
-			if (e?.response?.status === 404) {
+			// 403 means the task exists but is not visible to us; treat it like
+			// a 404 so we route away instead of rendering an empty task shell.
+			if (e?.response?.status === 404 || e?.response?.status === 403) {
 				taskNotFound.value = true
 				router.replace({name: 'not-found'})
 				return
@@ -1380,7 +1388,7 @@ function setRelatedTasksActive() {
 	}
 }
 
-h3 .button {
+h2 .button {
 	vertical-align: middle;
 }
 
@@ -1525,13 +1533,14 @@ h3 .button {
 			background-color: transparent;
 			box-shadow: none;
 
+			// bright brand green with fixed dark text passes contrast in both themes
 			&.is-pending {
-				color: var(--success);
+				background-color: var(--success);
+				color: hsl(215, 27.9%, 16.9%);
 
 				&:hover,
 				&:focus {
-					background-color: var(--success);
-					color: #ffffff;
+					filter: brightness(1.05);
 				}
 			}
 		}

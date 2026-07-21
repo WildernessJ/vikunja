@@ -334,9 +334,18 @@ func TestActivityCapture_TaskDeleteRemovesEntries(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	// A user delete is a soft delete now; the feed keeps its entries so a
+	// restored task keeps its history.
 	task := &Task{ID: 1}
 	require.NoError(t, task.Delete(s, u))
 	require.NoError(t, s.Commit())
+	db.AssertExists(t, "activities", map[string]interface{}{"task_id": 1}, false)
+
+	// Only the permanent (30-day cron / project delete) removal drops them.
+	s2 := db.NewSession()
+	defer s2.Close()
+	require.NoError(t, hardDeleteTask(s2, task))
+	require.NoError(t, s2.Commit())
 
 	db.AssertMissing(t, "activities", map[string]interface{}{"task_id": 1})
 }

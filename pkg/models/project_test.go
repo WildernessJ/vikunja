@@ -80,6 +80,19 @@ func TestProject_CreateOrUpdate(t *testing.T) {
 				"project_view_id": kanbanView.ID,
 			}, false)
 		})
+		t.Run("pseudo parent project id is rejected", func(t *testing.T) {
+			db.LoadAndAssertFixtures(t)
+			s := db.NewSession()
+			defer s.Close()
+			project := Project{
+				Title:           "pseudo parent create",
+				ParentProjectID: Ptr(int64(-1)),
+			}
+			err := project.Create(s, usr)
+			require.Error(t, err)
+			assert.True(t, IsErrProjectCannotBelongToAPseudoParentProject(err))
+			db.AssertMissing(t, "projects", map[string]interface{}{"title": "pseudo parent create"})
+		})
 		t.Run("bot project owned by bot owner", func(t *testing.T) {
 			db.LoadAndAssertFixtures(t)
 			s := db.NewSession()
@@ -149,7 +162,7 @@ func TestProject_CreateOrUpdate(t *testing.T) {
 			project := Project{
 				Title:           "test",
 				Description:     "Lorem Ipsum",
-				ParentProjectID: 999999,
+				ParentProjectID: Ptr(int64(999999)),
 			}
 			err := project.Create(s, usr)
 			require.Error(t, err)
@@ -262,7 +275,7 @@ func TestProject_CreateOrUpdate(t *testing.T) {
 					ID:              6,
 					Title:           "Test6",
 					Description:     "Lorem Ipsum",
-					ParentProjectID: 7, // from 6
+					ParentProjectID: Ptr(int64(7)), // from 6
 				}
 				can, err := project.CanUpdate(s, usr)
 				require.NoError(t, err)
@@ -275,7 +288,7 @@ func TestProject_CreateOrUpdate(t *testing.T) {
 					"id":                project.ID,
 					"title":             project.Title,
 					"description":       project.Description,
-					"parent_project_id": project.ParentProjectID,
+					"parent_project_id": project.parentID(),
 				}, false)
 			})
 			t.Run("others", func(t *testing.T) {
@@ -286,7 +299,7 @@ func TestProject_CreateOrUpdate(t *testing.T) {
 					ID:              1,
 					Title:           "Test1",
 					Description:     "Lorem Ipsum",
-					ParentProjectID: 2, // from 1
+					ParentProjectID: Ptr(int64(2)), // from 1
 				}
 				can, _ := project.CanUpdate(s, usr)
 				assert.False(t, can) // project is not writeable by us
@@ -305,7 +318,7 @@ func TestProject_CreateOrUpdate(t *testing.T) {
 					ID:              6,
 					Title:           "Test6",
 					Description:     "Lorem Ipsum",
-					ParentProjectID: -1,
+					ParentProjectID: Ptr(int64(-1)),
 				}
 				err := project.Update(s, usr)
 				require.Error(t, err)
@@ -323,7 +336,7 @@ func TestProject_CreateOrUpdate(t *testing.T) {
 				project := Project{
 					ID:              10,
 					Title:           "Test10",
-					ParentProjectID: 1, // attacker-owned root
+					ParentProjectID: Ptr(int64(1)), // attacker-owned root
 				}
 				err := project.Update(s, usr)
 				require.Error(t, err)
@@ -339,7 +352,7 @@ func TestProject_CreateOrUpdate(t *testing.T) {
 				project := Project{
 					ID:              43,
 					Title:           "Reparent Escalation Test Child",
-					ParentProjectID: 1,
+					ParentProjectID: Ptr(int64(1)),
 				}
 				err := project.Update(s, usr)
 				require.Error(t, err)
@@ -348,21 +361,49 @@ func TestProject_CreateOrUpdate(t *testing.T) {
 			t.Run("non-reparent update with Write still permitted (regression)", func(t *testing.T) {
 				// User 1 has Write (not Admin) on project 43 via project 10;
 				// a rename with parent unchanged must not trip the Admin gate.
-				//
-				// ParentProjectID is set to the stored value (10), not 0: the
-				// gate only fires on non-zero ParentProjectID because the
-				// generic handler can't distinguish omitted from explicit-zero
-				// (detach-to-root is a follow-up, needs a pointer field).
 				db.LoadAndAssertFixtures(t)
 				s := db.NewSession()
 				defer s.Close()
 				project := Project{
 					ID:              43,
 					Title:           "Reparent Escalation Test Child renamed",
-					ParentProjectID: 10, // unchanged — no reparent intent
+					ParentProjectID: Ptr(int64(10)), // unchanged — no reparent intent
 				}
 				err := project.Update(s, usr)
 				require.NoError(t, err)
+			})
+			t.Run("partial update with omitted parent keeps the parent (regression)", func(t *testing.T) {
+				// A partial update (ParentProjectID nil) must not silently
+				// detach project 43 from its parent 10.
+				db.LoadAndAssertFixtures(t)
+				s := db.NewSession()
+				defer s.Close()
+				project := Project{
+					ID:    43,
+					Title: "Reparent Escalation Test Child renamed again",
+				}
+				err := project.Update(s, usr)
+				require.NoError(t, err)
+				stored, err := GetProjectSimpleByID(s, 43)
+				require.NoError(t, err)
+				assert.Equal(t, int64(10), stored.parentID())
+			})
+			t.Run("attacker with Write cannot detach a child to root via parent_project_id=0 (GHSA-44v6-7fxq-vgf4)", func(t *testing.T) {
+				// User 1 has Write (not Admin) on project 43 via project 10.
+				// Sending an explicit parent_project_id=0 detaches the child to
+				// the top level, which severs the inherited-permission chain and
+				// must require Admin on the moved project.
+				db.LoadAndAssertFixtures(t)
+				s := db.NewSession()
+				defer s.Close()
+				project := Project{
+					ID:              43,
+					Title:           "Reparent Escalation Test Child",
+					ParentProjectID: Ptr(int64(0)), // explicit detach-to-root
+				}
+				err := project.Update(s, usr)
+				require.Error(t, err)
+				assert.True(t, IsErrGenericForbidden(err))
 			})
 		})
 		t.Run("archive default project of the same user", func(t *testing.T) {
@@ -431,9 +472,9 @@ func TestProject_CreateOrUpdate(t *testing.T) {
 			parent := Project{Title: "exhausted-parent"}
 			require.NoError(t, parent.Create(s, usr))
 
-			cA := Project{Title: "a", ParentProjectID: parent.ID}
-			cB := Project{Title: "b", ParentProjectID: parent.ID}
-			cC := Project{Title: "c", ParentProjectID: parent.ID}
+			cA := Project{Title: "a", ParentProjectID: Ptr(parent.ID)}
+			cB := Project{Title: "b", ParentProjectID: Ptr(parent.ID)}
+			cC := Project{Title: "c", ParentProjectID: Ptr(parent.ID)}
 			require.NoError(t, cA.Create(s, usr))
 			require.NoError(t, cB.Create(s, usr))
 			require.NoError(t, cC.Create(s, usr))
@@ -475,15 +516,15 @@ func TestProject_CreateOrUpdate(t *testing.T) {
 			require.NoError(t, parentB.Create(s, usr))
 
 			// A holds the project being moved out plus one that must stay put.
-			moved := Project{Title: "moved", ParentProjectID: parentA.ID}
-			aKeep := Project{Title: "a-keep", ParentProjectID: parentA.ID}
+			moved := Project{Title: "moved", ParentProjectID: Ptr(parentA.ID)}
+			aKeep := Project{Title: "a-keep", ParentProjectID: Ptr(parentA.ID)}
 			require.NoError(t, moved.Create(s, usr))
 			require.NoError(t, aKeep.Create(s, usr))
 
 			// B's children have crammed positions near the top.
-			b1 := Project{Title: "b1", ParentProjectID: parentB.ID}
-			b2 := Project{Title: "b2", ParentProjectID: parentB.ID}
-			b3 := Project{Title: "b3", ParentProjectID: parentB.ID}
+			b1 := Project{Title: "b1", ParentProjectID: Ptr(parentB.ID)}
+			b2 := Project{Title: "b2", ParentProjectID: Ptr(parentB.ID)}
+			b3 := Project{Title: "b3", ParentProjectID: Ptr(parentB.ID)}
 			require.NoError(t, b1.Create(s, usr))
 			require.NoError(t, b2.Create(s, usr))
 			require.NoError(t, b3.Create(s, usr))
@@ -499,7 +540,7 @@ func TestProject_CreateOrUpdate(t *testing.T) {
 			// midpoint 0.03, below the recalc threshold, under a new parent.
 			toMove, err := GetProjectSimpleByID(s, moved.ID)
 			require.NoError(t, err)
-			toMove.ParentProjectID = parentB.ID
+			toMove.ParentProjectID = Ptr(parentB.ID)
 			toMove.Position = 0.03
 			can, err := toMove.CanUpdate(s, usr)
 			require.NoError(t, err)
@@ -514,14 +555,14 @@ func TestProject_CreateOrUpdate(t *testing.T) {
 				return p
 			}
 			movedRow := load(moved.ID)
-			assert.Equal(t, parentB.ID, movedRow.ParentProjectID, "moved project should be reparented to B")
+			assert.Equal(t, parentB.ID, movedRow.parentID(), "moved project should be reparented to B")
 			// In B: b1 < moved < b2 < b3 — dropped between b1 and b2, not at the top.
 			assert.Less(t, load(b1.ID).Position, movedRow.Position, "moved must not jump above b1")
 			assert.Less(t, movedRow.Position, load(b2.ID).Position, "moved must stay before b2")
 			assert.Less(t, load(b2.ID).Position, load(b3.ID).Position, "b2 before b3 preserved")
 			// A's untouched child keeps its parent and position (A is not recalculated).
 			aKeepRow := load(aKeep.ID)
-			assert.Equal(t, parentA.ID, aKeepRow.ParentProjectID, "a-keep should remain under A")
+			assert.Equal(t, parentA.ID, aKeepRow.parentID(), "a-keep should remain under A")
 			assert.InDelta(t, 0.04, aKeepRow.Position, 0, "a-keep position should be untouched")
 		})
 	})
@@ -542,8 +583,9 @@ func TestProject_Delete(t *testing.T) {
 		db.AssertMissing(t, "projects", map[string]interface{}{
 			"id": 1,
 		})
+		// AssertMissing queries raw, so this also covers the soft-deleted task 51
 		db.AssertMissing(t, "tasks", map[string]interface{}{
-			"id": 1,
+			"project_id": 1,
 		})
 	})
 	t.Run("with background", func(t *testing.T) {
@@ -938,7 +980,7 @@ func TestCheckIsArchived(t *testing.T) {
 		s := db.NewSession()
 		defer s.Close()
 
-		p := &Project{ID: 40, ParentProjectID: 3}
+		p := &Project{ID: 40, ParentProjectID: Ptr(int64(3))}
 		err := p.CheckIsArchived(s)
 		require.Error(t, err)
 		assert.True(t, IsErrProjectIsArchived(err))
@@ -960,7 +1002,7 @@ func TestCheckIsArchived(t *testing.T) {
 		s := db.NewSession()
 		defer s.Close()
 
-		p := &Project{ID: 21, ParentProjectID: 22}
+		p := &Project{ID: 21, ParentProjectID: Ptr(int64(22))}
 		err := p.CheckIsArchived(s)
 		require.Error(t, err)
 		assert.True(t, IsErrProjectIsArchived(err))

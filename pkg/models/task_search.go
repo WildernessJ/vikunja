@@ -126,10 +126,22 @@ func getOrderByDBStatement(opts *taskSearchOptions) (orderby string, err error) 
 	// Since xorm does not use placeholders for order by, it is possible to expose this with sql injection if we're directly
 	// passing user input to the db.
 	// As a workaround to prevent this, we check for valid column names here prior to passing it to the db.
-	for i, param := range opts.sortby {
+	parts := make([]string, 0, len(opts.sortby))
+	for _, param := range opts.sortby {
 		// Validate the params
 		if err := param.validate(); err != nil {
 			return "", err
+		}
+
+		if param.sortBy == taskPropertyRelevance {
+			// pdb.score is only valid SQL when the ParadeDB extension is installed.
+			// Search strips the param when the query cannot be scored, this guards
+			// any other caller. Most-relevant-first is the only useful direction,
+			// the requested order is ignored.
+			if db.ParadeDBAvailable() {
+				parts = append(parts, "pdb.score(tasks.id) DESC")
+			}
+			continue
 		}
 
 		var prefix string
@@ -142,27 +154,25 @@ func getOrderByDBStatement(opts *taskSearchOptions) (orderby string, err error) 
 			prefix = "tasks."
 		}
 
+		part := prefix + "`" + param.sortBy + "` " + param.orderBy.String()
+
 		// Mysql sorts columns with null values before ones without null value.
 		// Because it does not have support for NULLS FIRST or NULLS LAST we work around this by
 		// first sorting for null (or not null) values and then the order we actually want to.
 		if db.Type() == schemas.MYSQL {
-			orderby += prefix + "`" + param.sortBy + "` IS NULL, "
+			part = prefix + "`" + param.sortBy + "` IS NULL, " + part
 		}
-
-		orderby += prefix + "`" + param.sortBy + "` " + param.orderBy.String()
 
 		// Postgres and sqlite allow us to control how columns with null values are sorted.
 		// To make that consistent with the sort order we have and other dbms, we're adding a separate clause here.
 		if db.Type() == schemas.POSTGRES || db.Type() == schemas.SQLITE {
-			orderby += " NULLS LAST"
+			part += " NULLS LAST"
 		}
 
-		if (i + 1) < len(opts.sortby) {
-			orderby += ", "
-		}
+		parts = append(parts, part)
 	}
 
-	return
+	return strings.Join(parts, ", "), nil
 }
 
 func convertFiltersToDBFilterCond(rawFilters []*taskFilter, includeNulls bool) (filterCond builder.Cond, err error) {
@@ -361,11 +371,13 @@ func stripBucketIDFilters(filters []*taskFilter) []*taskFilter {
 // buildSubtaskRootCondition decides which tasks count as "roots" when expanding
 // subtasks: a task is a root unless its parent is itself part of this result set.
 //
-// A task is excluded from roots only when ALL of the following hold:
-//   - it has a parenttask relation, AND
-//   - the parent task exists, AND
-//   - the parent is within the queried result scope, AND
-//   - the parent satisfies the active filter.
+// A task is excluded from roots only when its parenttask relation points at a
+// parent that is not soft-deleted, is within the queried result scope, and
+// satisfies both the active filter and the active search.
+//
+// A correlated NOT EXISTS (rather than NOT over LEFT JOINs) keeps SQL three-valued
+// logic from dropping the child: a NULL predicate inside EXISTS yields no row, so
+// the whole thing collapses to a clean FALSE and the child stays a root.
 func (d *dbTaskSearcher) buildSubtaskRootCondition(opts *taskSearchOptions) (builder.Cond, error) {
 	// The base result set is (projectIDCond OR favoritesCond); mirror both so the
 	// parent is considered "in scope" exactly when it could appear as a result row.
@@ -384,12 +396,15 @@ func (d *dbTaskSearcher) buildSubtaskRootCondition(opts *taskSearchOptions) (bui
 		scopes = append(scopes, builder.In("parent_tasks.id", favCond))
 	}
 
-	parentInScope := builder.Cond(builder.Expr("1 = 1"))
+	predicates := []builder.Cond{
+		builder.Expr("task_relations.task_id = tasks.id"),
+		builder.Eq{"task_relations.relation_kind": RelationKindParenttask},
+		taskNotDeletedCond("parent_tasks"),
+	}
 	if len(scopes) > 0 {
-		parentInScope = builder.Or(scopes...)
+		predicates = append(predicates, builder.Or(scopes...))
 	}
 
-	parentMatchesFilter := builder.Cond(builder.Expr("1 = 1"))
 	if len(opts.parsedFilters) > 0 {
 		parentFilters := stripBucketIDFilters(cloneTaskFilters(opts.parsedFilters))
 		filterCond, err := convertFiltersToDBFilterCondWithAlias(parentFilters, opts.filterIncludeNulls, "parent_tasks")
@@ -397,27 +412,39 @@ func (d *dbTaskSearcher) buildSubtaskRootCondition(opts *taskSearchOptions) (bui
 			return nil, err
 		}
 		if filterCond != nil {
-			parentMatchesFilter = filterCond
+			predicates = append(predicates, filterCond)
 		}
 	}
 
-	parentIsRoot := builder.And(
-		builder.NotNull{"task_relations.id"},
-		builder.NotNull{"parent_tasks.id"},
-		parentInScope,
-		parentMatchesFilter,
-	)
+	if searchCond := buildParentSearchCondition(opts.search); searchCond != nil {
+		predicates = append(predicates, searchCond)
+	}
 
-	return builder.Not{parentIsRoot}, nil
+	sub := builder.
+		Select("1").
+		From("task_relations").
+		InnerJoin("tasks parent_tasks", "task_relations.other_task_id = parent_tasks.id").
+		Where(builder.And(predicates...))
+
+	return builder.NotExists(sub), nil
+}
+
+// buildParentSearchCondition mirrors the main query's search onto the parent_tasks
+// alias so an active search decides root membership the same way it decides the
+// result set. No boosts: they only affect scoring, membership is identical without them.
+func buildParentSearchCondition(search string) builder.Cond {
+	if search == "" {
+		return nil
+	}
+	cond := db.MultiFieldSearchWithTableAlias([]string{"title", "description"}, search, "parent_tasks")
+	if searchIndex := getTaskIndexFromSearchString(search); searchIndex > 0 {
+		cond = builder.Or(cond, builder.Eq{"parent_tasks.`index`": searchIndex})
+	}
+	return cond
 }
 
 //nolint:gocyclo
 func (d *dbTaskSearcher) Search(opts *taskSearchOptions) (tasks []*Task, totalCount int64, err error) {
-
-	orderby, err := getOrderByDBStatement(opts)
-	if err != nil {
-		return nil, 0, err
-	}
 
 	joinTaskBuckets := hasBucketIDInParsedFilter(opts.parsedFilters)
 
@@ -448,14 +475,42 @@ func (d *dbTaskSearcher) Search(opts *taskSearchOptions) (tasks []*Task, totalCo
 	// Then return all tasks for that projects
 	var where builder.Cond
 
+	searchIndex := getTaskIndexFromSearchString(opts.search)
 	if opts.search != "" {
-		where = db.MultiFieldSearchWithTableAlias([]string{"title", "description"}, opts.search, "tasks")
+		// With the fuzzy cast the relevance score is a constant sum, not BM25: each
+		// query word matching a field adds 1.0 (exact/prefix) or 0.5 (one edit away),
+		// times the field's boost. Boosting titles 1.5x keeps "more matched words
+		// wins": two description words (2.0) still beat a single title word (1.5),
+		// the boost only decides between tasks matching the same number of words.
+		where = db.MultiFieldSearchWithBoosts([]string{"title", "description"}, []float64{1.5, 1}, opts.search, "tasks")
 
-		searchIndex := getTaskIndexFromSearchString(opts.search)
 		if searchIndex > 0 {
-			where = builder.Or(where, builder.Eq{"`index`": searchIndex})
+			where = builder.Or(where, builder.Eq{"tasks.`index`": searchIndex})
 		}
 	}
+
+	relevanceSortRequested := false
+	for _, param := range opts.sortby {
+		if param.sortBy == taskPropertyRelevance {
+			relevanceSortRequested = true
+			break
+		}
+	}
+
+	// ParadeDB exposes a relevance score via pdb.score(tasks.id) for a query
+	// containing a ParadeDB operator (the ||| from MultiFieldSearchWithBoosts
+	// above qualifies; the comment there describes how the score adds up). When
+	// searching without an explicit user sort — or when the client explicitly
+	// sorts by relevance — order by that score so tasks matching all query words
+	// rank above tasks matching only some.
+	//
+	// Limited to pure-text searches: numeric searches add an `OR index = N` branch,
+	// which pdb.score rejects as an unsupported query shape. pdb.score is also
+	// invalid SQL on sqlite/mysql/plain postgres, hence the ParadeDBAvailable() gate.
+	wantsRelevanceRanking := db.ParadeDBAvailable() &&
+		opts.search != "" &&
+		searchIndex == 0 &&
+		(!opts.userProvidedSort || relevanceSortRequested)
 
 	var projectIDCond builder.Cond
 	var favoritesCond builder.Cond
@@ -464,29 +519,77 @@ func (d *dbTaskSearcher) Search(opts *taskSearchOptions) (tasks []*Task, totalCo
 	}
 
 	if d.hasFavoritesProject {
-		// All favorite tasks for that user
-		favCond := builder.
-			Select("entity_id").
-			From("favorites").
-			Where(
-				builder.And(
-					builder.Eq{"user_id": d.a.GetID()},
-					builder.Eq{"kind": FavoriteKindTask},
-				))
+		addFavoritesCond := true
+		if wantsRelevanceRanking && len(opts.projectIDs) > 0 {
+			// pdb.score also rejects the favorites arm (`OR tasks.id IN (<subquery>)`).
+			// On an all-projects scope that arm is usually redundant — every favorited
+			// task already lives in one of the user's projects — so drop it and keep
+			// relevance ranking. Only favorites outside the scope (e.g. in projects the
+			// user lost access to) need the arm and keep the default, unranked ordering.
+			var hasOutOfScopeFavorites bool
+			hasOutOfScopeFavorites, err = d.s.
+				Table("favorites").
+				Join("INNER", "tasks", "tasks.id = favorites.entity_id").
+				Where(builder.And(
+					builder.Eq{"favorites.user_id": d.a.GetID()},
+					builder.Eq{"favorites.kind": FavoriteKindTask},
+					builder.NotIn("tasks.project_id", opts.projectIDs),
+					taskNotDeletedCond("tasks"),
+				)).
+				Exist()
+			if err != nil {
+				return nil, 0, err
+			}
+			addFavoritesCond = hasOutOfScopeFavorites
+		}
 
-		// The favorites branch bypasses the scoped project set, so it must
-		// exclude template projects itself — otherwise favoriting a task inside a
-		// template would leak it into task collections (Favorites, saved filters).
-		// Direct template access goes through projectIDCond, so it is unaffected.
-		favoritesCond = builder.And(
-			builder.In("tasks.id", favCond),
-			builder.NotIn("tasks.project_id",
-				builder.Select("id").From("projects").Where(builder.Eq{"is_template": true})),
-		)
+		if addFavoritesCond {
+			// All favorite tasks for that user
+			favCond := builder.
+				Select("entity_id").
+				From("favorites").
+				Where(
+					builder.And(
+						builder.Eq{"user_id": d.a.GetID()},
+						builder.Eq{"kind": FavoriteKindTask},
+					))
+
+			// The favorites branch bypasses the scoped project set, so it must
+			// exclude template projects itself — otherwise favoriting a task inside a
+			// template would leak it into task collections (Favorites, saved filters).
+			// Direct template access goes through projectIDCond, so it is unaffected.
+			favoritesCond = builder.And(
+				builder.In("tasks.id", favCond),
+				builder.NotIn("tasks.project_id",
+					builder.Select("id").From("projects").Where(builder.Eq{"is_template": true})),
+			)
+		}
 	}
 
 	limit, start := getLimitFromPageIndex(opts.page, opts.perPage)
 	cond := builder.And(builder.Or(projectIDCond, favoritesCond), where, filterCond)
+
+	// When the favorites arm is still part of the query (Favorites view, or
+	// out-of-scope favorites exist), its shape is unsupported — stay unranked.
+	rankByRelevance := wantsRelevanceRanking && favoritesCond == nil
+
+	if rankByRelevance && !relevanceSortRequested {
+		opts.sortby = append([]*sortParam{{sortBy: taskPropertyRelevance, orderBy: orderDescending}}, opts.sortby...)
+	}
+	if !rankByRelevance && relevanceSortRequested {
+		kept := make([]*sortParam, 0, len(opts.sortby))
+		for _, param := range opts.sortby {
+			if param.sortBy != taskPropertyRelevance {
+				kept = append(kept, param)
+			}
+		}
+		opts.sortby = kept
+	}
+
+	orderby, err := getOrderByDBStatement(opts)
+	if err != nil {
+		return nil, 0, err
+	}
 
 	var distinct = "tasks.*"
 	if strings.Contains(orderby, "task_positions.") {
@@ -497,9 +600,15 @@ func (d *dbTaskSearcher) Search(opts *taskSearchOptions) (tasks []*Task, totalCo
 		cond = builder.And(cond, subtaskRootCond)
 	}
 
-	query := d.s.
-		Distinct(distinct).
-		Where(cond)
+	query := d.s.Where(cond)
+	if rankByRelevance {
+		// Select() passes the raw column list through untouched while Distinct()
+		// (no args) still emits DISTINCT. Distinct("tasks.*, pdb.score(tasks.id)")
+		// would quote-corrupt the function call into "pdb"."score(tasks"."id)".
+		query = query.Select(distinct + ", pdb.score(tasks.id)").Distinct()
+	} else {
+		query = query.Distinct(distinct)
+	}
 	if limit > 0 {
 		query = query.Limit(limit, start)
 	}
@@ -519,11 +628,6 @@ func (d *dbTaskSearcher) Search(opts *taskSearchOptions) (tasks []*Task, totalCo
 		} else {
 			query = query.Join("LEFT", "task_buckets", joinCond)
 		}
-	}
-	if expandSubtasks {
-		query = query.
-			Join("LEFT", "task_relations", "tasks.id = task_relations.task_id and task_relations.relation_kind = 'parenttask'").
-			Join("LEFT", "tasks parent_tasks", "task_relations.other_task_id = parent_tasks.id")
 	}
 
 	tasks = []*Task{}
@@ -576,7 +680,7 @@ func (d *dbTaskSearcher) Search(opts *taskSearchOptions) (tasks []*Task, totalCo
 		sub_tasks st ON tr.task_id = st.other_task_id
 		WHERE tr.relation_kind = '`+string(RelationKindSubtask)+`')
 		SELECT other_task_id
-		FROM sub_tasks) AND id NOT IN (`+notIn+`)`, allArgs...).Find(&subtasks)
+		FROM sub_tasks) AND id NOT IN (`+notIn+`) AND deleted_at IS NULL`, allArgs...).Find(&subtasks)
 		if err != nil {
 			return nil, totalCount, err
 		}
@@ -593,11 +697,6 @@ func (d *dbTaskSearcher) Search(opts *taskSearchOptions) (tasks []*Task, totalCo
 		} else {
 			queryCount = queryCount.Join("LEFT", "task_buckets", joinCond)
 		}
-	}
-	if expandSubtasks {
-		queryCount = queryCount.
-			Join("LEFT", "task_relations", "tasks.id = task_relations.task_id and task_relations.relation_kind = 'parenttask'").
-			Join("LEFT", "tasks parent_tasks", "task_relations.other_task_id = parent_tasks.id")
 	}
 	totalCount, err = queryCount.
 		Select("count(DISTINCT tasks.id)").

@@ -103,6 +103,7 @@ export default class TaskService extends AbstractService<ITask> {
 			startDate: parseDate(updatedModel.startDate),
 			endDate: parseDate(updatedModel.endDate),
 			doneAt: parseDate(updatedModel.doneAt),
+			deletedAt: parseDate(updatedModel.deletedAt),
 			created: new Date(updatedModel.created).toISOString(),
 			updated: new Date(updatedModel.updated).toISOString(),
 			reminderDates: null,

@@ -4,14 +4,15 @@ import {notify} from '@kyvg/vue3-notification'
 // vue-i18n's `t` is typed against the full message schema, whose overload
 // resolution is excessively deep (TS2589) — especially with dynamic keys.
 // Call it through a loosely-typed wrapper (behaviour identical at runtime).
-export function translate(key: string): string {
-	return (i18n.global as unknown as {t: (key: string) => string}).t(key)
+export function translate(key: string, params: Record<string, unknown> = {}): string {
+	return (i18n.global as unknown as {t: (key: string, params: Record<string, unknown>) => string}).t(key, params)
 }
 
 interface ErrorResponseData {
 	code?: number
 	message?: string
 	detail?: string
+	i18n_params?: Record<string, unknown>
 }
 
 interface ErrorLike {
@@ -35,7 +36,7 @@ export function getErrorText(r: unknown): string {
 
 	if (data?.code) {
 		const path = `error.${data.code}`
-		let message: string = translate(path)
+		let message: string = translate(path, data.i18n_params ?? {})
 
 		if (data?.code && data?.message && (data.code === 4016 || data.code === 4017 || data.code === 4018 || data.code === 4019 || data.code === 4024)) {
 			message += '\n' + data.message

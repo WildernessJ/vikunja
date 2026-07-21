@@ -60,7 +60,6 @@
 							ref="taskLinkRef"
 							:to="taskDetailRoute"
 							class="task-link"
-							tabindex="-1"
 						>
 							{{ task.title }}
 						</RouterLink>
@@ -139,6 +138,8 @@
 					<span
 						v-if="task.attachments.length > 0"
 						class="project-task-icon"
+						role="img"
+						:aria-label="$t('task.attributes.attachment', task.attachments.length)"
 					>
 						<Icon icon="paperclip" />
 					</span>
@@ -560,7 +561,7 @@ defineExpose({
 	}
 
 	&[data-is-overdue] .dueDate {
-		color: var(--danger);
+		color: var(--danger-text);
 	}
 
 	.deadline {

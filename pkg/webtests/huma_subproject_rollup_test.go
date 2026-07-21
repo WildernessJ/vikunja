@@ -30,8 +30,8 @@ import (
 // model-level test sets the struct field directly and can't catch a binding gap.
 //
 // Fixtures (pkg/db/fixtures): projects 41 -> 42 -> 44 are a hierarchy owned by
-// user6 with tasks 49 (proj 41), 50 (proj 42), 51 (proj 44). Project 46 is an
-// archived child of 41 with task 53. See task_collection_test.go.
+// user6 with tasks 49 (proj 41), 50 (proj 42), 54 (proj 44). Project 46 is an
+// archived child of 41 with task 55. See task_collection_test.go.
 func TestHumaTaskList_IncludeChildProjects(t *testing.T) {
 	e, err := setupTestEnv()
 	require.NoError(t, err)
@@ -57,14 +57,14 @@ func TestHumaTaskList_IncludeChildProjects(t *testing.T) {
 		got := taskIDs(t, "/api/v2/projects/41/tasks?include_child_projects=true")
 		assert.True(t, got[49], "parent project's own task")
 		assert.True(t, got[50], "direct child project's task")
-		assert.True(t, got[51], "grandchild project's task")
-		assert.False(t, got[53], "archived descendant's task must be excluded")
+		assert.True(t, got[54], "grandchild project's task")
+		assert.False(t, got[55], "archived descendant's task must be excluded")
 	})
 
 	t.Run("flag off returns only the parent project's tasks", func(t *testing.T) {
 		got := taskIDs(t, "/api/v2/projects/41/tasks")
 		assert.True(t, got[49])
 		assert.False(t, got[50], "child task must not leak when the flag is off")
-		assert.False(t, got[51])
+		assert.False(t, got[54])
 	})
 }

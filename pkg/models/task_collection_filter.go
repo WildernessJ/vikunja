@@ -91,21 +91,25 @@ func parseTimeFromUserInput(timeString string, loc *time.Location) (value time.T
 		if len(parts) < 3 {
 			return
 		}
-		year, err := strconv.Atoi(parts[0])
+		// Assign to the named err return (not :=) so a successful manual parse
+		// clears the error from the failed layout attempts above.
+		var year, month, day int
+		year, err = strconv.Atoi(parts[0])
 		if err != nil {
 			return value, err
 		}
-		month, err := strconv.Atoi(parts[1])
+		month, err = strconv.Atoi(parts[1])
 		if err != nil {
 			return value, err
 		}
-		day, err := strconv.Atoi(parts[2])
+		day, err = strconv.Atoi(parts[2])
 		if err != nil {
 			return value, err
 		}
 		value = time.Date(year, time.Month(month), day, 0, 0, 0, 0, loc)
 	}
-	value = value.In(config.GetTimeZone())
+	// UTC, not service timezone — see getValueForField.
+	value = value.UTC()
 	value = adjustDateForMysql(value)
 	return value, err
 }
@@ -323,7 +327,10 @@ func getValueForField(field reflect.StructField, rawValue string, loc *time.Loca
 			var tt time.Time
 			t, err = safeDatemathParse(rawValue)
 			if err == nil {
-				tt = t.Time(datemath.WithLocation(loc)).In(config.GetTimeZone())
+				// UTC, not service timezone: due dates live in a naive UTC column and
+				// the driver drops a bound parameter's offset, so a non-UTC wall clock
+				// shifts the boundary. loc still controls how the datemath rounds.
+				tt = t.Time(datemath.WithLocation(loc)).UTC()
 				tt = adjustDateForMysql(tt)
 			} else {
 				tt, err = parseTimeFromUserInput(rawValue, loc)

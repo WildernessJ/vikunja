@@ -2,7 +2,7 @@ import {describe, it, expect, vi, beforeEach} from 'vitest'
 import {mount, flushPromises} from '@vue/test-utils'
 
 const createNewTaskMock = vi.fn()
-const ensureLabelsExistMock = vi.fn().mockResolvedValue(undefined)
+const ensureLabelsExistMock = vi.fn().mockResolvedValue([])
 const findProjectIdMock = vi.fn()
 
 vi.mock('@/stores/tasks', () => ({

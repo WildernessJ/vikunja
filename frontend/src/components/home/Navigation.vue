@@ -4,7 +4,10 @@
 		class="menu-container"
 		:style="{'--sidebar-width': sidebarWidth}"
 	>
-		<nav class="menu top-menu">
+		<nav
+			class="menu top-menu"
+			:aria-label="$t('navigation.main')"
+		>
 			<RouterLink
 				:to="{name: 'home'}"
 				class="logo"
@@ -112,6 +115,7 @@
 			<nav
 				v-if="favoriteProjects.length"
 				class="menu"
+				:aria-label="$t('project.pseudo.favorites.title')"
 			>
 				<ProjectsNavigation
 					:model-value="favoriteProjects"
@@ -123,6 +127,7 @@
 			<nav
 				v-if="savedFilterProjects.length"
 				class="menu"
+				:aria-label="$t('navigation.savedFilters')"
 			>
 				<ProjectsNavigation
 					:model-value="savedFilterProjects"
@@ -131,7 +136,10 @@
 				/>
 			</nav>
 
-			<nav class="menu">
+			<nav
+				class="menu"
+				:aria-label="$t('project.projects')"
+			>
 				<ProjectsNavigation
 					:model-value="projects"
 					:can-edit-order="true"

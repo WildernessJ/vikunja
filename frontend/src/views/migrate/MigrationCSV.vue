@@ -269,7 +269,7 @@ function getAttributeLabel(attribute: string): string {
 		priority: 'task.attributes.priority',
 		labels: 'task.attributes.labels',
 		reminder: 'task.attributes.reminders',
-		project: 'project.title',
+		project: 'task.attributes.project',
 		ignore: 'migrate.csv.ignore',
 	}
 	return t(attributeMap[attribute] || attribute)

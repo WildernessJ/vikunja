@@ -213,6 +213,7 @@ async function saveViewPosition(e: {newIndex: number}) {
 									<XButton
 										v-if="isAdmin"
 										class="is-danger mie-2"
+										:aria-label="$t('project.views.delete')"
 										icon="trash-alt"
 										@click="() => {
 											viewIdToDelete = getItemSlotProps(itemSlotProps).element.id
@@ -222,6 +223,7 @@ async function saveViewPosition(e: {newIndex: number}) {
 									<XButton
 										v-if="isAdmin"
 										icon="pen"
+										:aria-label="$t('project.views.edit')"
 										@click="viewToEdit = {...getItemSlotProps(itemSlotProps).element}"
 									/>
 									<span class="icon handle">
