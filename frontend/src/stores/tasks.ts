@@ -42,6 +42,7 @@ import {REPEAT_TYPES} from '@/types/IRepeatAfter'
 import {TASK_REPEAT_MODES} from '@/types/IRepeatMode'
 import type {Priority} from '@/constants/priorities'
 import {resolveOverride} from '@/helpers/resolveOverride'
+import {error, translate} from '@/message'
 
 interface MatchedAssignee extends IUser {
 	match: string,
@@ -442,6 +443,12 @@ export const useTaskStore = defineStore('task', () => {
 			return label
 		})
 		const resolved = await Promise.all(mustCreateLabel)
+		const failedTitles = all.filter((_, i) => typeof resolved[i] === 'undefined')
+		if (failedTitles.length > 0) {
+			// User-facing toast side-effect: this (and addLabelsToTask, which calls it) must
+			// only be invoked from interactive task-creation contexts, never silent/bulk/import paths.
+			error({message: translate('task.label.createFailed', {labels: failedTitles.join(', ')})})
+		}
 		return resolved.filter((label): label is LabelModel => typeof label !== 'undefined')
 	}
 

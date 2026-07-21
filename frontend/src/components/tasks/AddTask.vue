@@ -268,6 +268,7 @@ import {autoUpdate, computePosition, flip, offset, shift} from '@floating-ui/dom
 import {RELATION_KIND} from '@/types/IRelationKind'
 import type {ITask} from '@/modelTypes/ITask'
 import type {IProject} from '@/modelTypes/IProject'
+import type {ILabel} from '@/modelTypes/ILabel'
 
 import Expandable from '@/components/base/Expandable.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
@@ -290,7 +291,6 @@ import {getLabelsFromPrefix} from '@/modules/quickAddMagic'
 import {PRIORITIES} from '@/constants/priorities'
 import {buildQuickAddRepeatsLabel} from '@/helpers/recurrencePatternSummary'
 import {REMINDER_PERIOD_RELATIVE_TO_TYPES} from '@/types/IReminderPeriodRelativeTo'
-import {error} from '@/message'
 
 import {useAuthStore} from '@/stores/auth'
 import {useTaskStore} from '@/stores/tasks'
@@ -526,16 +526,41 @@ async function addTask() {
 
 		// We ensure all labels exist prior to passing them down to the create task method
 		// In the store it will only ever see one task at a time so there's no way to reliably
-		// check if a new label was created before (because everything happens async).
+		// check if a new label was created before (because everything happens async). The store
+		// itself surfaces any creation failures (e.g. link shares may not create labels).
 		const allLabels = tasksToCreate.map(({title}) => getLabelsFromPrefix(title, quickAddMagicMode.value) ?? [])
 		const requestedLabels = [...new Set(allLabels.flat())]
 		const resolvedLabels = await taskStore.ensureLabelsExist(requestedLabels)
+		const resolvedLabelsByTitle = new Map(resolvedLabels.map(l => [l.title.toLowerCase(), l]))
 
-		// Skipped labels (e.g. link shares may not create them) don't block task creation; just tell the user.
-		const resolvedTitles = new Set(resolvedLabels.map(l => l.title.toLowerCase()))
-		const failedLabels = requestedLabels.filter(title => !resolvedTitles.has(title.toLowerCase()))
-		if (failedLabels.length > 0) {
-			error({message: t('task.label.createFailed', {labels: failedLabels.join(', ')})})
+		// Every task (single or multi) gets its labels pre-resolved and passed down as an
+		// override, so createNewTask never re-resolves by title and re-toasts a label that
+		// already failed in the batch resolve above.
+		const labelsOverrideFor = (title: string): ILabel[] | undefined => {
+			if (composerOverrides?.labels !== undefined) {
+				return composerOverrides.labels
+			}
+			const parsedLabels = getLabelsFromPrefix(title, quickAddMagicMode.value) ?? []
+			if (parsedLabels.length === 0) {
+				return undefined
+			}
+			return parsedLabels
+				.map(labelTitle => resolvedLabelsByTitle.get(labelTitle.toLowerCase()))
+				.filter((l): l is ILabel => l !== undefined)
+		}
+
+		const overridesFor = (title: string) => {
+			const labels = labelsOverrideFor(title)
+			if (composerOverrides === undefined && labels === undefined) {
+				return undefined
+			}
+			// An empty `labels` array must stay present (not omitted): resolveOverride treats a
+			// present-but-empty override as real, which is what stops createNewTask re-resolving
+			// a failed label by title and re-toasting it.
+			return {
+				...composerOverrides,
+				...(labels !== undefined ? {labels} : {}),
+			}
 		}
 
 		const taskCollectionService = new TaskService()
@@ -584,7 +609,7 @@ async function addTask() {
 				projectId: projectId || authStore.settings.defaultProjectId,
 				position: props.defaultPosition,
 				index: taskIndex,
-			}, composerOverrides)
+			}, overridesFor(title))
 			createdTasks[title] = task
 			return task
 		})

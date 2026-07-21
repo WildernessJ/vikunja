@@ -37,11 +37,18 @@ vi.mock('@/router', () => ({
 	},
 }))
 
+const createLabelMock = vi.hoisted(() => vi.fn())
 vi.mock('@/stores/base', () => ({useBaseStore: () => ({})}))
 vi.mock('@/stores/kanban', () => ({useKanbanStore: () => ({})}))
 vi.mock('@/stores/projectCounts', () => ({useProjectCountsStore: () => ({loadCounts: vi.fn().mockResolvedValue(undefined)})}))
-vi.mock('@/stores/labels', () => ({useLabelStore: () => ({labels: {}, createLabel: vi.fn()})}))
+vi.mock('@/stores/labels', () => ({useLabelStore: () => ({labels: {}, createLabel: createLabelMock})}))
 vi.mock('@/stores/config', () => ({useConfigStore: () => ({concurrentWrites: true})}))
+
+const errorMock = vi.hoisted(() => vi.fn())
+vi.mock('@/message', () => ({
+	error: errorMock,
+	translate: (key: string, params: Record<string, unknown>) => `${key}:${JSON.stringify(params)}`,
+}))
 vi.mock('@/stores/auth', () => ({
 	useAuthStore: () => ({
 		settings: {
@@ -63,6 +70,8 @@ describe('tasks store createNewTask', () => {
 		taskCreateMock.mockReset().mockImplementation(async (task) => task)
 		findProjectByExactnameMock.mockReset().mockReturnValue(null)
 		findProjectByIdentifierMock.mockReset().mockReturnValue(null)
+		createLabelMock.mockReset()
+		errorMock.mockReset()
 		quickAddDefaultRemindersMock.value = []
 	})
 
@@ -186,6 +195,30 @@ describe('tasks store createNewTask', () => {
 
 			expect(created.reminders).toHaveLength(1)
 			expect(created.reminders?.[0].relativePeriod).toBe(-3600)
+		})
+	})
+
+	describe('label creation failure surfacing (#57)', () => {
+		it('shows an error toast exactly once when a quick-add-magic label fails to create', async () => {
+			createLabelMock.mockRejectedValue(new Error('link shares may not create labels'))
+
+			const store = useTaskStore()
+			await store.createNewTask({title: 'Buy milk *groceries', projectId: 1})
+
+			expect(errorMock).toHaveBeenCalledOnce()
+			const [payload] = errorMock.mock.calls[0]
+			expect(payload.message).toContain('task.label.createFailed')
+			expect(payload.message).toContain('groceries')
+		})
+
+		it('does not show an error toast when the label is created successfully', async () => {
+			createLabelMock.mockResolvedValue({id: 99, title: 'groceries'})
+
+			const store = useTaskStore()
+			const created = await store.createNewTask({title: 'Buy milk *groceries', projectId: 1})
+
+			expect(errorMock).not.toHaveBeenCalled()
+			expect(created.labels?.map(l => l.title)).toContain('groceries')
 		})
 	})
 })

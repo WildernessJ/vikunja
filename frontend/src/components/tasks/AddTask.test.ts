@@ -1,5 +1,6 @@
-import {describe, it, expect, vi, beforeEach} from 'vitest'
+import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest'
 import {mount, flushPromises} from '@vue/test-utils'
+import {createPinia, setActivePinia} from 'pinia'
 
 const createNewTaskMock = vi.fn()
 const ensureLabelsExistMock = vi.fn().mockResolvedValue([])
@@ -14,12 +15,23 @@ vi.mock('@/stores/tasks', () => ({
 	}),
 }))
 
+// Mutable so a single test can opt into quick-add-magic label parsing without
+// affecting the 'disabled' default the other tests in this file rely on.
+const quickAddMagicModeMock = vi.hoisted((): {value: string} => ({value: 'disabled'}))
+const errorMock = vi.hoisted(() => vi.fn())
+vi.mock('@/message', () => ({
+	error: errorMock,
+	translate: (key: string, params: Record<string, unknown>) => `${key}:${JSON.stringify(params)}`,
+}))
+
 vi.mock('@/stores/auth', () => ({
 	useAuthStore: () => ({
 		settings: {
 			defaultProjectId: 1,
 			frontendSettings: {
-				quickAddMagicMode: 'disabled',
+				get quickAddMagicMode() {
+					return quickAddMagicModeMock.value
+				},
 				quickAddDefaultReminders: false,
 			},
 		},
@@ -187,5 +199,81 @@ describe('AddTask chip state', () => {
 		await clearButton.trigger('click')
 
 		expect((textarea.element as HTMLTextAreaElement).value).toBe('')
+	})
+})
+
+describe('AddTask label failure surfacing (#57)', () => {
+	beforeEach(() => {
+		setActivePinia(createPinia())
+		createNewTaskMock.mockReset().mockImplementation(async ({title}: {title: string}) => ({id: 1, title}))
+		findProjectIdMock.mockReset()
+		errorMock.mockClear()
+		quickAddMagicModeMock.value = 'vikunja'
+	})
+
+	afterEach(() => {
+		quickAddMagicModeMock.value = 'disabled'
+	})
+
+	it('does not toast from AddTask itself and forwards only the resolved labels, avoiding a double toast', async () => {
+		// Simulates what the store's ensureLabelsExist now does on a partial failure:
+		// toast once, and resolve without the failed label.
+		ensureLabelsExistMock.mockReset().mockImplementation(async (labels: string[]) => {
+			errorMock({message: `task.label.createFailed:${JSON.stringify({labels: 'groceries'})}`})
+			return labels.filter(l => l !== 'groceries').map(l => ({id: 1, title: l}))
+		})
+
+		const wrapper = mountAddTask()
+		const textarea = wrapper.find('textarea')
+
+		await textarea.setValue('Buy milk *groceries')
+		textarea.trigger('keydown.enter')
+		await flushPromises()
+
+		expect(errorMock).toHaveBeenCalledOnce()
+		expect(createNewTaskMock).toHaveBeenCalledOnce()
+		const [, overrides] = createNewTaskMock.mock.calls[0]
+		expect(overrides.labels).toEqual([])
+	})
+
+	it('toasts exactly once for a multi-task submission sharing a label that fails to create', async () => {
+		// Same simulation as the single-task test: the batch pre-resolve is the only
+		// place that ever sees the failed title, so it's the only place that toasts.
+		ensureLabelsExistMock.mockReset().mockImplementation(async (labels: string[]) => {
+			errorMock({message: `task.label.createFailed:${JSON.stringify({labels: 'groceries'})}`})
+			return labels.filter(l => l !== 'groceries').map(l => ({id: 1, title: l}))
+		})
+
+		const wrapper = mountAddTask()
+		const textarea = wrapper.find('textarea')
+
+		await textarea.setValue('Buy milk *groceries\nWalk dog *groceries')
+		textarea.trigger('keydown.enter')
+		await flushPromises()
+
+		expect(errorMock).toHaveBeenCalledOnce()
+		expect(createNewTaskMock).toHaveBeenCalledTimes(2)
+		for (const call of createNewTaskMock.mock.calls) {
+			const [, overrides] = call
+			expect(overrides.labels).toEqual([])
+		}
+	})
+
+	it('attaches successfully-resolved labels to every task in a multi-task submission', async () => {
+		ensureLabelsExistMock.mockReset().mockResolvedValue([{id: 1, title: 'shopping'}])
+
+		const wrapper = mountAddTask()
+		const textarea = wrapper.find('textarea')
+
+		await textarea.setValue('Buy milk *shopping\nWalk dog *shopping')
+		textarea.trigger('keydown.enter')
+		await flushPromises()
+
+		expect(errorMock).not.toHaveBeenCalled()
+		expect(createNewTaskMock).toHaveBeenCalledTimes(2)
+		for (const call of createNewTaskMock.mock.calls) {
+			const [, overrides] = call
+			expect(overrides.labels).toEqual([{id: 1, title: 'shopping'}])
+		}
 	})
 })
