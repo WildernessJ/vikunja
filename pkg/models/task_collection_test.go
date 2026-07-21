@@ -29,6 +29,7 @@ import (
 	"code.vikunja.io/api/pkg/web"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"xorm.io/xorm"
 
 	"gopkg.in/d4l3k/messagediff.v1"
 )
@@ -2408,6 +2409,178 @@ func TestTaskCollection_ReadAll_IncludeChildProjects(t *testing.T) {
 			assert.NotEqual(t, int64(55), task.ID,
 				"task from an archived descendant project must not be included")
 		}
+	})
+}
+
+// TestGetDescendantProjectsForUser_CTE characterizes the recursive-CTE descendant
+// resolution against the same 41 -> 42 -> 44 (+ archived 46) fixture tree the old
+// BFS-over-getRawProjectsForUser implementation was proven against: same descendant
+// set, archived descendant still excluded, no regression from the rewrite (#61).
+func TestGetDescendantProjectsForUser_CTE(t *testing.T) {
+	db.LoadAndAssertFixtures(t)
+	s := db.NewSession()
+	defer s.Close()
+
+	u := &user.User{ID: 6}
+
+	descendants, err := getDescendantProjectsForUser(s, u, 41)
+	require.NoError(t, err)
+
+	gotIDs := make([]int64, 0, len(descendants))
+	for _, p := range descendants {
+		gotIDs = append(gotIDs, p.ID)
+	}
+	sort.Slice(gotIDs, func(i, j int) bool { return gotIDs[i] < gotIDs[j] })
+
+	assert.Equal(t, []int64{42, 44}, gotIDs,
+		"expected exactly the child (42) and grandchild (44); archived child 46 must be excluded")
+}
+
+// TestGetDescendantProjectsForUser_PermissionNegative is the security-critical case
+// (spec: subproject-rollup-selector.md): a project the acting user cannot read must
+// never be surfaced by the descendant CTE, even though it superficially looks like it
+// could ride along in a naive "walk projects by parent_project_id" implementation.
+// Project 36 is owned by user15 with no team/user share to user6 (see projects.yml) and
+// is not part of the 41 tree at all - a fully unrelated, inaccessible project.
+func TestGetDescendantProjectsForUser_PermissionNegative(t *testing.T) {
+	db.LoadAndAssertFixtures(t)
+	s := db.NewSession()
+	defer s.Close()
+
+	u := &user.User{ID: 6}
+
+	unrelated := &Project{ID: 36}
+	canRead, _, err := unrelated.CanRead(s, u)
+	require.NoError(t, err)
+	require.False(t, canRead, "fixture assumption: project 36 must not be readable by user6")
+
+	descendants, err := getDescendantProjectsForUser(s, u, 41)
+	require.NoError(t, err)
+
+	for _, p := range descendants {
+		assert.NotEqual(t, int64(36), p.ID, "an unrelated, inaccessible project must never be surfaced as a descendant")
+	}
+}
+
+// TestGetDescendantProjectsForUser_LinkShareAuth proves a *LinkSharing auth degrades
+// gracefully instead of 500ing: user.GetFromAuth returns ErrMustNotBeLinkShare for a
+// link share, and a link share must never expand into descendant projects beyond the
+// single project it was created for (spec: subproject-rollup-selector.md).
+func TestGetDescendantProjectsForUser_LinkShareAuth(t *testing.T) {
+	db.LoadAndAssertFixtures(t)
+	s := db.NewSession()
+	defer s.Close()
+
+	share := &LinkSharing{ID: 1, ProjectID: 41, Permission: PermissionRead}
+
+	descendants, err := getDescendantProjectsForUser(s, share, 41)
+	require.NoError(t, err)
+	assert.Empty(t, descendants, "a link share must not pull child-project tasks beyond its grant")
+}
+
+// setupExclusionRollupFixture builds a fresh, dynamic project tree (not the shared
+// 41/42/44/46 fixture) so exclusion tests can exercise multiple siblings without
+// editing the YAML fixtures: root -> {child1 -> grandchild, child2}.
+func setupExclusionRollupFixture(t *testing.T, u *user.User) (root, child1 *Project, tasks map[string]*Task) {
+	t.Helper()
+	db.LoadAndAssertFixtures(t)
+	s := db.NewSession()
+	defer s.Close()
+
+	root = &Project{Title: "excl-root", OwnerID: u.ID}
+	require.NoError(t, root.Create(s, u))
+
+	child1 = &Project{Title: "excl-child1", OwnerID: u.ID, ParentProjectID: &root.ID}
+	require.NoError(t, child1.Create(s, u))
+
+	child2 := &Project{Title: "excl-child2", OwnerID: u.ID, ParentProjectID: &root.ID}
+	require.NoError(t, child2.Create(s, u))
+
+	grandchild := &Project{Title: "excl-grandchild", OwnerID: u.ID, ParentProjectID: &child1.ID}
+	require.NoError(t, grandchild.Create(s, u))
+
+	tasks = map[string]*Task{}
+	for name, p := range map[string]*Project{"root": root, "child1": child1, "child2": child2, "grandchild": grandchild} {
+		task := &Task{Title: name + "-task", ProjectID: p.ID, CreatedByID: u.ID}
+		require.NoError(t, task.Create(s, u))
+		tasks[name] = task
+	}
+
+	require.NoError(t, s.Commit())
+	return
+}
+
+// TestTaskCollection_ReadAll_ExcludedProjectIDs covers the #66 per-project selector:
+// excluded_project_ids drops exactly the listed projects (and only those) from the
+// include_child_projects roll-up, while a still-included child of an excluded project
+// keeps riding along (per-project, not subtree, exclusion).
+func TestTaskCollection_ReadAll_ExcludedProjectIDs(t *testing.T) {
+	u := &user.User{ID: 1}
+
+	taskTitles := func(t *testing.T, s *xorm.Session, c *TaskCollection) map[string]bool {
+		t.Helper()
+		got, _, _, err := c.ReadAll(s, u, "", 0, 50)
+		require.NoError(t, err)
+		tasks, ok := got.([]*Task)
+		require.True(t, ok)
+		titles := map[string]bool{}
+		for _, task := range tasks {
+			titles[task.Title] = true
+		}
+		return titles
+	}
+
+	t.Run("excluding a child drops only that child's tasks, its own child still rides along", func(t *testing.T) {
+		root, child1, tasks := setupExclusionRollupFixture(t, u)
+		s := db.NewSession()
+		defer s.Close()
+
+		c := &TaskCollection{
+			ProjectID:            root.ID,
+			IncludeChildProjects: true,
+			ExcludedProjectIDs:   []int64{child1.ID},
+		}
+		got := taskTitles(t, s, c)
+
+		assert.True(t, got[tasks["root"].Title])
+		assert.False(t, got[tasks["child1"].Title], "excluded project's own task must be dropped")
+		assert.True(t, got[tasks["grandchild"].Title], "child1's child must still ride along - exclusion is per-project, not subtree")
+		assert.True(t, got[tasks["child2"].Title], "the excluded project's sibling must be unaffected")
+	})
+
+	t.Run("an id that isn't an accessible descendant is silently ignored", func(t *testing.T) {
+		root, _, tasks := setupExclusionRollupFixture(t, u)
+		s := db.NewSession()
+		defer s.Close()
+
+		c := &TaskCollection{
+			ProjectID:            root.ID,
+			IncludeChildProjects: true,
+			// 20 is owned by user13 with no grant to user1 (see projects.yml); not a
+			// descendant of root either way.
+			ExcludedProjectIDs: []int64{20},
+		}
+		got := taskTitles(t, s, c)
+
+		assert.True(t, got[tasks["root"].Title])
+		assert.True(t, got[tasks["child1"].Title])
+		assert.True(t, got[tasks["child2"].Title])
+		assert.True(t, got[tasks["grandchild"].Title])
+	})
+
+	t.Run("the parent project itself cannot be excluded", func(t *testing.T) {
+		root, _, tasks := setupExclusionRollupFixture(t, u)
+		s := db.NewSession()
+		defer s.Close()
+
+		c := &TaskCollection{
+			ProjectID:            root.ID,
+			IncludeChildProjects: true,
+			ExcludedProjectIDs:   []int64{root.ID},
+		}
+		got := taskTitles(t, s, c)
+
+		assert.True(t, got[tasks["root"].Title], "the viewed project's own task is never subject to exclusion")
 	})
 }
 

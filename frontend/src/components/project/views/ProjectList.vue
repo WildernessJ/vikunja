@@ -17,13 +17,11 @@
 					:project-id="projectId"
 					@update:modelValue="loadTasks()"
 				/>
-				<FancyCheckbox
-					v-if="!isPseudoProject"
-					v-model="showSubprojectTasks"
-					is-block
-				>
-					{{ $t('project.list.showSubprojectTasks') }}
-				</FancyCheckbox>
+				<SubprojectRollupPopup
+					v-if="!isPseudoProject && descendantProjects.length > 0"
+					v-model="rollupState"
+					:projects="descendantProjects"
+				/>
 			</div>
 		</template>
 
@@ -118,7 +116,7 @@ import ButtonLink from '@/components/misc/ButtonLink.vue'
 import AddTask from '@/components/tasks/AddTask.vue'
 import SingleTaskInProject from '@/components/tasks/partials/SingleTaskInProject.vue'
 import FilterPopup from '@/components/project/partials/FilterPopup.vue'
-import FancyCheckbox from '@/components/input/FancyCheckbox.vue'
+import SubprojectRollupPopup from '@/components/project/partials/SubprojectRollupPopup.vue'
 import Nothing from '@/components/misc/Nothing.vue'
 import Pagination from '@/components/misc/Pagination.vue'
 import SortPopup from '@/components/project/partials/SortPopup.vue'
@@ -127,13 +125,15 @@ import {useTaskList} from '@/composables/useTaskList'
 import type {ExpandTaskFilterParam} from '@/services/taskCollection'
 import {useTaskDragToProject} from '@/composables/useTaskDragToProject'
 import {shouldShowTaskInListView, isTaskFromSubproject} from '@/composables/useTaskListFiltering'
-import {getShowSubprojectTasksState, saveShowSubprojectTasksState} from '@/helpers/showSubprojectTasksState'
+import {getSubprojectRollupState, saveSubprojectRollupState, type SubprojectRollupState} from '@/helpers/subprojectRollupState'
 import {PERMISSIONS as Permissions} from '@/constants/permissions'
 import {calculateItemPosition} from '@/helpers/calculateItemPosition'
 import type {ITask} from '@/modelTypes/ITask'
 import {isSavedFilter, useSavedFilter, getSavedFilterIdFromProjectId} from '@/services/savedFilter'
 
+import {useAuthStore} from '@/stores/auth'
 import {useBaseStore} from '@/stores/base'
+import {useProjectStore} from '@/stores/projects'
 import {useTaskStore} from '@/stores/tasks'
 
 import type {IProject} from '@/modelTypes/IProject'
@@ -172,18 +172,37 @@ const {
 		: ['subtasks', 'comment_count', 'is_unread']) as unknown as ExpandTaskFilterParam,
 )
 
-const showSubprojectTasks = ref(false)
+const authStore = useAuthStore()
+const projectStore = useProjectStore()
+const currentUserId = computed(() => authStore.info?.id ?? 0)
+
+function collectDescendants(id: IProject['id'], visited: Set<IProject['id']> = new Set()): IProject[] {
+	// Guards against corrupt/imported parent_project_id cycles (see the backend's
+	// maxDescendantDepth in pkg/models/task_collection.go for the same concern).
+	if (visited.has(id)) {
+		return []
+	}
+	visited.add(id)
+
+	const children = projectStore.getChildProjects(id).filter(p => !p.isArchived)
+	return children.flatMap(child => [child, ...collectDescendants(child.id, visited)])
+}
+
+const descendantProjects = computed(() => collectDescendants(projectId.value))
+
+const rollupState = ref<SubprojectRollupState>({enabled: false, excluded: []})
 
 // Restore per-project on mount/switch before syncing back into params, so a
-// stale `true` from a previous project id can't leak into the initial request.
+// stale state from a previous project id can't leak into the initial request.
 watch(projectId, id => {
-	showSubprojectTasks.value = getShowSubprojectTasksState(id)
+	rollupState.value = getSubprojectRollupState(currentUserId.value, id)
 }, {immediate: true})
 
-watch(showSubprojectTasks, show => {
-	params.value.include_child_projects = show
-	saveShowSubprojectTasksState(projectId.value, show)
-}, {immediate: true})
+watch(rollupState, state => {
+	params.value.include_child_projects = state.enabled
+	params.value.excluded_project_ids = state.enabled ? state.excluded : undefined
+	saveSubprojectRollupState(currentUserId.value, projectId.value, state)
+}, {immediate: true, deep: true})
 
 const taskPositionService = ref(new TaskPositionService())
 
@@ -236,7 +255,7 @@ onMounted(async () => {
 
 // No manual reordering while sub-project tasks are rolled up: foreign rows have
 // no task_positions entry in this view, so a drag would write a mis-scoped row.
-const canDragTasks = computed(() => (canWrite.value || isSavedFilter(project.value)) && !showSubprojectTasks.value)
+const canDragTasks = computed(() => (canWrite.value || isSavedFilter(project.value)) && !rollupState.value.enabled)
 
 const isTouchDevice = ref(false)
 if (typeof window !== 'undefined') {

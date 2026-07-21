@@ -67,4 +67,11 @@ func TestHumaTaskList_IncludeChildProjects(t *testing.T) {
 		assert.False(t, got[50], "child task must not leak when the flag is off")
 		assert.False(t, got[54])
 	})
+
+	t.Run("excluded_project_ids binds through the query parser and drops the excluded project's tasks", func(t *testing.T) {
+		got := taskIDs(t, "/api/v2/projects/41/tasks?include_child_projects=true&excluded_project_ids=42")
+		assert.True(t, got[49], "parent project's own task")
+		assert.False(t, got[50], "excluded project's task must be dropped")
+		assert.True(t, got[54], "grandchild task must still ride along - exclusion is per-project, not subtree")
+	})
 }

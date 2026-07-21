@@ -17,6 +17,8 @@ export interface TaskFilterParams {
 	per_page?: number,
 	expand?: ExpandTaskFilterParam,
 	include_child_projects?: boolean,
+	// Only meaningful together with include_child_projects; drops these descendant ids from the roll-up.
+	excluded_project_ids?: number[],
 }
 
 export function getDefaultTaskFilterParams(): TaskFilterParams {
