@@ -538,7 +538,8 @@
       "newTaskCta": "Create a task.",
       "editTask": "Edit Task",
       "sort": "Sort",
-      "showSubprojectTasks": "Show sub-project tasks"
+      "showSubprojectTasks": "Show sub-project tasks",
+      "subprojectRollupDescription": "Unchecking a project hides its tasks; its own sub-projects keep showing unless also unchecked."
     },
     "gantt": {
       "title": "Gantt",

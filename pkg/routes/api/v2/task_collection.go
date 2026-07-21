@@ -59,6 +59,7 @@ type TaskListQueryParams struct {
 	FilterTimezone       string   `query:"filter_timezone" doc:"Timezone used to resolve relative date filters like \"now\"."`
 	FilterIncludeNulls   bool     `query:"filter_include_nulls" doc:"If true, also include tasks whose filtered field is null."`
 	IncludeChildProjects bool     `query:"include_child_projects" doc:"If true and viewing a project, also include tasks from all descendant (sub-)projects the user can read. Archived descendants are excluded."`
+	ExcludedProjectIDs   []int64  `query:"excluded_project_ids,explode" doc:"Project ids to drop from the include_child_projects roll-up. Only meaningful with include_child_projects=true. Ignores ids that aren't accessible descendants; the parent project can't be excluded."`
 	SortBy               []string `query:"sort_by,explode" doc:"Fields to sort by (e.g. done, priority). Repeatable; pair positionally with order_by. The special value relevance sorts by search relevance (most relevant first, requires s; ignored when the database cannot score the query)."`
 	OrderBy              []string `query:"order_by,explode" doc:"Sort order per sort_by field, asc or desc. Repeatable; defaults to asc."`
 	Expand               []string `query:"expand,explode" enum:"subtasks,buckets,reactions,comments,comment_count,time_entries_count,is_unread" doc:"Embed extra, more expensive data per task. Repeatable."`
@@ -88,21 +89,22 @@ type taskListFilters struct {
 	FilterTimezone       string
 	FilterIncludeNulls   bool
 	IncludeChildProjects bool
+	ExcludedProjectIDs   []int64
 	SortBy               []string
 	OrderBy              []string
 	Expand               []string
 }
 
 func (in taskListAllInput) filters() taskListFilters {
-	return taskListFilters{in.Q, in.Filter, in.FilterTimezone, in.FilterIncludeNulls, in.IncludeChildProjects, in.SortBy, in.OrderBy, in.Expand}
+	return taskListFilters{in.Q, in.Filter, in.FilterTimezone, in.FilterIncludeNulls, in.IncludeChildProjects, in.ExcludedProjectIDs, in.SortBy, in.OrderBy, in.Expand}
 }
 
 func (in taskListProjectInput) filters() taskListFilters {
-	return taskListFilters{in.Q, in.Filter, in.FilterTimezone, in.FilterIncludeNulls, in.IncludeChildProjects, in.SortBy, in.OrderBy, in.Expand}
+	return taskListFilters{in.Q, in.Filter, in.FilterTimezone, in.FilterIncludeNulls, in.IncludeChildProjects, in.ExcludedProjectIDs, in.SortBy, in.OrderBy, in.Expand}
 }
 
 func (in taskListViewInput) filters() taskListFilters {
-	return taskListFilters{in.Q, in.Filter, in.FilterTimezone, in.FilterIncludeNulls, in.IncludeChildProjects, in.SortBy, in.OrderBy, in.Expand}
+	return taskListFilters{in.Q, in.Filter, in.FilterTimezone, in.FilterIncludeNulls, in.IncludeChildProjects, in.ExcludedProjectIDs, in.SortBy, in.OrderBy, in.Expand}
 }
 
 // collection turns the bound query into a TaskCollection. The search term
@@ -121,6 +123,7 @@ func (f taskListFilters) collection(projectID, viewID int64, forceFlat bool) (*m
 		FilterTimezone:       f.FilterTimezone,
 		FilterIncludeNulls:   f.FilterIncludeNulls,
 		IncludeChildProjects: f.IncludeChildProjects,
+		ExcludedProjectIDs:   f.ExcludedProjectIDs,
 		SortBy:               f.SortBy,
 		OrderBy:              f.OrderBy,
 		Expand:               expand,
