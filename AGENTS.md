@@ -257,7 +257,7 @@ The web client lives in `frontend/` and uses Vue 3 + TypeScript. ESLint rules en
 
 When adding or changing functionality which touches user-facing messages, these need to be translated.
 
-In the frontend, all translation strings live in `frontend/src/i18n/lang`. For the api (which mainly affects the localization of notifications), the strings live in `pkg/i18n/lang`.
+In the frontend, all translation strings live in `frontend/src/i18n/lang`. For the api (which mainly affects the localization of notifications), the strings live in `pkg/i18n/lang`. These are two independent trees with no shared keys and no cross-check — if a change surfaces text on **both** a UI element (toast/label) **and** an API/notification (email), add the string to **both** `en.json` files. Nothing flags a miss; the gap only shows as a missing string on the surface you forgot.
 
 You only need to adjust the `en.json` file with the source string. The actual translation happens elsewhere.
 After adjusting the source string, you need to call the respective translation library with the key. Both are similar, check the existing code to figure it out.
