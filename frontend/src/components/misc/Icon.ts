@@ -7,6 +7,7 @@ import {
 	faArchive,
 	faArrowLeft,
 	faArrowDownShortWide,
+	faArrowUp,
 	faArrowUpFromBracket,
 	faArrowUpRightFromSquare,
 	faArrowUpShortWide,
@@ -198,6 +199,7 @@ library.add(faUser)
 library.add(faUserEdit)
 library.add(faUsers)
 library.add(faArrowDownShortWide)
+library.add(faArrowUp)
 library.add(faArrowUpFromBracket)
 library.add(faArrowUpShortWide)
 library.add(faX)
