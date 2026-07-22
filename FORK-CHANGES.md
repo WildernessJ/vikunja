@@ -19,6 +19,8 @@ Types: `fix`, `feat`, `chore`, `docs`.
 
 ## Changes
 
+`2026-07-22` — **fix** — Assignee removal now updates the UI without a reload (#61): `EditAssignees.removeAssignee` persisted the removal and spliced its local list but never emitted `update:modelValue`, so a consumer holding a separate copy of the task (e.g. the List-view right-click context menu) kept showing the removed assignee's avatar until reload. Now it emits after the splice, mirroring `addAssignee`. ([d3e149629](https://github.com/WildernessJ/vikunja/commit/d3e149629))
+
 `2026-07-22` — **fix** — List "Set as default sort" no longer leaves a redundant `?sort=` in the URL (#70): saving a sort as the view default now clears the explicit query param once the persisted default catches up (a failed save keeps it so the sort still applies); session-only sort overrides are unaffected. Adds the first `ProjectList` integration test (#69). ([d7ac37c0e](https://github.com/WildernessJ/vikunja/commit/d7ac37c0e))
 
 `2026-07-22` — **feat** — Per-project default sort order for the List view: a view's sort can be saved server-side (`default_sort_by`/`default_order_by` on `ProjectView`) and is applied on load when no explicit `?sort=` is set; "Set as default sort" action in the Sort popup (admin-only). Table view deferred. ([ec0c81451](https://github.com/WildernessJ/vikunja/commit/ec0c81451))
