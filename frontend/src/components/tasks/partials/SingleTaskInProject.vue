@@ -30,138 +30,139 @@
 				:class="{ 'done': task.done, 'show-project': showProject && project}"
 				class="tasktext"
 			>
-				<span class="is-inline-flex is-align-items-center">
-					<RouterLink
-						v-if="showProject && typeof project !== 'undefined'"
-						v-tooltip="$t('task.detail.belongsToProject', {project: project.title})"
-						:to="{ name: 'project.index', params: { projectId: task.projectId } }"
-						class="task-project mie-1"
-						:class="{'mie-2': task.hexColor !== '', 'has-project-color': hasProjectColor}"
-						:style="hasProjectColor ? { '--project-color': projectColor } : undefined"
-						@click.stop
-					>
-						{{ project.title }}
-					</RouterLink>
-
-					<ColorBubble
-						v-if="task.hexColor !== ''"
-						:color="getHexColor(task.hexColor) ?? ''"
-						class="mie-1"
-					/>
-	
-					<PriorityLabel
-						:priority="task.priority"
-						:done="task.done"
-						class="pis-2 mie-1"
-					/>
-
-					<TaskGlanceTooltip :task="task">
-						<RouterLink
-							ref="taskLinkRef"
-							:to="taskDetailRoute"
-							class="task-link"
-						>
-							{{ task.title }}
-						</RouterLink>
-					</TaskGlanceTooltip>
-				</span>
-
-				<Labels
-					v-if="task.labels.length > 0"
-					class="labels mis-2 mie-1"
-					:labels="task.labels"
-				/>
-
-				<AssigneeList
-					v-if="task.assignees.length > 0"
-					:assignees="task.assignees"
-					:avatar-size="25"
-					class="mis-1"
-					:inline="true"
-				/>
-
-				<Popup
-					v-if="task.dueDate !== null && task.dueDate.getTime() > 0"
-				>
-					<template #trigger="{toggle, isOpen}">
-						<BaseButton
-							v-tooltip="formatDateLong(task.dueDate)"
-							class="dueDate"
-							@click.prevent.stop="toggle()"
-						>	
-							<time
-								:datetime="formatISO(task.dueDate)"
-								class="is-italic"
-								:aria-expanded="isOpen ? 'true' : 'false'"
-							>
-								– {{ $t('task.detail.due', {at: dueDateFormatted}) }}
-							</time>
-						</BaseButton>
-					</template>
-					<template #content="{isOpen}">
-						<DeferTask
-							v-if="isOpen"
-							v-model="task"
-							@update:modelValue="deferTaskUpdate"
+				<div class="task-main">
+					<span class="is-inline-flex is-align-items-center">
+						<ColorBubble
+							v-if="task.hexColor !== ''"
+							:color="getHexColor(task.hexColor) ?? ''"
+							class="mie-1"
 						/>
-					</template>
-				</Popup>
 
-				<BaseButton
-					v-if="task.deadline !== null && task.deadline.getTime() > 0"
-					v-tooltip="formatDateLong(task.deadline)"
-					class="deadline"
-					:class="{'is-overdue': isDeadlineOverdue}"
-					@click.prevent.stop="openTaskDetail"
-				>
-					<Icon icon="flag-checkered" />
-					<time
-						:datetime="formatISO(task.deadline)"
-						class="is-italic"
-					>
-						{{ $t('task.detail.deadlineChip', {at: deadlineFormatted}) }}
-					</time>
-				</BaseButton>
+						<PriorityLabel
+							:priority="task.priority"
+							:done="task.done"
+							class="mie-1"
+						/>
 
-				<span
-					v-if="task.estimatedDuration > 0"
-					v-tooltip="$t('task.attributes.estimatedDuration')"
-					class="estimated-duration"
-				>
-					<Icon :icon="['far', 'hourglass']" />
-					<span class="is-italic">
-						{{ formatDuration(task.estimatedDuration) }}
+						<TaskGlanceTooltip :task="task">
+							<RouterLink
+								ref="taskLinkRef"
+								:to="taskDetailRoute"
+								class="task-link"
+							>
+								{{ task.title }}
+							</RouterLink>
+						</TaskGlanceTooltip>
 					</span>
-				</span>
 
-				<span>
-					<span
-						v-if="task.attachments.length > 0"
-						class="project-task-icon"
-						role="img"
-						:aria-label="$t('task.attributes.attachment', task.attachments.length)"
-					>
-						<Icon icon="paperclip" />
-					</span>
-					<span
-						v-if="!isEditorContentEmpty(task.description)"
-						class="project-task-icon is-mirrored-rtl"
-					>
-						<Icon icon="align-left" />
-					</span>
-					<span
-						v-if="isRepeating"
-						class="project-task-icon"
-					>
-						<Icon icon="history" />
-					</span>
-					<CommentCount
-						:task="task"
-						class="project-task-icon"
+					<Labels
+						v-if="task.labels.length > 0"
+						class="labels mis-2 mie-1"
+						:labels="task.labels"
 					/>
-				</span>
 
-				<ChecklistSummary :task="task" />
+					<AssigneeList
+						v-if="task.assignees.length > 0"
+						:assignees="task.assignees"
+						:avatar-size="25"
+						class="mis-1"
+						:inline="true"
+					/>
+
+					<span>
+						<span
+							v-if="task.attachments.length > 0"
+							class="project-task-icon"
+							role="img"
+							:aria-label="$t('task.attributes.attachment', task.attachments.length)"
+						>
+							<Icon icon="paperclip" />
+						</span>
+						<span
+							v-if="!isEditorContentEmpty(task.description)"
+							class="project-task-icon is-mirrored-rtl"
+						>
+							<Icon icon="align-left" />
+						</span>
+						<span
+							v-if="isRepeating"
+							class="project-task-icon"
+						>
+							<Icon icon="history" />
+						</span>
+						<CommentCount
+							:task="task"
+							class="project-task-icon"
+						/>
+					</span>
+
+					<ChecklistSummary :task="task" />
+				</div>
+
+				<div
+					v-if="showDateRow"
+					class="task-dates"
+				>
+					<Popup
+						v-if="task.dueDate !== null && task.dueDate.getTime() > 0"
+					>
+						<template #trigger="{toggle, isOpen}">
+							<BaseButton
+								v-tooltip="formatDateLong(task.dueDate)"
+								class="dueDate"
+								:class="dueUrgency ? `urgency-${dueUrgency}` : undefined"
+								@click.prevent.stop="toggle()"
+							>
+								<Icon
+									icon="calendar"
+									class="mie-1"
+								/>
+								<time
+									:datetime="formatISO(task.dueDate)"
+									:aria-label="$t('task.detail.due', {at: dueDateFormatted})"
+									class="is-italic"
+									:aria-expanded="isOpen ? 'true' : 'false'"
+								>
+									{{ dueDateFormatted }}
+								</time>
+							</BaseButton>
+						</template>
+						<template #content="{isOpen}">
+							<DeferTask
+								v-if="isOpen"
+								v-model="task"
+								@update:modelValue="deferTaskUpdate"
+							/>
+						</template>
+					</Popup>
+
+					<BaseButton
+						v-if="task.deadline !== null && task.deadline.getTime() > 0"
+						v-tooltip="formatDateLong(task.deadline)"
+						class="deadline"
+						:class="{'is-overdue': isDeadlineOverdue}"
+						@click.prevent.stop="openTaskDetail"
+					>
+						<Icon icon="flag-checkered" />
+						<time
+							:datetime="formatISO(task.deadline)"
+							class="is-italic"
+						>
+							{{ $t('task.detail.deadlineChip', {at: deadlineFormatted}) }}
+						</time>
+					</BaseButton>
+
+					<span
+						v-if="task.estimatedDuration > 0"
+						v-tooltip="$t('task.attributes.estimatedDuration')"
+						class="estimated-duration"
+					>
+						<Icon :icon="['far', 'hourglass']" />
+						<span class="is-italic">
+							{{ formatDuration(task.estimatedDuration) }}
+						</span>
+					</span>
+				</div>
 			</div>
 
 			<ProgressBar
@@ -171,7 +172,7 @@
 			/>
 
 			<RouterLink
-				v-if="showProjectSeparately"
+				v-if="shouldShowProject"
 				v-tooltip="$t('task.detail.belongsToProject', {project: project.title})"
 				:to="{ name: 'project.index', params: { projectId: task.projectId } }"
 				class="task-project"
@@ -253,11 +254,13 @@ import Popup from '@/components/misc/Popup.vue'
 import TaskService from '@/services/task'
 
 import {formatDisplayDate, formatISO, formatDateLong} from '@/helpers/time/formatDate'
+import {getDueDateUrgency} from '@/helpers/time/dueDateUrgency'
 import {success} from '@/message'
 
 import {useProjectStore} from '@/stores/projects'
 import {useBaseStore} from '@/stores/base'
 import {useTaskStore} from '@/stores/tasks'
+import {useAuthStore} from '@/stores/auth'
 import AssigneeList from '@/components/tasks/partials/AssigneeList.vue'
 import {useIntervalFn} from '@vueuse/core'
 import {playPopSound} from '@/helpers/playPop'
@@ -321,6 +324,7 @@ watch(
 const baseStore = useBaseStore()
 const projectStore = useProjectStore()
 const taskStore = useTaskStore()
+const authStore = useAuthStore()
 
 const project = computed(() => projectStore.projects[task.value.projectId])
 const projectColor = computed(() => project.value ? project.value?.hexColor : '')
@@ -329,7 +333,19 @@ const projectColor = computed(() => project.value ? project.value?.hexColor : ''
 // unpredictably rather than to the intended grey.
 const hasProjectColor = computed(() => /^#[0-9a-f]{6}$/i.test(projectColor.value))
 
-const showProjectSeparately = computed(() => !props.showProject && currentProject.value?.id !== task.value.projectId && project.value)
+// The project name always renders on the far right now (Todoist-style). Show it
+// whenever the row is asked to surface the project (showProject) or the task
+// lives in a different project than the one currently open (e.g. rolled-up
+// sub-project tasks) — the union of the two former, separate presentations.
+const shouldShowProject = computed(() => {
+	if (!project.value) {
+		return false
+	}
+	if (props.showProject) {
+		return true
+	}
+	return currentProject.value?.id !== task.value.projectId
+})
 
 const currentProject = computed(() => {
 	return typeof baseStore.currentProject === 'undefined' ? {
@@ -383,6 +399,19 @@ const isOverdue = computed(() => (
 	task.value.dueDate !== null &&
 	task.value.dueDate.getTime() > 0 &&
 	task.value.dueDate.getTime() <= now.value.getTime()
+))
+
+// Colour tier for the due date. Gated on !done so completed tasks keep the
+// struck-through grey rather than lighting up red. Reactive to `now` so a task
+// rolls from e.g. tomorrow → today at midnight without a reload.
+const dueUrgency = computed(() => task.value.done
+	? null
+	: getDueDateUrgency(task.value.dueDate, now.value, authStore.settings.weekStart ?? 0))
+
+const showDateRow = computed(() => (
+	(task.value.dueDate !== null && task.value.dueDate.getTime() > 0) ||
+	(task.value.deadline !== null && task.value.deadline.getTime() > 0) ||
+	task.value.estimatedDuration > 0
 ))
 
 // Deadline overdue is tracked separately from due-date overdue so the two can be
@@ -533,22 +562,74 @@ defineExpose({
 
 	.tasktext,
 	&.tasktext {
-		text-overflow: ellipsis;
+		flex: 1 0 50%;
+		min-inline-size: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+	}
+
+	// Row 1: title plus its inline adornments (priority, colour, labels, icons).
+	.task-main {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
 		word-wrap: break-word;
 		word-break: break-word;
-		display: -webkit-box;
-		hyphens: auto;
-		-webkit-line-clamp: 4;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
 
-		flex: 1 0 50%;
+		.task-link {
+			text-overflow: ellipsis;
+			hyphens: auto;
+			display: -webkit-box;
+			-webkit-line-clamp: 4;
+			-webkit-box-orient: vertical;
+			overflow: hidden;
+		}
+	}
 
+	// Row 2: the due date on its own line beneath the title, with the deadline
+	// and estimated-duration chips alongside it.
+	.task-dates {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: .75rem;
+		font-size: .85rem;
+	}
+
+	.estimated-duration {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+		color: var(--grey-500);
 	}
 
 	.dueDate {
-		display: inline-block;
-		margin-inline-start: 5px;
+		display: inline-flex;
+		align-items: center;
+
+		// Heat gradient by urgency tier (tokens in custom-properties/colors.scss).
+		&.urgency-overdue {
+			color: var(--urgency-overdue);
+			font-weight: 600;
+		}
+
+		&.urgency-today {
+			color: var(--urgency-today);
+			font-weight: 600;
+		}
+
+		&.urgency-tomorrow {
+			color: var(--urgency-tomorrow);
+		}
+
+		&.urgency-this-week {
+			color: var(--urgency-this-week);
+		}
+
+		&.urgency-later {
+			color: var(--urgency-later);
+		}
 
 		&:focus-visible {
 			box-shadow: none;
@@ -560,17 +641,11 @@ defineExpose({
 		}
 	}
 
-	&[data-is-overdue] .dueDate {
-		color: var(--danger-text);
-	}
-
 	.deadline {
 		display: inline-flex;
 		align-items: center;
 		gap: 3px;
-		margin-inline-start: 8px;
 		color: var(--grey-500);
-		font-size: .85rem;
 
 		svg {
 			font-size: .8rem;
