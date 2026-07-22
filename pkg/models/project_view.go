@@ -178,6 +178,11 @@ type ProjectView struct {
 	// If tasks are moved to the done bucket, they are marked as done. If they are marked as done individually, they are moved into the done bucket.
 	DoneBucketID int64 `xorm:"bigint INDEX null" json:"done_bucket_id" doc:"The id of the done bucket. Tasks moved here are marked done, and tasks marked done are moved here."`
 
+	// The default sort fields applied on load in List and Table views when the client sends no explicit sort. Mirrors the sort_by query contract.
+	DefaultSortBy []string `xorm:"json null" json:"default_sort_by" doc:"Fields the List/Table view sorts by on load when no explicit sort is set, e.g. [\"priority\"]. Mirrors the sort_by query parameter."`
+	// The order for each default_sort_by field, either asc or desc. Parallel to default_sort_by.
+	DefaultOrderBy []string `xorm:"json null" json:"default_order_by" doc:"The order (asc or desc) for each default_sort_by field. Parallel array to default_sort_by."`
+
 	// A timestamp when this view was updated. You cannot change this value.
 	Updated time.Time `xorm:"updated not null" json:"updated" readOnly:"true" doc:"A timestamp when this view was last updated. You cannot change this value."`
 	// A timestamp when this reaction was created. You cannot change this value.
@@ -496,6 +501,8 @@ func updateProjectView(s *xorm.Session, pv *ProjectView) (err error) {
 			"bucket_configuration",
 			"default_bucket_id",
 			"done_bucket_id",
+			"default_sort_by",
+			"default_order_by",
 		).
 		Update(pv)
 	return

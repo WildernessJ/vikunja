@@ -304,6 +304,24 @@ func TestProjectView(t *testing.T) {
 			require.Error(t, err)
 			assert.Equal(t, http.StatusBadRequest, getHTTPErrorCode(err))
 		})
+		t.Run("Default sort round-trips", func(t *testing.T) {
+			// GitHub #64: default_sort_by/default_order_by ride the existing update+read.
+			rec, err := owned.testUpdateWithUser(nil, map[string]string{"view": "1"}, `{"title":"List","view_kind":"list","default_sort_by":["priority"],"default_order_by":["desc"]}`)
+			require.NoError(t, err)
+			assert.Contains(t, rec.Body.String(), `"default_sort_by":["priority"]`)
+			assert.Contains(t, rec.Body.String(), `"default_order_by":["desc"]`)
+
+			rec, err = owned.testReadOneWithUser(nil, map[string]string{"view": "1"})
+			require.NoError(t, err)
+			assert.Contains(t, rec.Body.String(), `"default_sort_by":["priority"]`)
+			assert.Contains(t, rec.Body.String(), `"default_order_by":["desc"]`)
+		})
+		t.Run("Write share cannot set default sort", func(t *testing.T) {
+			// view 37 belongs to project 10 (write share) — same admin gate as any other update.
+			_, err := writeShared.testUpdateWithUser(nil, map[string]string{"view": "37"}, `{"title":"x","view_kind":"list","default_sort_by":["priority"],"default_order_by":["desc"]}`)
+			require.Error(t, err)
+			assert.Equal(t, http.StatusForbidden, getHTTPErrorCode(err))
+		})
 	})
 
 	t.Run("Delete", func(t *testing.T) {

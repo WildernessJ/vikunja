@@ -32,6 +32,13 @@
 				</div>
 				<div class="actions">
 					<XButton
+						v-if="canSaveDefault"
+						variant="tertiary"
+						@click="saveAsDefault(close)"
+					>
+						{{ $t('sorting.saveAsDefault') }}
+					</XButton>
+					<XButton
 						variant="tertiary"
 						@click="close()"
 					>
@@ -57,8 +64,14 @@ import Popup from '@/components/misc/Popup.vue'
 import Card from '@/components/misc/Card.vue'
 import type {SortBy} from '@/composables/useTaskList'
 
-const props = defineProps<{ modelValue: SortBy }>()
-const emit = defineEmits<{ 'update:modelValue': [value: SortBy] }>()
+const props = defineProps<{
+	modelValue: SortBy
+	canSaveDefault?: boolean
+}>()
+const emit = defineEmits<{
+	'update:modelValue': [value: SortBy]
+	saveDefault: [value: SortBy]
+}>()
 
 const {t} = useI18n({useScope: 'global'})
 
@@ -99,11 +112,22 @@ const options = computed(() => {
 	return [manual, ...rest]
 })
 
-function applySort(close: () => void) {
+function selectedToSortBy(): SortBy {
 	const [field, order] = selected.value.split(':') as [string, 'asc' | 'desc']
 	const sort: SortBy = {} as SortBy
 	;(sort as Record<string, 'asc' | 'desc'>)[field] = order
+	return sort
+}
+
+function applySort(close: () => void) {
+	emit('update:modelValue', selectedToSortBy())
+	close()
+}
+
+function saveAsDefault(close: () => void) {
+	const sort = selectedToSortBy()
 	emit('update:modelValue', sort)
+	emit('saveDefault', sort)
 	close()
 }
 </script>

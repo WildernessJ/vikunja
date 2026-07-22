@@ -21,6 +21,9 @@ export default class ProjectViewModel extends AbstractModel<IProjectView> implem
 	defaultBucketId = 0
 	doneBucketId = 0
 
+	defaultSortBy: string[] = []
+	defaultOrderBy: string[] = []
+
 	created: Date = new Date(0)
 	updated: Date = new Date(0)
 
@@ -30,6 +33,13 @@ export default class ProjectViewModel extends AbstractModel<IProjectView> implem
 
 		if (!this.bucketConfiguration) {
 			this.bucketConfiguration = []
+		}
+
+		if (!this.defaultSortBy) {
+			this.defaultSortBy = []
+		}
+		if (!this.defaultOrderBy) {
+			this.defaultOrderBy = []
 		}
 
 		this.created = new Date(this.created)
