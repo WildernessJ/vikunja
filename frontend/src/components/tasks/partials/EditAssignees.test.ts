@@ -82,6 +82,42 @@ describe('EditAssignees', () => {
 		projectGetAllMock.mockResolvedValue([])
 	})
 
+	it('emits update:modelValue after removing an assignee', async () => {
+		const ItemsMultiselectStub = {
+			name: 'Multiselect',
+			props: ['searchResults', 'modelValue', 'loading'],
+			emits: ['search', 'select', 'focus', 'update:modelValue'],
+			template: '<div><slot name="items" :items="modelValue" /></div>',
+		}
+
+		const wrapper = mount(EditAssignees, {
+			props: {
+				modelValue: [user(2, 'Alice')],
+				taskId: 1,
+				projectId: 10,
+			},
+			global: {
+				mocks: {
+					$t: (key: string) => key,
+				},
+				stubs: {
+					Multiselect: ItemsMultiselectStub,
+					User: true,
+					AssigneeList: true,
+				},
+			},
+		})
+
+		const assigneeList = wrapper.findComponent({name: 'AssigneeList'})
+		await assigneeList.vm.$emit('remove', user(2, 'Alice'))
+		await Promise.resolve()
+		await Promise.resolve()
+
+		expect(wrapper.emitted('update:modelValue')).toBeDefined()
+		const lastEmit = wrapper.emitted('update:modelValue')!.at(-1)
+		expect(lastEmit![0]).toEqual([])
+	})
+
 	it('resets the preloaded members when the project changes', async () => {
 		const wrapper = mountComponent({taskId: 1, projectId: 10})
 		const ms = wrapper.findComponent(MultiselectStub)
