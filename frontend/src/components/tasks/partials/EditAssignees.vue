@@ -129,6 +129,7 @@ async function removeAssignee(user: IUser) {
 	if (idx !== -1) {
 		assignees.value.splice(idx, 1)
 	}
+	emit('update:modelValue', assignees.value)
 	success({message: t('task.assignee.unassignSuccess')})
 }
 
