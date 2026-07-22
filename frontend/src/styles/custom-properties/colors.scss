@@ -202,6 +202,16 @@
   // Muted body text (metadata, counts) darkened from --grey-500 to clear 4.5:1 on both white and --grey-100
   --text-muted: hsl(220, 8.9%, 42%);
 
+  // Due-date urgency gradient for the list-view task rows (SingleTaskInProject):
+  // hot → cool as the due date recedes. Tuned to clear WCAG AA (~4.5:1) as text
+  // on the white / --grey-100 list backgrounds; the &.dark block brightens them
+  // for dark backgrounds. Overdue/later reuse the already-tuned danger/muted tokens.
+  --urgency-overdue: var(--danger-text);
+  --urgency-today: hsl(13, 90%, 43%);
+  --urgency-tomorrow: hsl(42, 90%, 32%);
+  --urgency-this-week: hsl(217, 65%, 46%);
+  --urgency-later: var(--text-muted);
+
   // Overrides of Bulma defaults
   --scheme-main: var(--white);
   --grey-darker: var(--grey-700);
@@ -340,6 +350,13 @@
 
       // Muted text is a light grey on dark backgrounds and already passes; keep it
       --text-muted: var(--grey-500);
+
+      // Brighter urgency gradient for dark backgrounds (see :root for the rationale)
+      --urgency-overdue: var(--danger);
+      --urgency-today: hsl(24, 100%, 62%);
+      --urgency-tomorrow: hsl(48, 95%, 60%);
+      --urgency-this-week: hsl(213, 90%, 70%);
+      --urgency-later: var(--grey-500);
       // The lighter dark-mode primary fails white-text contrast on the active view tab, so darken it there
       --switch-view-active-background: hsl(var(--primary-h), var(--primary-s), 50%);
 
