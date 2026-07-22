@@ -203,12 +203,13 @@
   --text-muted: hsl(220, 8.9%, 42%);
 
   // Due-date urgency gradient for the list-view task rows (SingleTaskInProject):
-  // hot → cool as the due date recedes. Tuned to clear WCAG AA (~4.5:1) as text
-  // on the white / --grey-100 list backgrounds; the &.dark block brightens them
-  // for dark backgrounds. Overdue/later reuse the already-tuned danger/muted tokens.
+  // hot → cool as the due date recedes. Every tier clears WCAG AA (≥4.5:1) as
+  // text on BOTH the resting row bg (white) and the --grey-100 hover bg; the
+  // &.dark block re-tunes them for the dark theme's two backgrounds. Overdue/later
+  // reuse the already-tuned danger-text/muted tokens (both pass on hover too).
   --urgency-overdue: var(--danger-text);
   --urgency-today: hsl(13, 90%, 43%);
-  --urgency-tomorrow: hsl(42, 90%, 32%);
+  --urgency-tomorrow: hsl(42, 90%, 29%);
   --urgency-this-week: hsl(217, 65%, 46%);
   --urgency-later: var(--text-muted);
 
@@ -351,8 +352,10 @@
       // Muted text is a light grey on dark backgrounds and already passes; keep it
       --text-muted: var(--grey-500);
 
-      // Brighter urgency gradient for dark backgrounds (see :root for the rationale)
-      --urgency-overdue: var(--danger);
+      // Brighter urgency gradient for dark backgrounds (see :root for the rationale).
+      // Overdue is a touch brighter than --danger so it also clears AA on the lighter
+      // --grey-100 hover row (plain --danger drops to ~4.24:1 there).
+      --urgency-overdue: hsl(3.3, 100%, 65%);
       --urgency-today: hsl(24, 100%, 62%);
       --urgency-tomorrow: hsl(48, 95%, 60%);
       --urgency-this-week: hsl(213, 90%, 70%);
