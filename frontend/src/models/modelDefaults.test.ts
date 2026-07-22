@@ -67,3 +67,63 @@ describe('#47 model date-column convention', () => {
 		})
 	}
 })
+
+// #62 — the object-dimension analog of the #47 date-column guard: every model's
+// *always-present* derived object field (a field whose empty-construction value
+// is a wrapped model instance, e.g. UserModel's `settings` -> UserSettingsModel)
+// must stay wrapped, both when the payload omits the field and when it carries a
+// raw object. This catches any break of the `this.x = new XModel(this.x)`
+// convention across all models — including the #51 clobber shape, where a
+// UserModel subclass (TeamMemberModel) re-runs assignData() and, forgetting the
+// follow-up normalize(), leaves `settings` a plain object.
+//
+// Note: #51's single live subclass is *also* caught transitively by #47 above,
+// since TeamMemberModel's re-run normalize() re-wraps `created`/`updated` too —
+// drop that normalize() and the date guard fails alongside this one. #62's
+// independent value is the object dimension #47 can't see: a non-subclassed
+// model whose only derived field is object-wrapped (no Date), and a future
+// wrapped-field-only UserModel subclass. Data preservation is out of scope
+// (this asserts wrapping only) — teamMember.test.ts guards the payload survives.
+//
+// Scope: only fields non-null on empty construction are reachable this way.
+// Nullable wrapped fields (e.g. `subscription`, wrapped only when present) can't
+// be auto-enumerated without the hand-maintained list this approach avoids, so
+// they stay out of the guard.
+//
+// Footgun (documented, not fixed): normalize() is a virtual call from the base
+// UserModel constructor, so a future override that reads subclass field
+// initializers would see them un-run (they execute after super()).
+type Ctor = new (...args: unknown[]) => unknown
+
+describe('#62 model wrapped-object convention', () => {
+	for (const [name, Model] of models) {
+		let empty: Record<string, unknown>
+		try {
+			empty = new Model({})
+		} catch {
+			continue
+		}
+
+		const wrappedFields = Object.entries(empty)
+			.filter(([, v]) =>
+				v !== null &&
+				typeof v === 'object' &&
+				!Array.isArray(v) &&
+				!(v instanceof Date) &&
+				(v as object).constructor !== undefined &&
+				(v as object).constructor !== Object,
+			)
+			.map(([k]) => [k, (empty[k] as object).constructor as Ctor] as const)
+
+		if (wrappedFields.length === 0) {
+			continue
+		}
+
+		it.each(wrappedFields)(`${name}.%s stays wrapped when omitted and when given a raw object`, (field, ctor) => {
+			expect(empty[field]).toBeInstanceOf(ctor)
+
+			const built = new Model({[field]: {}})[field]
+			expect(built).toBeInstanceOf(ctor)
+		})
+	}
+})
