@@ -303,6 +303,9 @@ async function saveDefaultSort(newSortBy: SortBy) {
 			defaultOrderBy,
 		}))
 		projectStore.setProjectView(updatedView)
+		// Re-run the sortBy setter now that resolvedSortByDefault reflects the new
+		// default, so serializeSortBy sees newSortBy === default and drops `?sort=`.
+		sortByParam.value = newSortBy
 		success({message: t('sorting.defaultSaved')})
 	} catch (e) {
 		error(e)
