@@ -9,6 +9,8 @@
 			<div class="filter-container">
 				<SortPopup
 					v-model="sortByParam"
+					:can-save-default="canSaveDefaultSort"
+					@saveDefault="saveDefaultSort"
 				/>
 				<FilterPopup
 					v-if="!isSavedFilter(project)"
@@ -109,6 +111,7 @@
 
 <script setup lang="ts">
 import {ref, computed, nextTick, onMounted, onBeforeUnmount, watch, toRef} from 'vue'
+import {useI18n} from 'vue-i18n'
 import draggable from 'zhyswan-vuedraggable'
 
 import ProjectWrapper from '@/components/project/ProjectWrapper.vue'
@@ -121,8 +124,11 @@ import Nothing from '@/components/misc/Nothing.vue'
 import Pagination from '@/components/misc/Pagination.vue'
 import SortPopup from '@/components/project/partials/SortPopup.vue'
 
-import {useTaskList} from '@/composables/useTaskList'
+import {useTaskList, defaultSortToSortBy, sortByToDefaultArrays, type SortBy} from '@/composables/useTaskList'
 import type {ExpandTaskFilterParam} from '@/services/taskCollection'
+import ProjectViewService from '@/services/projectViews'
+import ProjectViewModel from '@/models/projectView'
+import {success, error} from '@/message'
 import {useTaskDragToProject} from '@/composables/useTaskDragToProject'
 import {shouldShowTaskInListView, isTaskFromSubproject} from '@/composables/useTaskListFiltering'
 import {getSubprojectRollupState, saveSubprojectRollupState, type SubprojectRollupState} from '@/helpers/subprojectRollupState'
@@ -155,6 +161,14 @@ const ctaVisible = ref(false)
 
 const drag = ref(false)
 
+const {t} = useI18n({useScope: 'global'})
+const authStore = useAuthStore()
+const projectStore = useProjectStore()
+
+const currentView = computed(() =>
+	projectStore.projects[projectId.value]?.views.find(v => v.id === props.viewId),
+)
+
 const {
 	tasks: allTasks,
 	loading,
@@ -166,14 +180,11 @@ const {
 } = useTaskList(
 	() => projectId.value,
 	() => props.viewId,
-	{position: 'asc'},
+	() => defaultSortToSortBy(currentView.value?.defaultSortBy ?? [], currentView.value?.defaultOrderBy ?? []) ?? {position: 'asc'},
 	() => (projectId.value === -1
 		? ['comment_count', 'is_unread']
 		: ['subtasks', 'comment_count', 'is_unread']) as unknown as ExpandTaskFilterParam,
 )
-
-const authStore = useAuthStore()
-const projectStore = useProjectStore()
 const currentUserId = computed(() => authStore.info?.id ?? 0)
 
 function collectDescendants(id: IProject['id'], visited: Set<IProject['id']> = new Set()): IProject[] {
@@ -267,6 +278,35 @@ const addTaskRef = ref<typeof AddTask | null>(null)
 
 function focusNewTaskInput() {
 	addTaskRef.value?.focusTaskInput()
+}
+
+const projectViewService = new ProjectViewService()
+
+// Saving a view's default sort calls ProjectView.Update, which requires project admin
+// (pkg/models/project_view_permissions.go) — hide the action for non-admins so they
+// don't hit a 403 toast on a control they can't use.
+const canSaveDefaultSort = computed(() =>
+	(project.value?.maxPermission ?? Permissions.READ) >= Permissions.ADMIN && (project.value?.id ?? 0) > 0,
+)
+
+async function saveDefaultSort(newSortBy: SortBy) {
+	const view = currentView.value
+	if (!view) {
+		return
+	}
+
+	const {sortBy: defaultSortBy, orderBy: defaultOrderBy} = sortByToDefaultArrays(newSortBy)
+	try {
+		const updatedView = await projectViewService.update(new ProjectViewModel({
+			...view,
+			defaultSortBy,
+			defaultOrderBy,
+		}))
+		projectStore.setProjectView(updatedView)
+		success({message: t('sorting.defaultSaved')})
+	} catch (e) {
+		error(e)
+	}
 }
 
 function updateTaskList(task: ITask) {

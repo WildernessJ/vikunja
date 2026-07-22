@@ -39,6 +39,9 @@ export interface IProjectView extends IAbstract {
 	defaultBucketId: number
 	doneBucketId: number
 
+	defaultSortBy: string[]
+	defaultOrderBy: string[]
+
 	created: Date
 	updated: Date
 }

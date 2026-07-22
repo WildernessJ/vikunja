@@ -62,6 +62,29 @@ const SORT_BY_DEFAULT: SortBy = {
 	id: 'desc',
 }
 
+// Persisted default sort round-trips through the same parallel-array shape as the
+// sort_by/order_by API contract (see ProjectView.default_sort_by/default_order_by).
+export function defaultSortToSortBy(sortByArr: string[], orderByArr: string[]): SortBy | undefined {
+	if (!sortByArr || sortByArr.length === 0) return undefined
+
+	const result: Record<string, Order> = {}
+	sortByArr.forEach((field, i) => {
+		if (!VALID_SORT_FIELDS.has(field)) return
+		const order = orderByArr?.[i]
+		if (order !== 'asc' && order !== 'desc') return
+		result[field] = order
+	})
+	return Object.keys(result).length > 0 ? result as SortBy : undefined
+}
+
+export function sortByToDefaultArrays(sortBy: SortBy): {sortBy: string[], orderBy: string[]} {
+	const keys = Object.keys(sortBy) as (keyof SortBy)[]
+	return {
+		sortBy: keys,
+		orderBy: keys.map(k => sortBy[k]) as string[],
+	}
+}
+
 interface TaskListQueryState {
 	sort: string | undefined
 	filter: string | undefined
@@ -106,10 +129,13 @@ function formatSortOrder(sortBy: SortBy, params: TaskFilterParams): TaskFilterPa
 export function useTaskList(
 	projectIdGetter: ComputedGetter<IProject['id']>,
 	projectViewIdGetter: ComputedGetter<IProjectView['id']>,
-	sortByDefault: SortBy = SORT_BY_DEFAULT,
+	sortByDefault: SortBy | ComputedGetter<SortBy> = SORT_BY_DEFAULT,
 	expandGetter: ComputedGetter<ExpandTaskFilterParam> = () => 'subtasks',
 ) {
-	
+	const resolvedSortByDefault = computed<SortBy>(() =>
+		typeof sortByDefault === 'function' ? sortByDefault() : sortByDefault,
+	)
+
 	const projectId = computed(() => projectIdGetter())
 	const projectViewId = computed(() => projectViewIdGetter())
 
@@ -133,11 +159,11 @@ export function useTaskList(
 	const sortBy = computed<SortBy>({
 		get() {
 			const raw = sortQuery.value as string | undefined
-			if (!raw) return {...sortByDefault}
-			return parseSortQuery(raw, sortByDefault)
+			if (!raw) return {...resolvedSortByDefault.value}
+			return parseSortQuery(raw, resolvedSortByDefault.value)
 		},
 		set(val: SortBy) {
-			sortQuery.value = serializeSortBy(val, sortByDefault) || undefined
+			sortQuery.value = serializeSortBy(val, resolvedSortByDefault.value) || undefined
 		},
 	})
 

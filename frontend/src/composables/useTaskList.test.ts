@@ -1,5 +1,5 @@
 import {describe, it, expect, beforeEach, vi} from 'vitest'
-import {defineComponent, h, nextTick} from 'vue'
+import {defineComponent, h, nextTick, ref} from 'vue'
 import {mount, flushPromises} from '@vue/test-utils'
 import {setActivePinia, createPinia} from 'pinia'
 import {createRouter, createMemoryHistory, type Router} from 'vue-router'
@@ -17,7 +17,7 @@ vi.mock('@/services/taskCollection', async (importOriginal) => {
 	}
 })
 
-import {useTaskList, buildStoredQuery} from './useTaskList'
+import {useTaskList, buildStoredQuery, defaultSortToSortBy, sortByToDefaultArrays} from './useTaskList'
 import {useAuthStore} from '@/stores/auth'
 
 describe('buildStoredQuery', () => {
@@ -58,7 +58,10 @@ function lastRequestParams(): Record<string, unknown> {
 	return getAll.mock.calls.at(-1)?.[1] as Record<string, unknown>
 }
 
-async function mountTaskList(query: Record<string, string>): Promise<Router> {
+async function mountTaskList(
+	query: Record<string, string>,
+	sortByDefault?: Parameters<typeof useTaskList>[2],
+): Promise<Router> {
 	const router = createRouter({
 		history: createMemoryHistory(),
 		routes: [{path: '/', name: 'home', component: {render: () => null}}],
@@ -68,7 +71,7 @@ async function mountTaskList(query: Record<string, string>): Promise<Router> {
 
 	const TestComponent = defineComponent({
 		setup() {
-			useTaskList(() => 1, () => 1)
+			useTaskList(() => 1, () => 1, sortByDefault)
 			return () => h('div')
 		},
 	})
@@ -113,6 +116,108 @@ describe('useTaskList sort handling for relevance ranking', () => {
 		expect(params.sort_by).not.toHaveLength(0)
 		// id always sorts last so other sort columns take precedence.
 		expect(params.sort_by).toEqual(['id'])
+		expect(params.order_by).toEqual(['desc'])
+	})
+})
+
+describe('defaultSortToSortBy', () => {
+	it('zips parallel sort_by/order_by arrays into a SortBy record', () => {
+		expect(defaultSortToSortBy(['priority'], ['desc'])).toEqual({priority: 'desc'})
+	})
+
+	it('zips multiple fields in order', () => {
+		expect(defaultSortToSortBy(['priority', 'title'], ['desc', 'asc']))
+			.toEqual({priority: 'desc', title: 'asc'})
+	})
+
+	it('returns undefined for an empty sort_by array', () => {
+		expect(defaultSortToSortBy([], [])).toBeUndefined()
+	})
+
+	it('returns undefined when sort_by is missing entirely', () => {
+		expect(defaultSortToSortBy(undefined as unknown as string[], [])).toBeUndefined()
+	})
+
+	it('skips fields with no matching order (mismatched array lengths)', () => {
+		expect(defaultSortToSortBy(['priority', 'title'], ['desc'])).toEqual({priority: 'desc'})
+	})
+
+	it('ignores unknown sort fields', () => {
+		expect(defaultSortToSortBy(['not_a_real_field'], ['asc'])).toBeUndefined()
+	})
+})
+
+describe('sortByToDefaultArrays', () => {
+	it('splits a SortBy record into parallel arrays', () => {
+		expect(sortByToDefaultArrays({priority: 'desc', title: 'asc'}))
+			.toEqual({sortBy: ['priority', 'title'], orderBy: ['desc', 'asc']})
+	})
+
+	it('returns empty arrays for an empty SortBy', () => {
+		expect(sortByToDefaultArrays({})).toEqual({sortBy: [], orderBy: []})
+	})
+})
+
+describe('useTaskList sortByDefault precedence (persisted default vs URL sort)', () => {
+	beforeEach(() => {
+		setActivePinia(createPinia())
+		useAuthStore().setAuthenticated(true)
+		getAll.mockClear()
+	})
+
+	it('applies the persisted default when the URL has no explicit sort', async () => {
+		await mountTaskList({}, {priority: 'desc'})
+
+		const params = lastRequestParams()
+		expect(params.sort_by).toEqual(['priority'])
+		expect(params.order_by).toEqual(['desc'])
+	})
+
+	it('lets an explicit URL sort override the persisted default', async () => {
+		await mountTaskList({sort: 'title:asc'}, {priority: 'desc'})
+
+		const params = lastRequestParams()
+		expect(params.sort_by).toEqual(['title'])
+		expect(params.order_by).toEqual(['asc'])
+	})
+
+	it('accepts a reactive getter and reflects its current value', async () => {
+		await mountTaskList({}, () => ({due_date: 'asc'}))
+
+		const params = lastRequestParams()
+		expect(params.sort_by).toEqual(['due_date'])
+		expect(params.order_by).toEqual(['asc'])
+	})
+
+	it('re-resolves the default sort when the getter result changes (e.g. the view finished loading)', async () => {
+		const router = createRouter({
+			history: createMemoryHistory(),
+			routes: [{path: '/', name: 'home', component: {render: () => null}}],
+		})
+		await router.push({path: '/'})
+		await router.isReady()
+
+		const persistedDefault = ref<import('./useTaskList').SortBy>({})
+
+		const TestComponent = defineComponent({
+			setup() {
+				useTaskList(() => 1, () => 1, () => persistedDefault.value)
+				return () => h('div')
+			},
+		})
+
+		mount(TestComponent, {global: {plugins: [router]}})
+		await flushPromises()
+		await nextTick()
+
+		expect(lastRequestParams().sort_by).toEqual([])
+
+		persistedDefault.value = {priority: 'desc'}
+		await flushPromises()
+		await nextTick()
+
+		const params = lastRequestParams()
+		expect(params.sort_by).toEqual(['priority'])
 		expect(params.order_by).toEqual(['desc'])
 	})
 })
