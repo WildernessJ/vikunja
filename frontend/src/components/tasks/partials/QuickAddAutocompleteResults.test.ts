@@ -3,6 +3,7 @@ import {mount} from '@vue/test-utils'
 
 import QuickAddAutocompleteResults from './QuickAddAutocompleteResults.vue'
 import type {AutocompleteItem} from '@/composables/useQuickAddAutocomplete'
+import type {IUser} from '@/modelTypes/IUser'
 
 const ITEMS: AutocompleteItem[] = [
 	{kind: 'project', id: 1, display: 'ProjectOne', insertValue: 'ProjectOne'},
@@ -14,6 +15,7 @@ function mountResults(items: AutocompleteItem[]) {
 		props: {items, listboxId: 'qac-listbox-test'},
 		global: {
 			mocks: {$t: (key: string) => key},
+			stubs: {User: true},
 		},
 	})
 }
@@ -75,5 +77,32 @@ describe('QuickAddAutocompleteResults', () => {
 		expect(onKeyDown(keydown('ArrowDown'))).toBe(true)
 		expect(onKeyDown(keydown('Enter'))).toBe(true)
 		expect(wrapper.emitted('select')?.[0]).toEqual([ITEMS[1]])
+	})
+
+	it('renders a plain text row for a project item', () => {
+		const wrapper = mountResults([{kind: 'project', id: 1, display: 'ProjectOne', insertValue: 'ProjectOne'}])
+
+		expect(wrapper.text()).toContain('ProjectOne')
+		expect(wrapper.findComponent({name: 'ColorBubble'}).exists()).toBe(false)
+		expect(wrapper.findComponent({name: 'User'}).exists()).toBe(false)
+	})
+
+	it('renders the colour swatch for a label item', () => {
+		const wrapper = mountResults([{kind: 'label', id: 1, display: 'urgent', insertValue: 'urgent', color: '#ff0000'}])
+
+		const bubble = wrapper.findComponent({name: 'ColorBubble'})
+		expect(bubble.exists()).toBe(true)
+		expect(bubble.props('color')).toBe('#ff0000')
+		expect(wrapper.text()).toContain('urgent')
+	})
+
+	it('renders the avatar for an assignee item', () => {
+		const user = {id: 1, username: 'peter', name: 'Peter'} as IUser
+		const wrapper = mountResults([{kind: 'assignee', id: 1, display: 'Peter', insertValue: 'peter', user}])
+
+		const avatar = wrapper.findComponent({name: 'User'})
+		expect(avatar.exists()).toBe(true)
+		expect(avatar.props('user')).toEqual(user)
+		expect(wrapper.text()).toContain('Peter')
 	})
 })

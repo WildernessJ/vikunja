@@ -16,6 +16,19 @@
 				:aria-selected="index === selectedIndex"
 				@click="select(index)"
 			>
+				<ColorBubble
+					v-if="item.kind === 'label' && item.color"
+					:color="item.color"
+					class="qac-autocomplete-item-swatch"
+				/>
+				<User
+					v-else-if="item.kind === 'assignee' && item.user"
+					:user="item.user"
+					:show-username="false"
+					:avatar-size="20"
+					is-inline
+					class="qac-autocomplete-item-avatar"
+				/>
 				{{ item.display }}
 			</button>
 		</template>
@@ -31,6 +44,8 @@
 <script setup lang="ts">
 import {computed, ref, watch} from 'vue'
 
+import ColorBubble from '@/components/misc/ColorBubble.vue'
+import User from '@/components/misc/User.vue'
 import type {AutocompleteItem} from '@/composables/useQuickAddAutocomplete'
 
 const props = defineProps<{
@@ -127,7 +142,9 @@ defineExpose({
 }
 
 .qac-autocomplete-item {
-	display: block;
+	display: flex;
+	align-items: center;
+	gap: .5rem;
 	margin: 0;
 	inline-size: 100%;
 	text-align: start;
@@ -149,6 +166,18 @@ defineExpose({
 		&:hover {
 			background: transparent;
 		}
+	}
+}
+
+.qac-autocomplete-item-swatch {
+	flex-shrink: 0;
+}
+
+.qac-autocomplete-item-avatar {
+	flex-shrink: 0;
+
+	:deep(.avatar-wrapper) {
+		margin-inline-end: 0;
 	}
 }
 </style>

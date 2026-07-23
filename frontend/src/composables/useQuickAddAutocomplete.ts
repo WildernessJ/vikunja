@@ -15,6 +15,7 @@ import {useLabelStore} from '@/stores/labels'
 import {useProjectStore} from '@/stores/projects'
 import ProjectUserService from '@/services/projectUsers'
 import {getDisplayName} from '@/models/user'
+import {getHexColor} from '@/models/task'
 import type {IAbstract} from '@/modelTypes/IAbstract'
 import type {IUser} from '@/modelTypes/IUser'
 
@@ -25,6 +26,8 @@ export interface AutocompleteItem {
 	id: number | string,
 	display: string,
 	insertValue: string,
+	color?: string,
+	user?: IUser,
 }
 
 const ASSIGNEE_DEBOUNCE_MS = 300
@@ -67,6 +70,7 @@ export function useQuickAddAutocomplete(options: {
 			id: user.id,
 			display: getDisplayName(user),
 			insertValue: user.username,
+			user,
 		}))
 	}
 
@@ -93,7 +97,7 @@ export function useQuickAddAutocomplete(options: {
 			const alreadyTypedTitles = getLabelsFromPrefix(title.value, mode.value) ?? []
 			const alreadyTypedLabels = labelStore.getLabelsByExactTitles(alreadyTypedTitles)
 			items.value = labelStore.filterLabelsByQuery(alreadyTypedLabels, token.query)
-				.map(l => ({kind: 'label' as const, id: l.id, display: l.title, insertValue: l.title}))
+				.map(l => ({kind: 'label' as const, id: l.id, display: l.title, insertValue: l.title, color: getHexColor(l.hexColor)}))
 			return
 		}
 

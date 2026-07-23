@@ -24,6 +24,27 @@ interface QuotedSpan {
 	end: number,
 }
 
+// A same-char quote nested in the content (e.g. the apostrophe in "Bob's") would
+// otherwise be mistaken for the closing quote. Heuristic: the span closes at the
+// first occurrence of the quote char that is followed by a space or end-of-string;
+// an occurrence glued to more content (no trailing space/eol) is treated as literal.
+// If no such occurrence exists, the span is unterminated and runs to end-of-string.
+export function findQuoteClose(text: string, quoteChar: string, scanFrom: number): number {
+	let from = scanFrom
+	while (from < text.length) {
+		const closing = text.indexOf(quoteChar, from)
+		if (closing === -1) {
+			return -1
+		}
+		const afterChar = text[closing + 1]
+		if (afterChar === ' ' || closing + 1 === text.length) {
+			return closing
+		}
+		from = closing + 1
+	}
+	return -1
+}
+
 // A quote only opens a span when it immediately follows a prefix char at a word
 // boundary (matching getItemsFromPrefix's grammar) - prefix chars found inside an
 // already-open span are literal content, not new token boundaries.
@@ -34,7 +55,7 @@ function computeQuotedSpans(text: string, prefixChars: string[]): QuotedSpan[] {
 		const boundary = i === 0 || text[i - 1] === ' '
 		const nextChar = text[i + 1]
 		if (boundary && prefixChars.includes(text[i]) && (nextChar === '\'' || nextChar === '"')) {
-			const closing = text.indexOf(nextChar, i + 2)
+			const closing = findQuoteClose(text, nextChar, i + 2)
 			const end = closing === -1 ? text.length : closing + 1
 			spans.push({start: i, end})
 			i = end
@@ -75,7 +96,7 @@ function findTokenForPrefix(text: string, caretOffset: number, prefix: string, q
 	let end: number
 	let queryEnd: number
 	if (quoteChar !== null) {
-		const closing = text.indexOf(quoteChar, queryStart)
+		const closing = findQuoteClose(text, quoteChar, queryStart)
 		end = closing === -1 ? text.length : closing + 1
 		queryEnd = closing === -1 ? text.length : closing
 	} else {

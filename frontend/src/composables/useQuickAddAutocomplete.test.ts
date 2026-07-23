@@ -176,7 +176,7 @@ describe('useQuickAddAutocomplete', () => {
 			await vi.advanceTimersByTimeAsync(300)
 			expect(getAllMock).toHaveBeenCalledWith({projectId: 3}, {s: 'pe'})
 			expect(autocomplete.items.value).toEqual([
-				{kind: 'assignee', id: 9, display: 'Pete', insertValue: 'pete'},
+				{kind: 'assignee', id: 9, display: 'Pete', insertValue: 'pete', user: {id: 9, username: 'pete', name: 'Pete', email: 'pete@example.com'}},
 			])
 		} finally {
 			vi.useRealTimers()
@@ -204,7 +204,7 @@ describe('useQuickAddAutocomplete', () => {
 
 			expect(getAllMock).toHaveBeenCalledWith({projectId: 3}, {s: 'pe'})
 			expect(autocomplete.items.value).toEqual([
-				{kind: 'assignee', id: 9, display: 'Pete', insertValue: 'pete'},
+				{kind: 'assignee', id: 9, display: 'Pete', insertValue: 'pete', user: {id: 9, username: 'pete', name: 'Pete', email: 'pete@example.com'}},
 			])
 		} finally {
 			vi.useRealTimers()
