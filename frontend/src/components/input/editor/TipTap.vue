@@ -453,6 +453,9 @@ const extensions : Extensions = [
 		codeBlock: false,
 		hardBreak: false,
 		blockquote: false,
+		// StarterKit v3 bundles link + underline; we register customized versions below.
+		link: false,
+		underline: false,
 	}),
 	BlockquoteWithCommentId,
 

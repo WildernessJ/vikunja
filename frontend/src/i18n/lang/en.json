@@ -1131,6 +1131,7 @@
         "text2": "This will also remove all attachments, reminders and relations associated with this task and cannot be undone!"
       },
       "actions": {
+        "moreActions": "More Actions",
         "assign": "Assign to User",
         "label": "Add Labels",
         "priority": "Set Priority",
