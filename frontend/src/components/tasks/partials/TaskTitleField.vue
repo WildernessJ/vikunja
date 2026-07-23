@@ -23,6 +23,7 @@
 			ref="autocompleteWrapper"
 			class="task-title-autocomplete-wrapper"
 			:style="{left: `${autocompletePosition.x}px`, top: `${autocompletePosition.y}px`}"
+			@pointerdown="onAutocompletePointerDown"
 		>
 			<QuickAddAutocompleteResults
 				ref="autocompleteResults"
@@ -36,7 +37,7 @@
 </template>
 
 <script setup lang="ts">
-import {computed, nextTick, onBeforeUnmount, ref, watch} from 'vue'
+import {computed, nextTick, onBeforeUnmount, ref, useId, watch} from 'vue'
 import {onClickOutside} from '@vueuse/core'
 import {autoUpdate, computePosition, flip, offset, shift} from '@floating-ui/dom'
 
@@ -47,7 +48,8 @@ import type {PrefixMode} from '@/modules/quickAddMagic'
 
 import QuickAddAutocompleteResults from '@/components/tasks/partials/QuickAddAutocompleteResults.vue'
 import {useAutoHeightTextarea} from '@/composables/useAutoHeightTextarea'
-import {useTaskTitleAutocomplete, type TitleAutocompleteItem} from '@/composables/useTaskTitleAutocomplete'
+import {useTaskTitleAutocomplete} from '@/composables/useTaskTitleAutocomplete'
+import type {TitleAutocompleteItem} from '@/composables/useQuickAddAutocomplete'
 import {useProjectStore} from '@/stores/projects'
 import {useLabelStore} from '@/stores/labels'
 import {useI18n} from 'vue-i18n'
@@ -61,10 +63,13 @@ const props = defineProps<{
 	// same save functions the property chips call - this component never talks
 	// to the store directly.
 	onSaveLiteralTitle: (title: string) => Promise<void>,
-	onAcceptProject: (project: IProject) => Promise<void>,
+	// Project/priority setters already saveTask() the whole task - passing the
+	// stripped title lets them persist it in that same PATCH instead of a
+	// separate trailing literal-save (which would double-save and double-toast).
+	onAcceptProject: (project: IProject, title: string) => Promise<void>,
 	onAcceptLabel: (label: ILabel) => Promise<void>,
 	onAcceptAssignee: (user: IUser) => Promise<void>,
-	onAcceptPriority: (priority: number) => Promise<void>,
+	onAcceptPriority: (priority: number, title: string) => Promise<void>,
 }>()
 
 const emit = defineEmits<{
@@ -84,7 +89,7 @@ watch(() => props.modelValue, (value) => {
 
 const {textarea: titleInput} = useAutoHeightTextarea(localTitle)
 
-const listboxId = computed(() => `task-title-listbox-${Math.random().toString(36).substr(2, 9)}`)
+const listboxId = `task-title-listbox-${useId()}`
 
 const mode = computed(() => props.mode)
 const assigneeProjectId = computed(() => props.assigneeProjectId)
@@ -142,9 +147,25 @@ function onActivity() {
 	}
 }
 
+// Picking a dropdown item is a pointerdown on a <button> inside the wrapper,
+// which steals focus (firing blur on the textarea) before the click that
+// actually runs onSelect. Blur must not literal-save in that window - it
+// would race the strip-and-save onSelect is about to do. The timeout is a
+// fallback for a pointerdown that doesn't land on an item (e.g. released
+// outside it), so the flag can't get wedged true forever.
+const selectingItem = ref(false)
+
+function onAutocompletePointerDown() {
+	selectingItem.value = true
+	window.setTimeout(() => {
+		selectingItem.value = false
+	}, 0)
+}
+
 async function onSelect(item: TitleAutocompleteItem) {
 	const result = autocomplete.insertItem(item)
 	if (result === null) {
+		selectingItem.value = false
 		return
 	}
 
@@ -156,11 +177,19 @@ async function onSelect(item: TitleAutocompleteItem) {
 		titleInput.value?.focus()
 	})
 
+	emit('update:modelValue', result.text)
+
 	if (item.kind === 'project') {
 		const project = projectStore.projects[item.id as IProject['id']]
 		if (project) {
-			await props.onAcceptProject(project)
+			await props.onAcceptProject(project, result.text)
+			selectingItem.value = false
+			return
 		}
+	} else if (item.kind === 'priority') {
+		await props.onAcceptPriority(Number(item.insertValue), result.text)
+		selectingItem.value = false
+		return
 	} else if (item.kind === 'label') {
 		const label = labelStore.labels[item.id as ILabel['id']]
 		if (label) {
@@ -168,12 +197,10 @@ async function onSelect(item: TitleAutocompleteItem) {
 		}
 	} else if (item.kind === 'assignee' && item.user) {
 		await props.onAcceptAssignee(item.user)
-	} else if (item.kind === 'priority') {
-		await props.onAcceptPriority(Number(item.insertValue))
 	}
 
-	emit('update:modelValue', result.text)
 	await props.onSaveLiteralTitle(result.text)
+	selectingItem.value = false
 }
 
 function onKeydown(e: KeyboardEvent) {
@@ -194,26 +221,25 @@ function onKeydown(e: KeyboardEvent) {
 	}
 }
 
-// Blur/Enter save the literal text verbatim - never parsed. A blur that
-// happens while the dropdown is open is the mousedown-before-click of picking
-// an option, not the user leaving the field; onSelect() owns the save there.
+// Blur/Enter save the literal text verbatim - never parsed. The dropdown
+// being open (even on an unmatched token) is not by itself a reason to skip
+// the save - only a pointerdown on the dropdown itself is, because that's the
+// mousedown-before-click of picking an option; onSelect() owns the save there.
 async function onBlur() {
-	if (autocomplete.isOpen.value) {
+	if (selectingItem.value) {
 		return
 	}
 
 	const title = localTitle.value.trim()
+
 	if (title === '') {
 		localTitle.value = props.modelValue
-		return
+	} else if (title !== props.modelValue) {
+		emit('update:modelValue', title)
+		await props.onSaveLiteralTitle(title)
 	}
 
-	if (title === props.modelValue) {
-		return
-	}
-
-	emit('update:modelValue', title)
-	await props.onSaveLiteralTitle(title)
+	autocomplete.close()
 }
 </script>
 

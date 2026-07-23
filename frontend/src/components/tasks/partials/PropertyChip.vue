@@ -3,7 +3,10 @@
 		class="property-chip"
 		:class="{'is-unset': (ghostWhenUnset ?? false) && !(isSet ?? false)}"
 	>
-		<Popup :has-overflow="hasOverflow ?? false">
+		<Popup
+			ref="popup"
+			:has-overflow="hasOverflow ?? false"
+		>
 			<template #trigger="{toggle}">
 				<SimpleButton
 					class="property-chip-button"
@@ -33,6 +36,7 @@
 </template>
 
 <script setup lang="ts">
+import {ref} from 'vue'
 import type {IconProp} from '@fortawesome/fontawesome-svg-core'
 
 import Popup from '@/components/misc/Popup.vue'
@@ -57,6 +61,14 @@ defineProps<{
 defineEmits<{
 	clear: [],
 }>()
+
+const popup = ref<InstanceType<typeof Popup> | null>(null)
+
+// Lets the field-open keyboard shortcuts (KeyL, KeyP, ...) open this chip's
+// popup imperatively, the same way clicking the trigger button does.
+defineExpose({
+	open: () => popup.value?.openImperatively(),
+})
 </script>
 
 <style lang="scss" scoped>

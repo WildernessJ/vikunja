@@ -250,8 +250,7 @@ import {useProjectStore} from '@/stores/projects'
 
 import {useAutoHeightTextarea} from '@/composables/useAutoHeightTextarea'
 import {useQuickAddComposer} from '@/composables/useQuickAddComposer'
-import {useQuickAddAutocomplete} from '@/composables/useQuickAddAutocomplete'
-import type {TitleAutocompleteItem} from '@/composables/useTaskTitleAutocomplete'
+import {useQuickAddAutocomplete, type TitleAutocompleteItem} from '@/composables/useQuickAddAutocomplete'
 import TaskService from '@/services/task'
 import TaskModel from '@/models/task'
 

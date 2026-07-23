@@ -83,6 +83,22 @@ onClickOutside(popup, (event) => {
 	}
 	close()
 })
+
+function openImperatively() {
+	if (openValue.value) {
+		return
+	}
+	openValue.value = true
+	emit('update:open', true)
+}
+
+// Exposed key is openImperatively, not open - the component already has an
+// `open` prop, and defineExpose reusing that name is a name collision.
+defineExpose({
+	openImperatively,
+	close,
+	toggle,
+})
 </script>
 
 <style scoped lang="scss">

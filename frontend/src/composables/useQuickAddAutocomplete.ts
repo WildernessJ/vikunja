@@ -30,6 +30,19 @@ export interface AutocompleteItem {
 	user?: IUser,
 }
 
+// Priority ('!') only exists in the task-detail title's dropdown (the composer
+// never surfaces it), but the type lives here - not in the detail-only
+// useTaskTitleAutocomplete - so QuickAddAutocompleteResults (shared by both
+// surfaces) doesn't have to depend on a detail-specific composable.
+export interface PriorityAutocompleteItem {
+	kind: 'priority',
+	id: number,
+	display: string,
+	insertValue: string,
+}
+
+export type TitleAutocompleteItem = AutocompleteItem | PriorityAutocompleteItem
+
 const ASSIGNEE_DEBOUNCE_MS = 300
 
 export function useQuickAddAutocomplete(options: {

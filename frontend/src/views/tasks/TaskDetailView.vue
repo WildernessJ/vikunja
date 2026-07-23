@@ -26,6 +26,12 @@
 				:has-close="isModal"
 				@close="$emit('close')"
 			/>
+			<!-- The visible title is an edit textarea, not a heading element - this
+			     mirrors it so the document outline / screen readers still see one
+			     top-level heading for the task. -->
+			<h1 class="is-sr-only">
+				{{ task.title }}
+			</h1>
 			<TaskTitleField
 				:model-value="task.title"
 				:disabled="!canWrite"
@@ -77,6 +83,7 @@
 
 			<!-- Content and buttons -->
 			<TaskPropertyChips
+				ref="propertyChips"
 				v-model:task="task"
 				v-model:task-color="taskColor"
 				:can-write="canWrite"
@@ -90,6 +97,70 @@
 				:change-project="changeProject"
 				:remove-repeat-after="removeRepeatAfter"
 			/>
+
+			<!-- Field-open keyboard shortcuts - faithful map to the pre-redesign
+			     detail view. Hidden buttons because v-shortcut clicks the element
+			     it's bound to; chip targets live inside TaskPropertyChips, a
+			     separate component, so they can't host the directive directly. -->
+			<div
+				class="is-hidden"
+				aria-hidden="true"
+			>
+				<button
+					v-shortcut="'KeyL'"
+					type="button"
+					tabindex="-1"
+					@click="propertyChips?.openChip('labels')"
+				/>
+				<button
+					v-shortcut="'KeyP'"
+					type="button"
+					tabindex="-1"
+					@click="propertyChips?.openChip('priority')"
+				/>
+				<button
+					v-shortcut="'KeyC'"
+					type="button"
+					tabindex="-1"
+					@click="propertyChips?.openChip('color')"
+				/>
+				<button
+					v-shortcut="'KeyA'"
+					type="button"
+					tabindex="-1"
+					@click="propertyChips?.openChip('assignees')"
+				/>
+				<button
+					v-shortcut="'KeyM'"
+					type="button"
+					tabindex="-1"
+					@click="propertyChips?.openChip('project')"
+				/>
+				<button
+					v-shortcut="'KeyD'"
+					type="button"
+					tabindex="-1"
+					@click="propertyChips?.openChip('dueDate')"
+				/>
+				<button
+					v-shortcut="reminderShortcut"
+					type="button"
+					tabindex="-1"
+					@click="propertyChips?.openChip('reminders')"
+				/>
+				<button
+					v-shortcut="'KeyF'"
+					type="button"
+					tabindex="-1"
+					@click="focusAttachments"
+				/>
+				<button
+					v-shortcut="'KeyR'"
+					type="button"
+					tabindex="-1"
+					@click="focusRelatedTasks"
+				/>
+			</div>
 
 			<div class="detail-content">
 				<!-- Description -->
@@ -112,7 +183,10 @@
 				/>
 
 				<!-- Attachments -->
-				<div class="content attachments">
+				<div
+					ref="attachmentsSection"
+					class="content attachments"
+				>
 					<Attachments
 						:ref="e => { attachmentsRef = e as any }"
 						:edit-enabled="canWrite"
@@ -123,7 +197,10 @@
 				</div>
 
 				<!-- Related Tasks -->
-				<div class="content details mbe-0">
+				<div
+					ref="relatedTasksSection"
+					class="content details mbe-0"
+				>
 					<h2 class="task-section-title">
 						<span class="icon is-grey">
 							<Icon icon="sitemap" />
@@ -380,6 +457,7 @@ const lastProjectOrTaskProject = computed(() => lastProject.value ?? project.val
 
 // Match native OS conventions for "delete the selected item"
 const deleteShortcut = isAppleDevice() ? 'Backspace' : 'Delete'
+const reminderShortcut = computed(() => isAppleDevice() ? 'Shift+KeyR' : 'Alt+KeyR')
 
 onBeforeRouteLeave(async () => {
 	if (taskNotFound.value) {
@@ -463,6 +541,37 @@ async function scrollToHeading() {
 }
 
 const attachmentsRef = ref<InstanceType<typeof Attachments> | null>(null)
+const attachmentsSection = ref<HTMLElement | null>(null)
+const relatedTasksSection = ref<HTMLElement | null>(null)
+const propertyChips = ref<InstanceType<typeof TaskPropertyChips> | null>(null)
+
+// Attachments/Related tasks are always-visible sections now (no more
+// activeFields toggle) - KeyF/KeyR just bring them into view and hand focus
+// to their first control, replicating the old openAttachments/setRelatedTasksActive intent.
+function focusAttachments() {
+	if (!attachmentsSection.value) {
+		return
+	}
+	scrollIntoView(attachmentsSection.value)
+	attachmentsRef.value?.openFilePicker()
+}
+
+function focusRelatedTasks() {
+	const el = relatedTasksSection.value
+	if (!el) {
+		return
+	}
+	scrollIntoView(el)
+
+	// Relations already exist -> the add-relation form is collapsed behind this
+	// button, same as the old setFieldActive('relatedTasks') + button-click did.
+	const toggleButton = el.querySelector<HTMLElement>('#showRelatedTasksFormButton')
+	if (toggleButton) {
+		toggleButton.click()
+		return
+	}
+	el.querySelector<HTMLElement>('input, textarea, button')?.focus()
+}
 
 const taskViewContainer = ref<HTMLElement | null>(null)
 const scrollContainer = ref<HTMLElement | null>(null)
@@ -655,7 +764,10 @@ async function toggleTaskDone() {
 	)
 }
 
-async function changeProject(project: IProject | null) {
+// title is set when this comes from the title field's token-accept path, so
+// the stripped title and the new project persist in the same PATCH instead of
+// a redundant trailing literal-title save.
+async function changeProject(project: IProject | null, title?: string) {
 	if (project === null) {
 		return
 	}
@@ -663,6 +775,7 @@ async function changeProject(project: IProject | null) {
 	await saveTask({
 		...task.value,
 		projectId: project.id,
+		...(title === undefined ? {} : {title}),
 	})
 	baseStore.setCurrentProject(project)
 }
@@ -683,10 +796,11 @@ async function duplicateCurrentTask() {
 	}
 }
 
-async function setPriority(priority: number) {
+async function setPriority(priority: number, title?: string) {
 	const newTask: ITask = {
 		...task.value,
 		priority: priority as Priority,
+		...(title === undefined ? {} : {title}),
 	}
 
 	return saveTask(newTask)

@@ -74,4 +74,15 @@ describe('PropertyChip', () => {
 
 		expect(wrapper.find('.property-chip-button').attributes('disabled')).toBeDefined()
 	})
+
+	it('opens the popup imperatively via the exposed open() method (F3)', async () => {
+		const wrapper = mountChip()
+
+		expect(wrapper.find('.editor-stub').exists()).toBe(false)
+
+		wrapper.vm.open()
+		await wrapper.vm.$nextTick()
+
+		expect(wrapper.find('.editor-stub').exists()).toBe(true)
+	})
 })

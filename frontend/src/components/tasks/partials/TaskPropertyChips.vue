@@ -2,6 +2,7 @@
 	<div class="task-property-chips">
 		<!-- Project -->
 		<PropertyChip
+			ref="projectChipRef"
 			icon="list"
 			:label="projectChipLabel"
 			:is-set="true"
@@ -21,6 +22,7 @@
 			:class="{'is-unset': task.dueDate === null}"
 		>
 			<Datepicker
+				ref="dueDateChipRef"
 				v-model="task.dueDate"
 				:choose-date-label="$t('task.detail.chooseDueDate')"
 				:disabled="!canWrite"
@@ -85,6 +87,7 @@
 
 		<!-- Priority -->
 		<PropertyChip
+			ref="priorityChipRef"
 			:is-set="task.priority !== PRIORITIES.UNSET"
 			:show-clear="task.priority !== PRIORITIES.UNSET && canWrite"
 			:disabled="!canWrite"
@@ -106,6 +109,7 @@
 
 		<!-- Labels -->
 		<PropertyChip
+			ref="labelsChipRef"
 			icon="tags"
 			:label="labelsChipLabel"
 			:is-set="task.labels.length > 0"
@@ -123,6 +127,7 @@
 
 		<!-- Assignees -->
 		<PropertyChip
+			ref="assigneesChipRef"
 			icon="users"
 			:label="assigneesChipLabel"
 			:is-set="task.assignees.length > 0"
@@ -139,6 +144,7 @@
 
 		<!-- Reminders -->
 		<PropertyChip
+			ref="remindersChipRef"
 			:icon="['far', 'clock']"
 			:label="remindersChipLabel"
 			:is-set="task.reminders.length > 0"
@@ -203,6 +209,7 @@
 
 		<!-- Color -->
 		<PropertyChip
+			ref="colorChipRef"
 			icon="fill-drip"
 			:label="$t('task.attributes.color')"
 			:is-set="taskColor !== ''"
@@ -231,7 +238,7 @@
 </template>
 
 <script setup lang="ts">
-import {computed} from 'vue'
+import {computed, ref} from 'vue'
 import {useI18n} from 'vue-i18n'
 
 import type {ITask} from '@/modelTypes/ITask'
@@ -283,7 +290,7 @@ const {
 	savePercentDone: (percentDone: number) => Promise<void>,
 	saveEstimatedDuration: (estimatedDuration: number) => Promise<void>,
 	saveGeneric: () => Promise<void>,
-	changeProject: (project: IProject | null) => Promise<void>,
+	changeProject: (project: IProject | null, title?: string) => Promise<void>,
 	removeRepeatAfter: () => Promise<void>,
 }>()
 const task = defineModel<ITask>('task', {required: true})
@@ -291,6 +298,32 @@ const taskColor = defineModel<string>('taskColor', {required: true})
 
 const {t} = useI18n({useScope: 'global'})
 const projectStore = useProjectStore()
+
+const projectChipRef = ref<InstanceType<typeof PropertyChip> | null>(null)
+const dueDateChipRef = ref<InstanceType<typeof Datepicker> | null>(null)
+const priorityChipRef = ref<InstanceType<typeof PropertyChip> | null>(null)
+const labelsChipRef = ref<InstanceType<typeof PropertyChip> | null>(null)
+const assigneesChipRef = ref<InstanceType<typeof PropertyChip> | null>(null)
+const remindersChipRef = ref<InstanceType<typeof PropertyChip> | null>(null)
+const colorChipRef = ref<InstanceType<typeof PropertyChip> | null>(null)
+
+// Only the chips the field-open shortcuts (KeyL, KeyP, ...) actually target -
+// see the hidden shortcut buttons in TaskDetailView.vue.
+const chipRefs = {
+	project: projectChipRef,
+	dueDate: dueDateChipRef,
+	priority: priorityChipRef,
+	labels: labelsChipRef,
+	assignees: assigneesChipRef,
+	reminders: remindersChipRef,
+	color: colorChipRef,
+}
+
+defineExpose({
+	openChip(key: keyof typeof chipRefs) {
+		chipRefs[key].value?.open()
+	},
+})
 
 const projectChipLabel = computed(() => {
 	const project = projectStore.projects[task.value.projectId]

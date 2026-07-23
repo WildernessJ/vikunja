@@ -123,4 +123,19 @@ describe('TaskPropertyChips', () => {
 			expect(chip.findComponent({name: 'Datepicker'}).props('disabled')).toBe(true)
 		})
 	})
+
+	it('opens the labels chip popup via openChip("labels") (F3 - KeyL shortcut)', async () => {
+		const wrapper = mountChips()
+
+		// The popup's content (and thus EditLabels) only renders once open, so
+		// the chip has to be found by its icon prop rather than its content.
+		const labelsChip = wrapper.findAllComponents({name: 'PropertyChip'})
+			.find(c => c.props('icon') === 'tags')
+		expect(labelsChip?.find('.property-chip-popup').exists()).toBe(false)
+
+		wrapper.vm.openChip('labels')
+		await wrapper.vm.$nextTick()
+
+		expect(labelsChip?.find('.property-chip-popup').exists()).toBe(true)
+	})
 })

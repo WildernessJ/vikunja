@@ -46,7 +46,7 @@ import {computed, ref, watch} from 'vue'
 
 import ColorBubble from '@/components/misc/ColorBubble.vue'
 import User from '@/components/misc/User.vue'
-import type {TitleAutocompleteItem} from '@/composables/useTaskTitleAutocomplete'
+import type {TitleAutocompleteItem} from '@/composables/useQuickAddAutocomplete'
 
 // TitleAutocompleteItem is a superset of the composer's own AutocompleteItem
 // (adds a 'priority' kind for the task-detail title's dropdown).

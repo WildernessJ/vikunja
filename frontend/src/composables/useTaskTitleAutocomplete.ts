@@ -3,16 +3,11 @@ import type {ComputedRef, Ref} from 'vue'
 
 import {PrefixMode} from '@/modules/quickAddMagic'
 import {PRIORITIES} from '@/constants/priorities'
-import {useQuickAddAutocomplete, type AutocompleteItem} from '@/composables/useQuickAddAutocomplete'
-
-export interface PriorityAutocompleteItem {
-	kind: 'priority',
-	id: number,
-	display: string,
-	insertValue: string,
-}
-
-export type TitleAutocompleteItem = AutocompleteItem | PriorityAutocompleteItem
+import {
+	useQuickAddAutocomplete,
+	type PriorityAutocompleteItem,
+	type TitleAutocompleteItem,
+} from '@/composables/useQuickAddAutocomplete'
 
 interface PriorityToken {
 	prefix: string,
