@@ -19,6 +19,10 @@ Types: `fix`, `feat`, `chore`, `docs`.
 
 ## Changes
 
+`2026-07-22` — **fix** — Quick-add composer: an apostrophe inside a quoted magic token no longer truncates it (#50). A shared `findQuoteClose` heuristic closes a quoted span only at a quote char followed by a space or end-of-string, so `+'Bob's Project'` parses whole instead of stopping at `Bob`; applied consistently to the live autocomplete (`tokenAtCaret`) and the task-creation parse (`getItemsFromPrefix`). See [ADR-0007](docs/adr/ADR-0007-quote-close-heuristic.md). ([05d0725ab](https://github.com/WildernessJ/vikunja/commit/05d0725ab))
+
+`2026-07-22` — **feat** — Quick-add autocomplete rows show a colour swatch for label suggestions and an avatar for assignee suggestions, reusing the existing `ColorBubble`/`User` components (#50). ([05d0725ab](https://github.com/WildernessJ/vikunja/commit/05d0725ab))
+
 `2026-07-22` — **fix** — Assignee removal now updates the UI without a reload (#61): `EditAssignees.removeAssignee` persisted the removal and spliced its local list but never emitted `update:modelValue`, so a consumer holding a separate copy of the task (e.g. the List-view right-click context menu) kept showing the removed assignee's avatar until reload. Now it emits after the splice, mirroring `addAssignee`. ([d3e149629](https://github.com/WildernessJ/vikunja/commit/d3e149629))
 
 `2026-07-22` — **fix** — List "Set as default sort" no longer leaves a redundant `?sort=` in the URL (#70): saving a sort as the view default now clears the explicit query param once the persisted default catches up (a failed save keeps it so the sort still applies); session-only sort overrides are unaffected. Adds the first `ProjectList` integration test (#69). ([d7ac37c0e](https://github.com/WildernessJ/vikunja/commit/d7ac37c0e))
