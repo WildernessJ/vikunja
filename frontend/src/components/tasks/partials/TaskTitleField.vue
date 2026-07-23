@@ -37,7 +37,7 @@
 </template>
 
 <script setup lang="ts">
-import {computed, nextTick, onBeforeUnmount, ref, useId, watch} from 'vue'
+import {computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch} from 'vue'
 import {onClickOutside} from '@vueuse/core'
 import {autoUpdate, computePosition, flip, offset, shift} from '@floating-ui/dom'
 
@@ -53,6 +53,7 @@ import type {TitleAutocompleteItem} from '@/composables/useQuickAddAutocomplete'
 import {useProjectStore} from '@/stores/projects'
 import {useLabelStore} from '@/stores/labels'
 import {useI18n} from 'vue-i18n'
+import {error} from '@/message'
 
 const props = defineProps<{
 	modelValue: string,
@@ -137,6 +138,21 @@ onBeforeUnmount(() => {
 	stopAutoUpdate = null
 })
 
+function handleBeforeUnload(e: BeforeUnloadEvent) {
+	if (localTitle.value.trim() !== props.modelValue) {
+		e.preventDefault()
+		e.returnValue = ''
+	}
+}
+
+onMounted(() => {
+	window.addEventListener('beforeunload', handleBeforeUnload)
+})
+
+onBeforeUnmount(() => {
+	window.removeEventListener('beforeunload', handleBeforeUnload)
+})
+
 onClickOutside(autocompleteWrapper, () => {
 	autocomplete.close()
 }, {ignore: [titleInput]})
@@ -163,6 +179,26 @@ function onAutocompletePointerDown() {
 }
 
 async function onSelect(item: TitleAutocompleteItem) {
+	// Resolve the store item before stripping the token - if the project/label
+	// can't be found (a store miss), abort the whole accept so the token isn't
+	// silently consumed with the property lost.
+	let project: IProject | undefined
+	let label: ILabel | undefined
+
+	if (item.kind === 'project') {
+		project = projectStore.projects[item.id as IProject['id']]
+		if (!project) {
+			selectingItem.value = false
+			return
+		}
+	} else if (item.kind === 'label') {
+		label = labelStore.labels[item.id as ILabel['id']]
+		if (!label) {
+			selectingItem.value = false
+			return
+		}
+	}
+
 	const result = autocomplete.insertItem(item)
 	if (result === null) {
 		selectingItem.value = false
@@ -179,22 +215,16 @@ async function onSelect(item: TitleAutocompleteItem) {
 
 	emit('update:modelValue', result.text)
 
-	if (item.kind === 'project') {
-		const project = projectStore.projects[item.id as IProject['id']]
-		if (project) {
-			await props.onAcceptProject(project, result.text)
-			selectingItem.value = false
-			return
-		}
+	if (item.kind === 'project' && project) {
+		await props.onAcceptProject(project, result.text)
+		selectingItem.value = false
+		return
 	} else if (item.kind === 'priority') {
 		await props.onAcceptPriority(Number(item.insertValue), result.text)
 		selectingItem.value = false
 		return
-	} else if (item.kind === 'label') {
-		const label = labelStore.labels[item.id as ILabel['id']]
-		if (label) {
-			await props.onAcceptLabel(label)
-		}
+	} else if (item.kind === 'label' && label) {
+		await props.onAcceptLabel(label)
 	} else if (item.kind === 'assignee' && item.user) {
 		await props.onAcceptAssignee(item.user)
 	}
@@ -234,6 +264,7 @@ async function onBlur() {
 
 	if (title === '') {
 		localTitle.value = props.modelValue
+		error({message: t('task.detail.titleRequired')})
 	} else if (title !== props.modelValue) {
 		emit('update:modelValue', title)
 		await props.onSaveLiteralTitle(title)

@@ -37,8 +37,22 @@ vi.mock('vue-i18n', () => ({
 	}),
 }))
 
+const errorMock = vi.hoisted(() => vi.fn())
+vi.mock('@/message', () => ({
+	error: errorMock,
+}))
+
 import {PrefixMode} from '@/modules/quickAddMagic'
 import TaskTitleField from './TaskTitleField.vue'
+
+// Each mount registers its own window 'beforeunload' listener (F-B); track every
+// instance so it can be unmounted after its test, otherwise stale listeners from
+// earlier tests fire (and pollute) later tests' beforeunload assertions.
+const mountedWrappers: ReturnType<typeof mount>[] = []
+
+afterEach(() => {
+	mountedWrappers.splice(0).forEach(w => w.unmount())
+})
 
 function mountField(overrides: Partial<Record<string, unknown>> = {}) {
 	const onSaveLiteralTitle = vi.fn().mockResolvedValue(undefined)
@@ -68,6 +82,7 @@ function mountField(overrides: Partial<Record<string, unknown>> = {}) {
 			},
 		},
 	})
+	mountedWrappers.push(wrapper)
 
 	return {wrapper, onSaveLiteralTitle, onAcceptProject, onAcceptLabel, onAcceptAssignee, onAcceptPriority}
 }
@@ -86,6 +101,7 @@ describe('TaskTitleField', () => {
 		filterLabelsByQueryMock.mockReset().mockReturnValue([])
 		getLabelsByExactTitlesMock.mockReset().mockReturnValue([])
 		getAllAssigneesMock.mockReset().mockResolvedValue([])
+		errorMock.mockReset()
 	})
 
 	afterEach(() => {
@@ -215,5 +231,93 @@ describe('TaskTitleField', () => {
 
 		expect(onSaveLiteralTitle).not.toHaveBeenCalled()
 		expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('Buy milk')
+	})
+
+	// Regression for F-D (1): the old Heading.save() told the user why an empty
+	// title was reverted instead of failing silently.
+	it('(F-D) shows a titleRequired error when the title is cleared on blur', async () => {
+		const {wrapper} = mountField({modelValue: 'Buy milk'})
+
+		await typeAndPlaceCaretAtEnd(wrapper, '   ')
+		await wrapper.find('textarea').trigger('blur')
+		await flushPromises()
+
+		expect(errorMock).toHaveBeenCalledWith({message: 'task.detail.titleRequired'})
+	})
+
+	// Regression for F-D (2): onSelect used to strip the token and save the
+	// literal title even when the store lookup for the accepted project/label
+	// missed, silently losing the property while still consuming the token.
+	it('(F-D) aborts the accept without stripping or saving when the project store lookup misses', async () => {
+		searchProjectMock.mockReturnValue([{id: 404, title: 'Ghost'}])
+		const {wrapper, onAcceptProject, onSaveLiteralTitle} = mountField()
+
+		await typeAndPlaceCaretAtEnd(wrapper, 'Ship it +Ghost')
+		const item = wrapper.find('.qac-autocomplete-item')
+		await item.trigger('pointerdown')
+		await item.trigger('click')
+		await flushPromises()
+
+		expect(onAcceptProject).not.toHaveBeenCalled()
+		expect(onSaveLiteralTitle).not.toHaveBeenCalled()
+		expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('Ship it +Ghost')
+	})
+
+	it('(F-D) aborts the accept without stripping or saving when the label store lookup misses', async () => {
+		filterLabelsByQueryMock.mockReturnValue([{id: 404, title: 'ghost', hexColor: '000000'}])
+		getLabelsByExactTitlesMock.mockReturnValue([])
+		const {wrapper, onAcceptLabel, onSaveLiteralTitle} = mountField({modelValue: 'Ship it'})
+
+		await typeAndPlaceCaretAtEnd(wrapper, 'Ship it *ghost')
+		const item = wrapper.find('.qac-autocomplete-item')
+		await item.trigger('pointerdown')
+		await item.trigger('click')
+		await flushPromises()
+
+		expect(onAcceptLabel).not.toHaveBeenCalled()
+		expect(onSaveLiteralTitle).not.toHaveBeenCalled()
+		expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('Ship it *ghost')
+	})
+})
+
+// Regression for F-B: the old Heading.vue warned on tab-close/refresh with an
+// unsaved title edit; the redesign dropped it.
+describe('TaskTitleField beforeunload guard (F-B)', () => {
+	beforeEach(() => {
+		searchProjectMock.mockReset().mockReturnValue([])
+		filterLabelsByQueryMock.mockReset().mockReturnValue([])
+		getLabelsByExactTitlesMock.mockReset().mockReturnValue([])
+		getAllAssigneesMock.mockReset().mockResolvedValue([])
+		errorMock.mockReset()
+	})
+
+	afterEach(() => {
+		document.body.innerHTML = ''
+	})
+
+	function dispatchBeforeUnload() {
+		const event = new Event('beforeunload', {cancelable: true})
+		window.dispatchEvent(event)
+		return event
+	}
+
+	it('signals the browser when there is an unsaved title edit', async () => {
+		const {wrapper} = mountField({modelValue: 'Buy milk'})
+
+		await wrapper.find('textarea').setValue('Buy milk and eggs')
+
+		const event = dispatchBeforeUnload()
+
+		expect(event.defaultPrevented).toBe(true)
+	})
+
+	it('is a no-op when the title has no unsaved changes', async () => {
+		const {wrapper} = mountField({modelValue: 'Buy milk'})
+		// Sanity: the textarea reflects modelValue, so it's clean.
+		expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('Buy milk')
+
+		const event = dispatchBeforeUnload()
+
+		expect(event.defaultPrevented).toBe(false)
 	})
 })

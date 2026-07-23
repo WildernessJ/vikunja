@@ -26,7 +26,7 @@
 				v-model="task.dueDate"
 				:choose-date-label="$t('task.detail.chooseDueDate')"
 				:disabled="!canWrite"
-				@closeOnChange="saveGeneric"
+				@closeOnChange="saveGeneric()"
 			/>
 			<QacChipClear
 				:show="task.dueDate !== null && canWrite"
@@ -43,7 +43,7 @@
 				v-model="task.startDate"
 				:choose-date-label="$t('task.detail.chooseStartDate')"
 				:disabled="!canWrite"
-				@closeOnChange="saveGeneric"
+				@closeOnChange="saveGeneric()"
 			/>
 			<QacChipClear
 				:show="task.startDate !== null && canWrite"
@@ -60,7 +60,7 @@
 				v-model="task.endDate"
 				:choose-date-label="$t('task.detail.chooseEndDate')"
 				:disabled="!canWrite"
-				@closeOnChange="saveGeneric"
+				@closeOnChange="saveGeneric()"
 			/>
 			<QacChipClear
 				:show="task.endDate !== null && canWrite"
@@ -77,7 +77,7 @@
 				v-model="task.deadline"
 				:choose-date-label="$t('task.detail.chooseDeadline')"
 				:disabled="!canWrite"
-				@closeOnChange="saveGeneric"
+				@closeOnChange="saveGeneric()"
 			/>
 			<QacChipClear
 				:show="task.deadline !== null && canWrite"
@@ -156,7 +156,7 @@
 				v-model="task.reminders"
 				:default-relative-to="remindersDefaultRelativeTo"
 				:disabled="!canWrite"
-				@update:modelValue="saveGeneric"
+				@update:modelValue="saveGeneric()"
 			/>
 		</PropertyChip>
 
@@ -173,7 +173,7 @@
 			<RepeatAfter
 				v-model="task"
 				:disabled="!canWrite"
-				@update:modelValue="saveGeneric"
+				@update:modelValue="saveGeneric()"
 			/>
 		</PropertyChip>
 
@@ -231,7 +231,7 @@
 			<ColorPicker
 				v-model="taskColor"
 				menu-position="bottom"
-				@update:modelValue="saveGeneric"
+				@update:modelValue="saveGeneric()"
 			/>
 		</PropertyChip>
 	</div>

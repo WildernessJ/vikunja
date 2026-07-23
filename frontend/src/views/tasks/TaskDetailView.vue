@@ -103,6 +103,7 @@
 			     it's bound to; chip targets live inside TaskPropertyChips, a
 			     separate component, so they can't host the directive directly. -->
 			<div
+				v-if="canWrite"
 				class="is-hidden"
 				aria-hidden="true"
 			>

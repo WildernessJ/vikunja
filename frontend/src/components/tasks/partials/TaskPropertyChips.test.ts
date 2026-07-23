@@ -41,7 +41,7 @@ function baseTask(): ITask {
 
 }
 
-function mountChips(overrides: Partial<Record<string, unknown>> = {}) {
+function mountChips(overrides: Partial<Record<string, unknown>> = {}, stubOverrides: Partial<Record<string, unknown>> = {}) {
 	return mount(TaskPropertyChips, {
 		props: {
 			task: baseTask(),
@@ -73,6 +73,7 @@ function mountChips(overrides: Partial<Record<string, unknown>> = {}) {
 				EditEstimatedDuration: true,
 				ColorPicker: true,
 				Datepicker: true,
+				...stubOverrides,
 			},
 		},
 	})
@@ -137,5 +138,61 @@ describe('TaskPropertyChips', () => {
 		await wrapper.vm.$nextTick()
 
 		expect(labelsChip?.find('.property-chip-popup').exists()).toBe(true)
+	})
+
+	// Regression for F-A: bare `saveGeneric` handlers pass the widget's own
+	// emit payload as saveGeneric's first arg. Since saveGeneric is really
+	// saveTask(currentTask), that payload (a boolean/string/array) gets
+	// treated as the task and corrupts the save. These stubs actually emit
+	// their real event payloads so a bare-reference regression fails here.
+	const emittingStubs = {
+		Datepicker: {
+			name: 'Datepicker',
+			template: '<button class="fake-datepicker" @click="$emit(\'closeOnChange\', true)" />',
+		},
+		ColorPicker: {
+			name: 'ColorPicker',
+			template: '<button class="fake-colorpicker" @click="$emit(\'update:modelValue\', \'#ff0000\')" />',
+		},
+		Reminders: {
+			name: 'Reminders',
+			template: '<button class="fake-reminders" @click="$emit(\'update:modelValue\', [{id: 1}])" />',
+		},
+	}
+
+	it('calls saveGeneric with no arguments when a date is changed', async () => {
+		const saveGeneric = vi.fn()
+		const wrapper = mountChips({saveGeneric}, emittingStubs)
+
+		await wrapper.find('.fake-datepicker').trigger('click')
+
+		expect(saveGeneric).toHaveBeenCalledTimes(1)
+		expect(saveGeneric).toHaveBeenCalledWith()
+	})
+
+	it('calls saveGeneric with no arguments when the color is changed', async () => {
+		const saveGeneric = vi.fn()
+		const wrapper = mountChips({saveGeneric}, emittingStubs)
+
+		wrapper.vm.openChip('color')
+		await wrapper.vm.$nextTick()
+
+		await wrapper.find('.fake-colorpicker').trigger('click')
+
+		expect(saveGeneric).toHaveBeenCalledTimes(1)
+		expect(saveGeneric).toHaveBeenCalledWith()
+	})
+
+	it('calls saveGeneric with no arguments when reminders are changed', async () => {
+		const saveGeneric = vi.fn()
+		const wrapper = mountChips({saveGeneric}, emittingStubs)
+
+		wrapper.vm.openChip('reminders')
+		await wrapper.vm.$nextTick()
+
+		await wrapper.find('.fake-reminders').trigger('click')
+
+		expect(saveGeneric).toHaveBeenCalledTimes(1)
+		expect(saveGeneric).toHaveBeenCalledWith()
 	})
 })
