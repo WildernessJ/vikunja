@@ -147,6 +147,17 @@ function closeViaEsc() {
 	triggerButton.value?.focus()
 	close()
 }
+
+function open() {
+	if (props.disabled) {
+		return
+	}
+	show.value = true
+}
+
+defineExpose({
+	open,
+})
 </script>
 
 <style lang="scss" scoped>
