@@ -19,6 +19,8 @@ Types: `fix`, `feat`, `chore`, `docs`.
 
 ## Changes
 
+`2026-07-23` — **feat** — Quick-add composer parses reminders from a `~` prefix (#50). `~1d`/`~2h`/`~30m`/`~1w` add a relative-before-due-date reminder; `~<date>` (e.g. `~tomorrow at 9am`) adds an absolute reminder reusing the existing date grammar. Tokens parse only from the contiguous trailing run of the title so a mid-title `~2h` ("approximately") is left as prose ([ADR-0008](docs/adr/ADR-0008-reminder-magic-trailing-only.md)); the chip reflects parsed reminders live and the store applies them on create (chip override > parsed > quick-add defaults). ([bcc3c7b67](https://github.com/WildernessJ/vikunja/commit/bcc3c7b67))
+
 `2026-07-22` — **fix** — Quick-add composer: an apostrophe inside a quoted magic token no longer truncates it (#50). A shared `findQuoteClose` heuristic closes a quoted span only at a quote char followed by a space or end-of-string, so `+'Bob's Project'` parses whole instead of stopping at `Bob`; applied consistently to the live autocomplete (`tokenAtCaret`) and the task-creation parse (`getItemsFromPrefix`). See [ADR-0007](docs/adr/ADR-0007-quote-close-heuristic.md). ([05d0725ab](https://github.com/WildernessJ/vikunja/commit/05d0725ab))
 
 `2026-07-22` — **feat** — Quick-add autocomplete rows show a colour swatch for label suggestions and an avatar for assignee suggestions, reusing the existing `ColorBubble`/`User` components (#50). ([05d0725ab](https://github.com/WildernessJ/vikunja/commit/05d0725ab))

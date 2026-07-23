@@ -40,10 +40,11 @@ history lives in `../context/RUN_LOG.md`. Upstream's own decisions don't need AD
 | [ADR-0005](ADR-0005-config-driven-cron-fails-soft.md) | Config-driven cron schedules fail soft (Critical log + disable), not fatal | Enacted | 2026-07-17 | — |
 | [ADR-0006](ADR-0006-upstream-sync-via-merge.md) | Sync with upstream via full merge commits, not cherry-picks | Enacted | 2026-07-21 | — |
 | [ADR-0007](ADR-0007-quote-close-heuristic.md) | Quoted magic-token spans close on a quote followed by space/end-of-string | Enacted | 2026-07-22 | ADR-0002 |
+| [ADR-0008](ADR-0008-reminder-magic-trailing-only.md) | Reminder `~` magic-text tokens parse only from the trailing run | Enacted | 2026-07-23 | ADR-0002, ADR-0007 |
 
 ## How to add a new ADR
 
-1. **Pick the next number** (never reused, even if an ADR is later superseded) — next is **0008**.
+1. **Pick the next number** (never reused, even if an ADR is later superseded) — next is **0009**.
 2. **Copy [`ADR-TEMPLATE.md`](ADR-TEMPLATE.md)** to `ADR-NNNN-<short-slug>.md`; fill in front matter + body (MADR).
 3. If it **supersedes** an existing ADR, set `supersedes:` here and `superseded-by:` + `status:` on the old one.
 4. **Add a row above** and link it from `../context/PROJECT_STATE.md` → References.
