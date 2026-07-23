@@ -15,6 +15,8 @@ import {useAuthStore} from '@/stores/auth'
 import {useBaseStore} from '@/stores/base'
 import {useConfigStore} from '@/stores/config'
 
+import {useGlobalNow} from '@/composables/useGlobalNow'
+
 import Login from '@/views/user/Login.vue'
 import Register from '@/views/user/Register.vue'
 import LinkSharingAuth from '@/views/sharing/LinkSharingAuth.vue'
@@ -661,5 +663,10 @@ router.beforeEach(async (to, from) => {
 		return to.fullPath + to.hash
 	}
 })
+
+// Refresh the shared "now" on every navigation so relative dates ("2 days ago") aren't
+// stale between the 60s interval ticks. App-lifetime, so it can't be torn down by a
+// component unmount the way the old in-composable route guard was (#75).
+router.afterEach(() => useGlobalNow().update())
 
 export default router
