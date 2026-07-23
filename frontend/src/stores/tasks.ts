@@ -584,11 +584,17 @@ export const useTaskStore = defineStore('task', () => {
 		if (parsedTask.repeats !== null) {
 			task.repeatAfter = parsedTask.repeats
 		}
-		// Present (even empty []) overrides the quick-add default reminders; absent falls back.
-		task.reminders = resolveOverride(overrides, 'reminders', undefined) ?? buildDefaultRemindersForQuickAdd(
-			authStore.settings.frontendSettings.quickAddDefaultReminders,
-			dueDate,
-		)
+		// Precedence: a chip override (present, even empty []) wins; else reminders
+		// parsed from `~` magic-text; else the quick-add default reminders derived
+		// from the due date. Parsed reminders replace (not stack onto) the defaults —
+		// an explicit `~1d` is a deliberate choice, like touching the chip.
+		task.reminders = resolveOverride(overrides, 'reminders', undefined)
+			?? (parsedTask.reminders.length > 0
+				? parsedTask.reminders
+				: buildDefaultRemindersForQuickAdd(
+					authStore.settings.frontendSettings.quickAddDefaultReminders,
+					dueDate,
+				))
 
 		if (parsedTask.rruleRepeat !== null) {
 			task.repeatMode = TASK_REPEAT_MODES.REPEAT_MODE_RRULE

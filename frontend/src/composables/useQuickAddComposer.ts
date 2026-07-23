@@ -53,7 +53,9 @@ export function useQuickAddComposer(title: Ref<string>, mode: Ref<PrefixMode>) {
 	)
 	const effectiveRepeats = computed(() => parsed.value.repeats ?? parsed.value.rruleRepeat)
 	const effectiveReminders = computed<ITaskReminder[]>(
-		() => overrides.reminders ?? EMPTY_REMINDER_LIST,
+		() => overrides.reminders ?? (parsed.value.reminders.length > 0
+			? parsed.value.reminders
+			: EMPTY_REMINDER_LIST),
 	)
 
 	function setOverride<K extends keyof ComposerOverrides>(key: K, value: ComposerOverrides[K]) {

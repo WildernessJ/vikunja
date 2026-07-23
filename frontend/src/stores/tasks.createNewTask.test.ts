@@ -198,6 +198,43 @@ describe('tasks store createNewTask', () => {
 		})
 	})
 
+	describe('reminders parsed from ~ magic-text', () => {
+		it('persists a parsed relative ~1d reminder on the created task', async () => {
+			const store = useTaskStore()
+			const created = await store.createNewTask({title: 'Buy milk ~1d', projectId: 1})
+
+			expect(created.title).toBe('Buy milk')
+			expect(created.reminders).toHaveLength(1)
+			expect(created.reminders?.[0].relativePeriod).toBe(-86400)
+			expect(created.reminders?.[0].relativeTo).toBe('due_date')
+		})
+
+		it('a chip reminders override wins over the parsed ~ reminder', async () => {
+			const store = useTaskStore()
+			const explicitReminder = {reminder: null, relativePeriod: -900, relativeTo: 'due_date'} as ITaskReminder
+			const created = await store.createNewTask(
+				{title: 'Buy milk ~1d', projectId: 1},
+				{reminders: [explicitReminder]},
+			)
+
+			expect(created.reminders).toHaveLength(1)
+			expect(created.reminders?.[0].relativePeriod).toBe(-900)
+		})
+
+		it('parsed ~ reminders replace (not stack onto) the quick-add defaults', async () => {
+			quickAddDefaultRemindersMock.value = [{reminder: null, relativePeriod: -3600, relativeTo: 'due_date'} as ITaskReminder]
+
+			const store = useTaskStore()
+			const created = await store.createNewTask(
+				{title: 'Buy milk ~1d', projectId: 1},
+				{dueDate: new Date('2026-12-25')},
+			)
+
+			expect(created.reminders).toHaveLength(1)
+			expect(created.reminders?.[0].relativePeriod).toBe(-86400)
+		})
+	})
+
 	describe('label creation failure surfacing (#57)', () => {
 		it('shows an error toast exactly once when a quick-add-magic label fails to create', async () => {
 			createLabelMock.mockRejectedValue(new Error('link shares may not create labels'))
