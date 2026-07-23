@@ -41,6 +41,7 @@ history lives in `../context/RUN_LOG.md`. Upstream's own decisions don't need AD
 | [ADR-0006](ADR-0006-upstream-sync-via-merge.md) | Sync with upstream via full merge commits, not cherry-picks | Enacted | 2026-07-21 | — |
 | [ADR-0007](ADR-0007-quote-close-heuristic.md) | Quoted magic-token spans close on a quote followed by space/end-of-string | Enacted | 2026-07-22 | ADR-0002 |
 | [ADR-0008](ADR-0008-reminder-magic-trailing-only.md) | Reminder `~` magic-text tokens parse only from the trailing run | Enacted | 2026-07-23 | ADR-0002, ADR-0007 |
+| [ADR-0009](ADR-0009-detail-title-autocomplete-accept-only.md) | Task-detail title parses magic-text on autocomplete-accept only (4 prefix tokens) | Enacted | 2026-07-23 | ADR-0002, ADR-0008 |
 
 ## How to add a new ADR
 
