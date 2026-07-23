@@ -46,15 +46,17 @@ import {computed, ref, watch} from 'vue'
 
 import ColorBubble from '@/components/misc/ColorBubble.vue'
 import User from '@/components/misc/User.vue'
-import type {AutocompleteItem} from '@/composables/useQuickAddAutocomplete'
+import type {TitleAutocompleteItem} from '@/composables/useTaskTitleAutocomplete'
 
+// TitleAutocompleteItem is a superset of the composer's own AutocompleteItem
+// (adds a 'priority' kind for the task-detail title's dropdown).
 const props = defineProps<{
-	items: AutocompleteItem[],
+	items: TitleAutocompleteItem[],
 	listboxId: string,
 }>()
 
 const emit = defineEmits<{
-	'select': [item: AutocompleteItem],
+	'select': [item: TitleAutocompleteItem],
 	'close': [],
 }>()
 
@@ -64,7 +66,7 @@ watch(() => props.items, () => {
 	selectedIndex.value = 0
 })
 
-function optionId(item: AutocompleteItem) {
+function optionId(item: TitleAutocompleteItem) {
 	return `${props.listboxId}-option-${item.kind}-${item.id}`
 }
 

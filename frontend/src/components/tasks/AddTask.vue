@@ -72,31 +72,20 @@
 				v-if="!isMultiline"
 				class="qac-chip-row"
 			>
-				<div class="qac-chip">
-					<Popup>
-						<template #trigger="{toggle}">
-							<SimpleButton
-								class="qac-chip-button"
-								@click.stop="toggle()"
-							>
-								<span class="icon is-small"><Icon icon="layer-group" /></span>
-								{{ projectChipLabel }}
-							</SimpleButton>
-						</template>
-						<template #content="{close}">
-							<div class="qac-chip-popup">
-								<ProjectSearch
-									:model-value="overrides.project ?? undefined"
-									@update:modelValue="(project) => onProjectPicked(project, close)"
-								/>
-							</div>
-						</template>
-					</Popup>
-					<QacChipClear
-						:show="overrides.project !== undefined"
-						@clear="clearOverride('project')"
-					/>
-				</div>
+				<PropertyChip
+					icon="layer-group"
+					:label="projectChipLabel"
+					:is-set="overrides.project !== undefined"
+					:show-clear="overrides.project !== undefined"
+					@clear="clearOverride('project')"
+				>
+					<template #default="{close}">
+						<ProjectSearch
+							:model-value="overrides.project ?? undefined"
+							@update:modelValue="(project) => onProjectPicked(project, close)"
+						/>
+					</template>
+				</PropertyChip>
 
 				<div class="qac-chip">
 					<Datepicker
@@ -116,87 +105,51 @@
 					</span>
 				</div>
 
-				<div class="qac-chip">
-					<Popup>
-						<template #trigger="{toggle}">
-							<SimpleButton
-								class="qac-chip-button"
-								@click.stop="toggle()"
-							>
-								<span class="icon is-small"><Icon icon="tags" /></span>
-								{{ labelsChipLabel }}
-							</SimpleButton>
-						</template>
-						<template #content>
-							<div class="qac-chip-popup">
-								<EditLabels
-									:model-value="effectiveLabels"
-									:task-id="0"
-									@update:modelValue="(val) => setOverride('labels', val)"
-								/>
-							</div>
-						</template>
-					</Popup>
-					<QacChipClear
-						:show="overrides.labels !== undefined"
-						@clear="clearOverride('labels')"
+				<PropertyChip
+					icon="tags"
+					:label="labelsChipLabel"
+					:is-set="overrides.labels !== undefined"
+					:show-clear="overrides.labels !== undefined"
+					@clear="clearOverride('labels')"
+				>
+					<EditLabels
+						:model-value="effectiveLabels"
+						:task-id="0"
+						@update:modelValue="(val) => setOverride('labels', val)"
 					/>
-				</div>
+				</PropertyChip>
 
-				<div class="qac-chip">
-					<Popup>
-						<template #trigger="{toggle}">
-							<SimpleButton
-								class="qac-chip-button"
-								@click.stop="toggle()"
-							>
-								<PriorityLabel
-									:priority="effectivePriority ?? PRIORITIES.UNSET"
-									:show-all="true"
-								/>
-							</SimpleButton>
-						</template>
-						<template #content>
-							<div class="qac-chip-popup qac-chip-popup-priority">
-								<PrioritySelect
-									:model-value="effectivePriority ?? PRIORITIES.UNSET"
-									@update:modelValue="(val) => setOverride('priority', val)"
-								/>
-							</div>
-						</template>
-					</Popup>
-					<QacChipClear
-						:show="overrides.priority !== undefined"
-						@clear="clearOverride('priority')"
+				<PropertyChip
+					:is-set="overrides.priority !== undefined"
+					:show-clear="overrides.priority !== undefined"
+					@clear="clearOverride('priority')"
+				>
+					<template #trigger>
+						<PriorityLabel
+							:priority="effectivePriority ?? PRIORITIES.UNSET"
+							:show-all="true"
+						/>
+					</template>
+					<PrioritySelect
+						:model-value="effectivePriority ?? PRIORITIES.UNSET"
+						@update:modelValue="(val) => setOverride('priority', val)"
 					/>
-				</div>
+				</PropertyChip>
 
-				<div class="qac-chip">
-					<Popup has-overflow>
-						<template #trigger="{toggle}">
-							<SimpleButton
-								class="qac-chip-button"
-								@click.stop="toggle()"
-							>
-								<span class="icon is-small"><Icon :icon="['far', 'clock']" /></span>
-								{{ remindersChipLabel }}
-							</SimpleButton>
-						</template>
-						<template #content>
-							<div class="qac-chip-popup">
-								<Reminders
-									:model-value="effectiveReminders"
-									:default-relative-to="remindersDefaultRelativeTo"
-									@update:modelValue="(val) => setOverride('reminders', val)"
-								/>
-							</div>
-						</template>
-					</Popup>
-					<QacChipClear
-						:show="overrides.reminders !== undefined"
-						@clear="clearOverride('reminders')"
+				<PropertyChip
+					:icon="['far', 'clock']"
+					:label="remindersChipLabel"
+					:is-set="overrides.reminders !== undefined"
+					:show-clear="overrides.reminders !== undefined"
+					has-overflow
+					@clear="clearOverride('reminders')"
+				>
+					<Reminders
+						:model-value="effectiveReminders"
+						:default-relative-to="remindersDefaultRelativeTo"
+						@update:modelValue="(val) => setOverride('reminders', val)"
 					/>
-				</div>
+				</PropertyChip>
 
 				<div class="qac-actions">
 					<BaseButton
@@ -272,8 +225,6 @@ import type {ILabel} from '@/modelTypes/ILabel'
 
 import Expandable from '@/components/base/Expandable.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
-import Popup from '@/components/misc/Popup.vue'
-import SimpleButton from '@/components/input/SimpleButton.vue'
 import Datepicker from '@/components/input/Datepicker.vue'
 import QuickAddMagic from '@/components/tasks/partials/QuickAddMagic.vue'
 import ProjectSearch from '@/components/tasks/partials/ProjectSearch.vue'
@@ -282,6 +233,7 @@ import PrioritySelect from '@/components/tasks/partials/PrioritySelect.vue'
 import PriorityLabel from '@/components/tasks/partials/PriorityLabel.vue'
 import Reminders from '@/components/tasks/partials/Reminders.vue'
 import QacChipClear from '@/components/tasks/partials/QacChipClear.vue'
+import PropertyChip from '@/components/tasks/partials/PropertyChip.vue'
 import QuickAddAutocompleteResults from '@/components/tasks/partials/QuickAddAutocompleteResults.vue'
 import {parseSubtasksViaIndention} from '@/helpers/parseSubtasksViaIndention'
 import {getProjectTitle} from '@/helpers/getProjectTitle'
@@ -298,7 +250,8 @@ import {useProjectStore} from '@/stores/projects'
 
 import {useAutoHeightTextarea} from '@/composables/useAutoHeightTextarea'
 import {useQuickAddComposer} from '@/composables/useQuickAddComposer'
-import {useQuickAddAutocomplete, type AutocompleteItem} from '@/composables/useQuickAddAutocomplete'
+import {useQuickAddAutocomplete} from '@/composables/useQuickAddAutocomplete'
+import type {TitleAutocompleteItem} from '@/composables/useTaskTitleAutocomplete'
 import TaskService from '@/services/task'
 import TaskModel from '@/models/task'
 
@@ -444,7 +397,14 @@ function onTextareaActivity() {
 	}
 }
 
-function onAutocompleteSelect(item: AutocompleteItem) {
+function onAutocompleteSelect(item: TitleAutocompleteItem) {
+	// The composer's own dropdown only ever offers project/label/assignee kinds
+	// (useQuickAddAutocomplete never surfaces 'priority') - this guard just
+	// satisfies the shared component's now-wider item type.
+	if (item.kind === 'priority') {
+		return
+	}
+
 	const result = autocomplete.insertItem(item)
 	if (result === null) {
 		return
@@ -829,26 +789,9 @@ defineExpose({
 	align-items: center;
 }
 
-.qac-chip-button {
-	display: inline-flex;
-	align-items: center;
-	gap: .25rem;
-	font-size: .9rem;
-	inline-size: auto;
-	white-space: nowrap;
-}
-
 .qac-chip-clear {
 	color: var(--grey-400);
 	margin-inline-start: -.25rem;
-}
-
-.qac-chip-popup {
-	inline-size: 260px;
-	background: var(--white);
-	border-radius: $radius;
-	box-shadow: $shadow;
-	padding: .5rem;
 }
 
 .qac-repeats-hint {
