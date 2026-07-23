@@ -6,6 +6,7 @@ import {PrefixMode} from '@/modules/quickAddMagic'
 import {PRIORITIES} from '@/constants/priorities'
 import ProjectModel from '@/models/project'
 import LabelModel from '@/models/label'
+import TaskReminderModel from '@/models/taskReminder'
 
 describe('useQuickAddComposer', () => {
 	it('reflects text-parsed values when no override is set', () => {
@@ -93,6 +94,19 @@ describe('useQuickAddComposer', () => {
 		const overrideLabel = new LabelModel({id: 5, title: 'urgent'})
 		setOverride('labels', [overrideLabel])
 		expect(effectiveLabels.value).toEqual([overrideLabel])
+	})
+
+	it('effectiveReminders reflects text-parsed reminders, and a chip override wins over them', () => {
+		const title = ref('Buy milk ~1d')
+		const mode = ref(PrefixMode.Default)
+		const {effectiveReminders, setOverride} = useQuickAddComposer(title, mode)
+
+		expect(effectiveReminders.value).toHaveLength(1)
+		expect(effectiveReminders.value[0].relativePeriod).toBe(-86400)
+
+		const chipReminder = new TaskReminderModel({reminder: new Date('2026-08-01T09:00:00Z'), relativeTo: null})
+		setOverride('reminders', [chipReminder])
+		expect(effectiveReminders.value).toEqual([chipReminder])
 	})
 
 	it('effectiveProject reflects an overridden project, not the parsed project name', async () => {

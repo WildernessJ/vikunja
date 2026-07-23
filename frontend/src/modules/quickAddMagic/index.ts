@@ -1,6 +1,7 @@
 export {parseTaskText} from './quickAddMagic'
 export {PrefixMode, PREFIXES} from './prefixes'
 export {getLabelsFromPrefix, getProjectFromPrefix} from './prefixParser'
+export {getReminders} from './reminderParser'
 export {cleanupItemText} from './textCleanup'
 export {tokenAtCaret} from './tokenAtCaret'
 export {insertTokenAtCaret} from './insertTokenAtCaret'

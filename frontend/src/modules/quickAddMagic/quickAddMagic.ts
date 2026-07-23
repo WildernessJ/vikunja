@@ -3,6 +3,7 @@ import {parseDeadline} from './deadlineParser'
 import {PREFIXES, PrefixMode} from './prefixes'
 import {getItemsFromPrefix, getLabelsFromPrefix, getProjectFromPrefix} from './prefixParser'
 import {getPriority} from './priorityParser'
+import {getReminders} from './reminderParser'
 import {getRepeats} from './repeatParser'
 import {cleanupItemText, cleanupResult} from './textCleanup'
 import type {ParsedTaskText} from './types'
@@ -23,6 +24,7 @@ export const parseTaskText = (text: string, prefixesMode: PrefixMode = PrefixMod
 		assignees: [],
 		repeats: null,
 		rruleRepeat: null,
+		reminders: [],
 	}
 
 	// If the entire text is wrapped in quotes, strip them and skip all parsing
@@ -55,6 +57,13 @@ export const parseTaskText = (text: string, prefixesMode: PrefixMode = PrefixMod
 	result.text = textWithoutMatched
 	result.repeats = repeats
 	result.rruleRepeat = rruleRepeat
+
+	// ~ reminders have no Todoist convention; only parse them in Vikunja (default) mode.
+	if (prefixesMode === PrefixMode.Default) {
+		const {textWithoutMatched, reminders} = getReminders(result.text, now)
+		result.text = textWithoutMatched
+		result.reminders = reminders
+	}
 
 	// Parse the braced deadline before the due date so the date grammar never
 	// sees (and consumes) the deadline's inner text as the due date.
