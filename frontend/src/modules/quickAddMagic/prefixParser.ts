@@ -1,4 +1,5 @@
 import {PREFIXES, PrefixMode} from './prefixes'
+import {findQuoteClose} from './tokenAtCaret'
 
 export const getItemsFromPrefix = (text: string, prefix: string): string[] => {
 	const items: string[] = []
@@ -20,10 +21,10 @@ export const getItemsFromPrefix = (text: string, prefix: string): string[] => {
 		}
 
 		let itemText
-		if (p.charAt(0) === '\'') {
-			itemText = p.split('\'')[1]
-		} else if (p.charAt(0) === '"') {
-			itemText = p.split('"')[1]
+		const quoteChar = p.charAt(0) === '\'' || p.charAt(0) === '"' ? p.charAt(0) : null
+		if (quoteChar !== null) {
+			const closing = findQuoteClose(p, quoteChar, 1)
+			itemText = closing === -1 ? p.slice(1) : p.slice(1, closing)
 		} else {
 			// Only until the next space
 			itemText = p.split(' ')[0]

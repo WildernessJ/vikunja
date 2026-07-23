@@ -198,4 +198,43 @@ describe('tokenAtCaret', () => {
 
 		expect(result).toBeNull()
 	})
+
+	it('resolves a single-quoted token containing the same quote char (apostrophe)', () => {
+		const text = "+'Bob's Project'"
+		const result = tokenAtCaret(text, text.length, vikunja)
+
+		expect(result).toEqual({
+			type: 'project',
+			prefix: '+',
+			query: "Bob's Project",
+			start: 0,
+			end: text.length,
+		})
+	})
+
+	it('resolves a double-quoted token containing the same quote char (embedded double quote, mirroring the apostrophe case)', () => {
+		const text = '*"Bob"s Project"'
+		const result = tokenAtCaret(text, text.length, vikunja)
+
+		expect(result).toEqual({
+			type: 'label',
+			prefix: '*',
+			query: 'Bob"s Project',
+			start: 0,
+			end: text.length,
+		})
+	})
+
+	it('accepted regression: with no separating space, the closing quote is not recognized and the span swallows the rest of the string', () => {
+		const text = "+'a'*label"
+		const result = tokenAtCaret(text, text.length, vikunja)
+
+		expect(result).toEqual({
+			type: 'project',
+			prefix: '+',
+			query: "a'*label",
+			start: 0,
+			end: text.length,
+		})
+	})
 })
