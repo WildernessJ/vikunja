@@ -32,6 +32,24 @@ fast-forwarding `main`.
 
 Supporting conventions established during the first sync:
 
+- **A zero-conflict merge needs a different review artifact.** `git show --cc` shows
+  only manually-resolved lines, so a merge with no conflicts produces an *empty*
+  combined diff and the removed-behavior audit above has nothing to read — the
+  review mechanism is structurally blind exactly when it looks most reassuring.
+  In that case, prove the delta is intact mechanically instead:
+
+  ```bash
+  diff <(git diff <merge-base> <fork-head-before>) \
+       <(git diff upstream/main <merge-commit>)
+  ```
+
+  The two fork deltas must differ only in `index <blob>..<blob>` headers and hunk
+  offsets — zero `+`/`-` content lines. That establishes
+  `merged_tree == upstream/main + fork_delta` by construction, which is stronger
+  than sampling FORK-CHANGES entries by hand. Live-verify is still required: it
+  remains the only check for upstream behavior changes that land implicitly.
+  (Added 2026-07-24 after the second sync merged clean and left ADR-0006's
+  designated artifact empty.)
 - **Upstream owns contested test-fixture IDs.** When both sides add the same
   fixture ID, the fork's entries are renumbered — upstream's IDs are usually
   load-bearing across many of its tests, the fork's rarely are.
