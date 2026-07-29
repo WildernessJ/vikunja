@@ -177,7 +177,6 @@
         "overdueTasksRemindersTime": "Overdue tasks reminder email time",
         "pushNotifications": "Push notifications on this device",
         "pushNotificationsDescription": "Keeps the app icon badge up to date while Vikunja is closed. Every update also shows a notification, because iOS requires it — you can mute the banner and sound for Vikunja in your device settings and keep just the badge.",
-        "pushNotificationsUnsupported": "This browser does not support push notifications.",
         "pushNotificationsDenied": "Notifications are blocked for Vikunja. Allow them in your browser or device settings to enable push notifications.",
         "pushNotificationsEnableSuccess": "Push notifications are now enabled on this device.",
         "pushNotificationsDisableSuccess": "Push notifications are now disabled on this device.",

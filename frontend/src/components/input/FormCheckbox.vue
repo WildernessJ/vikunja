@@ -5,13 +5,21 @@ interface Props {
 	disabled?: boolean
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
 const emit = defineEmits<{
 	'update:modelValue': [value: boolean]
 }>()
 
 function handleChange(event: Event) {
-	emit('update:modelValue', (event.target as HTMLInputElement).checked)
+	const input = event.target as HTMLInputElement
+	emit('update:modelValue', input.checked)
+
+	// The browser has already flipped the box, but modelValue is what the box
+	// means. Vue only patches `checked` when that value changes, so a parent
+	// that declines the change (async handler that fails, permission prompt the
+	// user dismissed) would otherwise leave the box stuck showing a state
+	// nothing is in. Re-assert it and let the prop drive it back if it lands.
+	input.checked = props.modelValue ?? false
 }
 </script>
 

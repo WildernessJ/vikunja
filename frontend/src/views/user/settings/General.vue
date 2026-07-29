@@ -122,7 +122,7 @@
 				<FormCheckbox
 					v-cy="'pushNotifications'"
 					:model-value="pushSubscribed"
-					:disabled="!pushSupported || pushLoading || pushPermission === 'denied'"
+					:disabled="pushLoading || pushPermission === 'denied'"
 					:label="$t('user.settings.general.pushNotifications')"
 					@update:modelValue="togglePushNotifications"
 				/>
@@ -130,13 +130,7 @@
 					{{ $t('user.settings.general.pushNotificationsDescription') }}
 				</p>
 				<p
-					v-if="!pushSupported"
-					class="help"
-				>
-					{{ $t('user.settings.general.pushNotificationsUnsupported') }}
-				</p>
-				<p
-					v-else-if="pushPermission === 'denied'"
+					v-if="pushPermission === 'denied'"
 					class="help"
 				>
 					{{ $t('user.settings.general.pushNotificationsDenied') }}
@@ -749,7 +743,6 @@ async function updateSettings() {
 }
 
 const {
-	supported: pushSupported,
 	available: pushAvailable,
 	subscribed: pushSubscribed,
 	permission: pushPermission,

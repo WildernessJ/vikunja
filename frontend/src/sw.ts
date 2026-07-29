@@ -104,20 +104,17 @@ function applyPushedBadge(count: number): Promise<void> {
 // that receives a push without showing a notification, so every push shows one;
 // users who only want the badge mute the surfaces in the OS settings instead.
 self.addEventListener('push', (event: PushEvent) => {
-	if (!event.data) {
-		return
-	}
-
-	let payload: BadgePushPayload
+	// A missing or unparseable payload is still a push that was accepted, so it
+	// still has to surface something — returning early is exactly the silent
+	// push iOS revokes the subscription over.
+	let payload: BadgePushPayload = {}
 	try {
-		payload = event.data.json()
+		payload = event.data?.json() ?? {}
 	} catch {
-		return
+		// Keep the defaults.
 	}
 
-	const badgeCount = typeof payload.badgeCount === 'number' ? payload.badgeCount : 0
-
-	event.waitUntil(Promise.all([
+	const work: Promise<unknown>[] = [
 		self.registration.showNotification(payload.title ?? 'Vikunja', {
 			body: payload.body ?? '',
 			icon: `${fullBaseUrl}images/icons/android-chrome-192x192.png`,
@@ -127,8 +124,15 @@ self.addEventListener('push', (event: PushEvent) => {
 			tag: 'vikunja-badge',
 			data: {type: payload.type},
 		}),
-		applyPushedBadge(badgeCount),
-	]))
+	]
+
+	// Without a count there is nothing to say about the badge; clearing it would
+	// wipe a number that is still correct.
+	if (typeof payload.badgeCount === 'number') {
+		work.push(applyPushedBadge(payload.badgeCount))
+	}
+
+	event.waitUntil(Promise.all(work))
 })
 
 // Notification action
