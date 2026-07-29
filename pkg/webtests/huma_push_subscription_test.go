@@ -48,6 +48,30 @@ func TestHumaPushSubscription(t *testing.T) {
 			assert.Contains(t, rec.Body.String(), `"endpoint":"https://push.example.com/fresh-device"`)
 			// The owner is derived from the token, so it never appears on the wire.
 			assert.NotContains(t, rec.Body.String(), `"user_id"`)
+			// p256dh and auth are the device's payload-encryption secrets and
+			// are write-only: echoing them back puts them in every log, proxy
+			// and cache between here and the browser.
+			assert.NotContains(t, rec.Body.String(), "BPublicKey")
+			assert.NotContains(t, rec.Body.String(), "AuthSecret")
+			assert.NotContains(t, rec.Body.String(), `"p256dh"`)
+			assert.NotContains(t, rec.Body.String(), `"auth"`)
+		})
+		t.Run("Endpoint must be https", func(t *testing.T) {
+			for _, endpoint := range []string{
+				"http://push.example.com/plaintext",
+				"http://169.254.169.254/latest/meta-data/",
+				"ftp://push.example.com/weird",
+			} {
+				t.Run(endpoint, func(t *testing.T) {
+					rec, err := testHandler.testCreateWithUser(nil, nil,
+						`{"endpoint":"`+endpoint+`","p256dh":"BPublicKey","auth":"AuthSecret"}`)
+					require.Error(t, err)
+					assert.Equal(t, http.StatusUnprocessableEntity, getHTTPErrorCode(err))
+					assert.Contains(t, rec.Body.String(), "endpoint",
+						"the offending field must be named in invalid_fields")
+					db.AssertMissing(t, "push_subscriptions", map[string]interface{}{"endpoint": endpoint})
+				})
+			}
 		})
 		t.Run("Re-subscribing with a known endpoint updates it in place", func(t *testing.T) {
 			rec, err := testHandler.testCreateWithUser(nil, nil,

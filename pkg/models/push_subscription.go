@@ -17,6 +17,7 @@
 package models
 
 import (
+	"strings"
 	"time"
 
 	"code.vikunja.io/api/pkg/user"
@@ -24,6 +25,11 @@ import (
 
 	"xorm.io/xorm"
 )
+
+// maxPushSubscriptionsPerUser caps how many devices one account may register.
+// Every subscription costs the badge cron one blocking HTTP send per run, so an
+// unbounded list is a way for a single account to monopolise the sender.
+const maxPushSubscriptionsPerUser = 20
 
 // PushSubscription is one browser's Web Push channel, as returned by
 // PushManager.subscribe(). One user can have many — one per device/browser.
@@ -57,6 +63,16 @@ func (p *PushSubscription) Create(s *xorm.Session, a web.Auth) (err error) {
 		return err
 	}
 
+	// govalidator's `url` accepts any scheme. Anything but https would put the
+	// VAPID JWT on the wire in cleartext and turns the recurring sender into a
+	// way to aim authenticated outbound traffic at arbitrary hosts.
+	if !strings.HasPrefix(strings.ToLower(p.Endpoint), "https://") {
+		return InvalidFieldErrorWithMessage(
+			[]string{"endpoint: must be an https:// URL"},
+			"A push endpoint must be an https:// URL.",
+		)
+	}
+
 	p.ID = 0
 	p.UserID = caller.ID
 
@@ -74,6 +90,14 @@ func (p *PushSubscription) Create(s *xorm.Session, a web.Auth) (err error) {
 			Cols("user_id", "p256dh", "auth").
 			Update(p)
 		return err
+	}
+
+	registered, err := s.Where("user_id = ?", caller.ID).Count(&PushSubscription{})
+	if err != nil {
+		return err
+	}
+	if registered >= maxPushSubscriptionsPerUser {
+		return ErrTooManyPushSubscriptions{UserID: caller.ID, Max: maxPushSubscriptionsPerUser}
 	}
 
 	_, err = s.Insert(p)

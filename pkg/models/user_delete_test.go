@@ -153,6 +153,10 @@ func TestDeleteUser(t *testing.T) {
 		_, err = s.Insert(&TeamMember{TeamID: 9, UserID: 4})
 		require.NoError(t, err)
 
+		// A subscription outliving its user is both an erasure gap and a row the
+		// badge cron would keep failing to resolve a user for, every interval.
+		mustInsertPushSubscription(t, s, 4, "https://push.example.com/deleted-user")
+
 		err = DeleteUser(s, &user.User{ID: 4})
 		require.NoError(t, err)
 
@@ -160,5 +164,6 @@ func TestDeleteUser(t *testing.T) {
 		db.AssertMissing(t, "task_assignees", map[string]interface{}{"user_id": 4})
 		db.AssertMissing(t, "subscriptions", map[string]interface{}{"user_id": 4})
 		db.AssertMissing(t, "team_members", map[string]interface{}{"user_id": 4})
+		db.AssertMissing(t, "push_subscriptions", map[string]interface{}{"user_id": 4})
 	})
 }

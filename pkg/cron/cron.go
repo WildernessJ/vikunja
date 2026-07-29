@@ -34,6 +34,16 @@ func Schedule(schedule string, f func()) (err error) {
 	return
 }
 
+// ScheduleWithoutOverlap schedules a job which is skipped while its previous
+// invocation is still running, instead of running concurrently with itself.
+// Use it for jobs whose runtime is not bounded by the interval - network
+// fan-outs, anything proportional to the number of users.
+func ScheduleWithoutOverlap(schedule string, f func()) (err error) {
+	job := cron.NewChain(cron.SkipIfStillRunning(cron.DiscardLogger)).Then(cron.FuncJob(f))
+	_, err = c.AddJob(schedule, job)
+	return
+}
+
 // Stop stops the cron scheduler
 func Stop() {
 	c.Stop()

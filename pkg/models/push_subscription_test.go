@@ -17,6 +17,7 @@
 package models
 
 import (
+	"fmt"
 	"testing"
 
 	"code.vikunja.io/api/pkg/db"
@@ -96,6 +97,71 @@ func TestPushSubscription_Create(t *testing.T) {
 			"id":      1,
 			"user_id": 2,
 		}, false)
+	})
+	t.Run("only https endpoints are accepted", func(t *testing.T) {
+		// The endpoint is where the recurring sender aims, and it carries the
+		// VAPID JWT; a non-https scheme is a request to send it in the clear.
+		for _, endpoint := range []string{
+			"http://push.example.com/plaintext",
+			"http://169.254.169.254/latest/meta-data/",
+			"ftp://push.example.com/weird",
+			"HTTP://push.example.com/uppercase",
+			"file:///etc/passwd",
+		} {
+			t.Run(endpoint, func(t *testing.T) {
+				u := &user.User{ID: 1}
+				s := db.NewSession()
+				defer s.Close()
+				db.LoadAndAssertFixtures(t)
+
+				sub := &PushSubscription{Endpoint: endpoint, P256dh: "x", Auth: "y"}
+				err := sub.Create(s, u)
+				require.Error(t, err)
+
+				var validationErr ValidationHTTPError
+				require.ErrorAs(t, err, &validationErr)
+				assert.Contains(t, validationErr.InvalidFields[0], "endpoint")
+				db.AssertMissing(t, "push_subscriptions", map[string]interface{}{"endpoint": endpoint})
+			})
+		}
+	})
+	t.Run("an uppercase https scheme is still https", func(t *testing.T) {
+		u := &user.User{ID: 1}
+		s := db.NewSession()
+		defer s.Close()
+		db.LoadAndAssertFixtures(t)
+
+		sub := &PushSubscription{Endpoint: "HTTPS://push.example.com/shouty", P256dh: "x", Auth: "y"}
+		require.NoError(t, sub.Create(s, u))
+	})
+	t.Run("a user cannot register more than the maximum number of devices", func(t *testing.T) {
+		u := &user.User{ID: 2}
+		s := db.NewSession()
+		defer s.Close()
+		db.LoadAndAssertFixtures(t)
+
+		// User 2 already owns one subscription in the fixtures.
+		for i := 1; i < maxPushSubscriptionsPerUser; i++ {
+			sub := &PushSubscription{
+				Endpoint: fmt.Sprintf("https://push.example.com/device-%d", i),
+				P256dh:   "x",
+				Auth:     "y",
+			}
+			require.NoError(t, sub.Create(s, u))
+		}
+
+		over := &PushSubscription{Endpoint: "https://push.example.com/one-too-many", P256dh: "x", Auth: "y"}
+		err := over.Create(s, u)
+		require.Error(t, err)
+		assert.True(t, IsErrTooManyPushSubscriptions(err), "got %T instead", err)
+
+		// The cap must not stop an existing device from refreshing its keys.
+		known := &PushSubscription{
+			Endpoint: "https://push.example.com/subscription-user2-a",
+			P256dh:   "BRotated",
+			Auth:     "Rotated",
+		}
+		require.NoError(t, known.Create(s, u))
 	})
 	t.Run("link share cannot subscribe", func(t *testing.T) {
 		s := db.NewSession()

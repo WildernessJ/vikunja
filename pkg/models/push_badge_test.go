@@ -17,12 +17,17 @@
 package models
 
 import (
+	"bytes"
 	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/gob"
 	"encoding/json"
+	"errors"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -33,6 +38,7 @@ import (
 	"code.vikunja.io/api/pkg/config"
 	"code.vikunja.io/api/pkg/db"
 	"code.vikunja.io/api/pkg/log"
+	"code.vikunja.io/api/pkg/modules/keyvalue"
 	"code.vikunja.io/api/pkg/user"
 
 	webpush "github.com/SherClockHolmes/webpush-go"
@@ -47,12 +53,41 @@ import (
 type fakePushService struct {
 	status   int
 	requests []*http.Request
+
+	// err, when set, is returned instead of a response - wrapped the way
+	// net/http wraps every transport failure, i.e. around the endpoint URL.
+	err error
+
+	// statusFor overrides status per request, for fan-outs where the devices
+	// do not all answer the same way.
+	statusFor func(req *http.Request) int
+
+	// duringSend runs while the fan-out is in flight. Its first error is kept
+	// so the assertion can name what went wrong.
+	duringSend    func() error
+	duringSendErr error
 }
 
 func (f *fakePushService) Do(req *http.Request) (*http.Response, error) {
 	f.requests = append(f.requests, req)
+
+	if f.duringSend != nil {
+		if err := f.duringSend(); err != nil && f.duringSendErr == nil {
+			f.duringSendErr = err
+		}
+	}
+
+	if f.err != nil {
+		return nil, &url.Error{Op: req.Method, URL: req.URL.String(), Err: f.err}
+	}
+
+	status := f.status
+	if f.statusFor != nil {
+		status = f.statusFor(req)
+	}
+
 	return &http.Response{
-		StatusCode: f.status,
+		StatusCode: status,
 		Body:       io.NopCloser(strings.NewReader("")),
 		Header:     http.Header{},
 		Request:    req,
@@ -117,6 +152,16 @@ func captureLogs(t *testing.T) func() string {
 		require.NoError(t, err)
 		return string(content)
 	}
+}
+
+// inCommittedSession runs setup work and commits it, so the send path - which
+// opens its own sessions - can see it.
+func inCommittedSession(t *testing.T, fn func(s *xorm.Session)) {
+	t.Helper()
+	s := db.NewSession()
+	defer s.Close()
+	fn(s)
+	require.NoError(t, s.Commit())
 }
 
 func mustInsertPushSubscription(t *testing.T, s *xorm.Session, userID int64, endpoint string) {
@@ -241,15 +286,13 @@ func TestBadgePushInterval(t *testing.T) {
 	}
 }
 
-func TestSendBadgePush(t *testing.T) {
+func TestSendBadgePushForUser(t *testing.T) {
 	t.Run("sends to every subscription of the user", func(t *testing.T) {
-		s := db.NewSession()
-		defer s.Close()
 		db.LoadAndAssertFixtures(t)
 		fake := setupWebPush(t, http.StatusCreated)
 		clearLastBadgeCount(t, 1)
 
-		require.NoError(t, SendBadgePush(s, 1))
+		sendBadgePushForUser(1)
 
 		require.Len(t, fake.requests, 2, "user 1 has two subscriptions in the fixtures")
 		endpoints := []string{fake.requests[0].URL.String(), fake.requests[1].URL.String()}
@@ -266,15 +309,12 @@ func TestSendBadgePush(t *testing.T) {
 	})
 
 	t.Run("410 Gone prunes the subscription and logs a warning", func(t *testing.T) {
-		s := db.NewSession()
-		defer s.Close()
 		db.LoadAndAssertFixtures(t)
 		fake := setupWebPush(t, http.StatusGone)
 		clearLastBadgeCount(t, 2)
 		readLog := captureLogs(t)
 
-		require.NoError(t, SendBadgePush(s, 2))
-		require.NoError(t, s.Commit())
+		sendBadgePushForUser(2)
 
 		require.Len(t, fake.requests, 1)
 		db.AssertMissing(t, "push_subscriptions", map[string]interface{}{"id": 3})
@@ -289,84 +329,277 @@ func TestSendBadgePush(t *testing.T) {
 	})
 
 	t.Run("404 Not Found also prunes the subscription", func(t *testing.T) {
-		s := db.NewSession()
-		defer s.Close()
 		db.LoadAndAssertFixtures(t)
 		setupWebPush(t, http.StatusNotFound)
 		clearLastBadgeCount(t, 2)
 
-		require.NoError(t, SendBadgePush(s, 2))
-		require.NoError(t, s.Commit())
+		sendBadgePushForUser(2)
 
 		db.AssertMissing(t, "push_subscriptions", map[string]interface{}{"id": 3})
 	})
 
 	t.Run("a rejected send keeps the subscription and logs an error", func(t *testing.T) {
-		s := db.NewSession()
-		defer s.Close()
 		db.LoadAndAssertFixtures(t)
 		setupWebPush(t, http.StatusInternalServerError)
 		clearLastBadgeCount(t, 2)
 		readLog := captureLogs(t)
 
-		require.NoError(t, SendBadgePush(s, 2))
-		require.NoError(t, s.Commit())
+		sendBadgePushForUser(2)
 
 		db.AssertExists(t, "push_subscriptions", map[string]interface{}{"id": 3}, false)
 		assert.Contains(t, readLog(), "level=ERROR")
 	})
 
 	t.Run("skips the send when the count and the last sent count are both zero", func(t *testing.T) {
-		s := db.NewSession()
-		defer s.Close()
 		db.LoadAndAssertFixtures(t)
 		fake := setupWebPush(t, http.StatusCreated)
 		clearLastBadgeCount(t, 9)
 
 		// user9 owns no projects, so their badge count is zero.
-		mustInsertPushSubscription(t, s, 9, "https://push.example.com/subscription-user9")
-		count, err := getUserBadgeCount(s, &user.User{ID: 9})
-		require.NoError(t, err)
-		require.Zero(t, count, "precondition: user9 must have no due or overdue tasks")
+		inCommittedSession(t, func(s *xorm.Session) {
+			mustInsertPushSubscription(t, s, 9, "https://push.example.com/subscription-user9")
+			count, err := getUserBadgeCount(s, &user.User{ID: 9})
+			require.NoError(t, err)
+			require.Zero(t, count, "precondition: user9 must have no due or overdue tasks")
+		})
 
 		// First run still pushes: the badge may be showing a stale non-zero
 		// count from before, and only a delivered push can clear it.
-		require.NoError(t, SendBadgePush(s, 9))
+		sendBadgePushForUser(9)
 		require.Len(t, fake.requests, 1)
 
 		// Second run has nothing to say.
-		require.NoError(t, SendBadgePush(s, 9))
+		sendBadgePushForUser(9)
 		assert.Len(t, fake.requests, 1, "a repeated zero count must not push again")
 	})
 
 	t.Run("pushes again once the count leaves zero", func(t *testing.T) {
-		s := db.NewSession()
-		defer s.Close()
 		db.LoadAndAssertFixtures(t)
 		fake := setupWebPush(t, http.StatusCreated)
 		clearLastBadgeCount(t, 9)
 
-		mustInsertPushSubscription(t, s, 9, "https://push.example.com/subscription-user9")
-		require.NoError(t, SendBadgePush(s, 9))
-		require.NoError(t, SendBadgePush(s, 9))
+		inCommittedSession(t, func(s *xorm.Session) {
+			mustInsertPushSubscription(t, s, 9, "https://push.example.com/subscription-user9")
+		})
+		sendBadgePushForUser(9)
+		sendBadgePushForUser(9)
 		require.Len(t, fake.requests, 1)
 
-		project := mustInsertStatsProject(t, s, "user9 project", 9)
-		mustInsertStatsTask(t, s, project.ID, 1, 9, false, time.Time{}, time.Now().Add(-time.Hour))
+		inCommittedSession(t, func(s *xorm.Session) {
+			project := mustInsertStatsProject(t, s, "user9 project", 9)
+			mustInsertStatsTask(t, s, project.ID, 1, 9, false, time.Time{}, time.Now().Add(-time.Hour))
+		})
 
-		require.NoError(t, SendBadgePush(s, 9))
+		sendBadgePushForUser(9)
 		assert.Len(t, fake.requests, 2)
 	})
 
 	t.Run("does nothing for a user without subscriptions", func(t *testing.T) {
-		s := db.NewSession()
-		defer s.Close()
 		db.LoadAndAssertFixtures(t)
 		fake := setupWebPush(t, http.StatusCreated)
 
-		require.NoError(t, SendBadgePush(s, 3))
+		sendBadgePushForUser(3)
 		assert.Empty(t, fake.requests)
 	})
+}
+
+// TestSendBadgePushRemembersOnlyDeliveredCounts covers the dedup's other half:
+// the skip above is only safe if the remembered count is one a device actually
+// received. Recording a failed send would strand the badge on a stale number
+// that the skip then suppresses the correction of, forever.
+func TestSendBadgePushRemembersOnlyDeliveredCounts(t *testing.T) {
+	t.Run("a delivered send is remembered", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		setupWebPush(t, http.StatusCreated)
+		clearLastBadgeCount(t, 9)
+		inCommittedSession(t, func(s *xorm.Session) {
+			mustInsertPushSubscription(t, s, 9, "https://push.example.com/subscription-user9")
+		})
+
+		sendBadgePushForUser(9)
+
+		count, known := getLastBadgeCount(9)
+		assert.True(t, known)
+		assert.Equal(t, int64(0), count)
+	})
+
+	t.Run("a total failure is not remembered", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		fake := setupWebPush(t, http.StatusInternalServerError)
+		clearLastBadgeCount(t, 9)
+		inCommittedSession(t, func(s *xorm.Session) {
+			mustInsertPushSubscription(t, s, 9, "https://push.example.com/subscription-user9")
+		})
+
+		sendBadgePushForUser(9)
+		require.Len(t, fake.requests, 1)
+
+		_, known := getLastBadgeCount(9)
+		assert.False(t, known,
+			"a count no device received must not be remembered")
+
+		// ...and the next run must therefore try again rather than skip.
+		sendBadgePushForUser(9)
+		assert.Len(t, fake.requests, 2)
+	})
+
+	t.Run("one delivery out of two is enough", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		fake := setupWebPush(t, http.StatusCreated)
+		clearLastBadgeCount(t, 1)
+
+		// User 1 has two devices in the fixtures; one is gone, the other takes
+		// the push, so the count did reach the badge.
+		fake.statusFor = func(req *http.Request) int {
+			if strings.HasSuffix(req.URL.Path, "subscription-user1-a") {
+				return http.StatusGone
+			}
+			return http.StatusCreated
+		}
+
+		sendBadgePushForUser(1)
+		require.Len(t, fake.requests, 2)
+
+		db.AssertMissing(t, "push_subscriptions", map[string]interface{}{"id": 1})
+		_, known := getLastBadgeCount(1)
+		assert.True(t, known)
+	})
+}
+
+// TestPushErrorKind pins that a failed send never puts the endpoint in the log.
+// A push endpoint is a bearer capability, and net/http wraps every transport
+// failure in a *url.Error carrying the full URL.
+func TestPushErrorKind(t *testing.T) {
+	t.Run("the endpoint never reaches the log", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		fake := setupWebPush(t, http.StatusCreated)
+		fake.err = errors.New("dial tcp 203.0.113.7:443: connect: connection refused")
+		clearLastBadgeCount(t, 2)
+		readLog := captureLogs(t)
+
+		sendBadgePushForUser(2)
+		require.Len(t, fake.requests, 1)
+
+		logged := readLog()
+		assert.NotContains(t, logged, "subscription-user2-a",
+			"the endpoint path is the capability - it must never be logged")
+		assert.NotContains(t, logged, "push.example.com")
+		assert.Contains(t, logged, "subscription 3 of user 2",
+			"the subscription still has to be identifiable from the log")
+		assert.Contains(t, logged, "level=ERROR")
+
+		// A failed send is not a revocation.
+		db.AssertExists(t, "push_subscriptions", map[string]interface{}{"id": 3}, false)
+	})
+
+	t.Run("classifies the kinds worth telling apart", func(t *testing.T) {
+		endpoint := "https://push.example.com/secret-capability-token"
+
+		assert.Contains(t,
+			pushErrorKind(&url.Error{Op: "POST", URL: endpoint, Err: &net.DNSError{Name: "push.example.com", IsNotFound: true}}),
+			"could not be resolved")
+		assert.Contains(t,
+			pushErrorKind(&url.Error{Op: "POST", URL: endpoint, Err: &timeoutError{}}),
+			"did not answer in time")
+
+		// Anything unrecognised falls back to the type, never the message: the
+		// message is where a URL would hide.
+		unknown := pushErrorKind(&url.Error{Op: "POST", URL: endpoint, Err: errors.New(endpoint + " exploded")})
+		assert.NotContains(t, unknown, "secret-capability-token")
+
+		// Errors raised before a request exists carry no endpoint and stay verbatim.
+		assert.Equal(t, "Encryption error", pushErrorKind(errors.New("Encryption error")))
+	})
+}
+
+// timeoutError is what a net.Error timeout looks like to url.Error.Timeout().
+type timeoutError struct{}
+
+func (*timeoutError) Error() string   { return "i/o timeout" }
+func (*timeoutError) Timeout() bool   { return true }
+func (*timeoutError) Temporary() bool { return true }
+
+// TestLastBadgeCount pins the storage semantics the zero-count skip depends on.
+// The memory backend hands back whatever it was given, so a round trip through
+// it alone proves nothing about the redis one.
+func TestLastBadgeCount(t *testing.T) {
+	t.Run("round trips", func(t *testing.T) {
+		require.NoError(t, forgetLastBadgeCount(4242))
+		_, known := getLastBadgeCount(4242)
+		require.False(t, known, "an unknown user has no remembered count")
+
+		require.NoError(t, setLastBadgeCount(4242, 7))
+		count, known := getLastBadgeCount(4242)
+		assert.True(t, known)
+		assert.Equal(t, int64(7), count)
+	})
+
+	t.Run("is handed to keyvalue as an integer type", func(t *testing.T) {
+		// The redis backend stores int-typed values raw and gob-encodes
+		// everything else (pkg/modules/keyvalue/redis/redis.go). Only the raw
+		// form survives a Get, so the type we Put is the whole contract.
+		require.NoError(t, setLastBadgeCount(4243, 12))
+
+		stored, exists, err := keyvalue.Get(lastBadgeCountKey(4243))
+		require.NoError(t, err)
+		require.True(t, exists)
+		assert.IsType(t, int64(0), stored,
+			"anything else is gob-encoded by the redis backend and cannot be read back")
+	})
+
+	t.Run("reads both shapes a backend returns", func(t *testing.T) {
+		// memory returns the int64 it was given; redis returns its decimal
+		// string, because that is how redis stores an integer.
+		for name, stored := range map[string]interface{}{
+			"memory": int64(9),
+			"redis":  "9",
+		} {
+			t.Run(name, func(t *testing.T) {
+				count, known := parseLastBadgeCount(stored)
+				assert.True(t, known)
+				assert.Equal(t, int64(9), count)
+			})
+		}
+	})
+
+	t.Run("a gob-encoded value reads as unknown, not as a count", func(t *testing.T) {
+		// What redis hands back for a non-int Put. Treating it as a count is
+		// how the zero-count skip silently died: it must read as "not known"
+		// so the caller pushes rather than trusting a number that isn't one.
+		var buf bytes.Buffer
+		require.NoError(t, gob.NewEncoder(&buf).Encode("0"))
+
+		_, known := parseLastBadgeCount(buf.String())
+		assert.False(t, known)
+	})
+}
+
+// TestRunBadgePushCron exercises the shipping path: the cron must fan out over
+// every subscribed user without a transaction open across the sends.
+func TestRunBadgePushCron(t *testing.T) {
+	db.LoadAndAssertFixtures(t)
+	fake := setupWebPush(t, http.StatusGone)
+	for _, id := range []int64{1, 2} {
+		clearLastBadgeCount(t, id)
+	}
+
+	// A push service can take seconds to answer. If the cron still held its
+	// session open, this write would be blocked by the transaction (on SQLite,
+	// for the whole database) instead of going through.
+	fake.duringSend = func() error {
+		return inShortSession(func(s *xorm.Session) error {
+			_, err := s.Where("id = ?", 1).Cols("timezone").Update(&user.User{Timezone: "UTC"})
+			return err
+		})
+	}
+
+	runBadgePushCron()
+
+	require.NoError(t, fake.duringSendErr, "the database must stay writable while pushes are in flight")
+	assert.Len(t, fake.requests, 3, "all three fixture subscriptions get a push")
+	for _, id := range []int64{1, 2, 3} {
+		db.AssertMissing(t, "push_subscriptions", map[string]interface{}{"id": id})
+	}
 }
 
 func clearLastBadgeCount(t *testing.T, userID int64) {

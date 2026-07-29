@@ -17,9 +17,15 @@
 package models
 
 import (
+	"context"
+	"crypto/tls"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"sync"
 	"time"
@@ -114,54 +120,146 @@ func vapidSubscriber() string {
 	return "https://vikunja.io"
 }
 
-// SendBadgePush pushes the user's current due/overdue count to each of their
-// registered devices. Deliberately independent of the mailer: push is its own
-// transport and works on instances with mail switched off.
-//
-// Errors from individual sends are logged, not returned - one dead device must
-// not stop the others from being refreshed.
-func SendBadgePush(s *xorm.Session, userID int64) error {
+// badgePushJob is everything one user's fan-out needs, read up front so the
+// blocking sends can happen with no database transaction open.
+type badgePushJob struct {
+	userID  int64
+	count   int64
+	payload []byte
+	subs    []*PushSubscription
+}
+
+// badgePushResult is what the fan-out learned and the database still has to be
+// told about.
+type badgePushResult struct {
+	delivered int
+	revoked   []int64
+}
+
+type pushSendOutcome int
+
+const (
+	pushFailed pushSendOutcome = iota
+	pushDelivered
+	pushRevoked
+)
+
+// collectBadgePush gathers everything needed to refresh a user's badge, or
+// returns a nil job when there is nothing worth sending.
+func collectBadgePush(s *xorm.Session, userID int64) (*badgePushJob, error) {
 	subs, err := getPushSubscriptionsForUser(s, userID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(subs) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	u, err := user.GetUserByID(s, userID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	count, err := getUserBadgeCount(s, u)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Nothing due and nothing due last time either: the badge is already
 	// correct, and iOS would surface a pointless notification for every push.
 	if lastCount, known := getLastBadgeCount(userID); count == 0 && known && lastCount == 0 {
-		return nil
+		return nil, nil
 	}
 
 	payload, err := buildBadgePayload(count, u.Lang())
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	for _, sub := range subs {
-		sendBadgePushToSubscription(s, sub, payload, count)
+	return &badgePushJob{userID: userID, count: count, payload: payload, subs: subs}, nil
+}
+
+// deliverBadgePush does the blocking network work. It deliberately takes no
+// session: a push service can take seconds per device, and a transaction held
+// across that stalls every other writer (on SQLite, the whole database).
+func deliverBadgePush(job *badgePushJob) (res badgePushResult) {
+	for _, sub := range job.subs {
+		switch sendBadgePushToSubscription(sub, job.payload, job.count) {
+		case pushDelivered:
+			res.delivered++
+		case pushRevoked:
+			res.revoked = append(res.revoked, sub.ID)
+		case pushFailed:
+		}
+	}
+	return res
+}
+
+// applyBadgePushResult writes back what the fan-out found: revoked devices go
+// away, and the count is remembered only if a device actually got it.
+func applyBadgePushResult(s *xorm.Session, job *badgePushJob, res badgePushResult) error {
+	for _, id := range res.revoked {
+		if _, err := s.Where("id = ?", id).Delete(&PushSubscription{}); err != nil {
+			return fmt.Errorf("could not delete revoked push subscription %d: %w", id, err)
+		}
 	}
 
-	if err := setLastBadgeCount(userID, count); err != nil {
-		log.Errorf("[Web Push] Could not remember the badge count sent to user %d: %s", userID, err)
+	// Only a delivered push moves a badge, so only a delivered push may update
+	// what we believe the devices are showing. Remembering a count nothing
+	// received would let the zero-count skip suppress the retry forever.
+	if res.delivered == 0 {
+		return nil
 	}
 
+	if err := setLastBadgeCount(job.userID, job.count); err != nil {
+		log.Errorf("[Web Push] Could not remember the badge count sent to user %d: %s", job.userID, err)
+	}
 	return nil
 }
 
-func sendBadgePushToSubscription(s *xorm.Session, sub *PushSubscription, payload []byte, count int64) {
+// sendBadgePushForUser pushes the user's current due/overdue count to each of
+// their registered devices. Deliberately independent of the mailer: push is its
+// own transport and works on instances with mail switched off.
+//
+// It runs in three phases - read, send, write back - each database phase in its
+// own short-lived session and the sends in none at all, so a slow push service
+// can never hold a transaction open (on SQLite that would lock the whole file).
+func sendBadgePushForUser(userID int64) {
+	var job *badgePushJob
+	err := inShortSession(func(s *xorm.Session) (err error) {
+		job, err = collectBadgePush(s, userID)
+		return err
+	})
+	if err != nil {
+		log.Errorf("[Web Push] Could not prepare the badge push for user %d: %s", userID, err)
+		return
+	}
+	if job == nil {
+		return
+	}
+
+	res := deliverBadgePush(job)
+
+	err = inShortSession(func(s *xorm.Session) error {
+		return applyBadgePushResult(s, job, res)
+	})
+	if err != nil {
+		log.Errorf("[Web Push] Could not record the badge push result for user %d: %s", userID, err)
+	}
+}
+
+func inShortSession(fn func(s *xorm.Session) error) error {
+	s := db.NewSession()
+	defer s.Close()
+
+	if err := fn(s); err != nil {
+		_ = s.Rollback()
+		return err
+	}
+	return s.Commit()
+}
+
+func sendBadgePushToSubscription(sub *PushSubscription, payload []byte, count int64) pushSendOutcome {
 	res, err := webpush.SendNotification(payload, &webpush.Subscription{
 		Endpoint: sub.Endpoint,
 		Keys: webpush.Keys{
@@ -177,8 +275,8 @@ func sendBadgePushToSubscription(s *xorm.Session, sub *PushSubscription, payload
 		Urgency:         webpush.UrgencyLow,
 	})
 	if err != nil {
-		log.Errorf("[Web Push] Could not send badge push to subscription %d of user %d: %s", sub.ID, sub.UserID, err)
-		return
+		log.Errorf("[Web Push] Could not send badge push to subscription %d of user %d: %s", sub.ID, sub.UserID, pushErrorKind(err))
+		return pushFailed
 	}
 	defer func() {
 		_, _ = io.Copy(io.Discard, res.Body)
@@ -189,26 +287,54 @@ func sendBadgePushToSubscription(s *xorm.Session, sub *PushSubscription, payload
 	// live; 404/410 mean the browser dropped it and it will never work again.
 	if res.StatusCode == http.StatusNotFound || res.StatusCode == http.StatusGone {
 		log.Warningf("[Web Push] Subscription %d of user %d was revoked by the push service (HTTP %d), deleting it", sub.ID, sub.UserID, res.StatusCode)
-		if _, err := s.Where("id = ?", sub.ID).Delete(&PushSubscription{}); err != nil {
-			log.Errorf("[Web Push] Could not delete revoked subscription %d of user %d: %s", sub.ID, sub.UserID, err)
-		}
-		return
+		return pushRevoked
 	}
 
 	if res.StatusCode >= http.StatusMultipleChoices {
 		log.Errorf("[Web Push] Push service rejected subscription %d of user %d with HTTP %d", sub.ID, sub.UserID, res.StatusCode)
-		return
+		return pushFailed
 	}
 
 	log.Debugf("[Web Push] Sent badge count %d to subscription %d of user %d (HTTP %d)", count, sub.ID, sub.UserID, res.StatusCode)
+	return pushDelivered
+}
+
+// pushErrorKind reduces a send failure to something safe to log. A push
+// endpoint is a bearer capability - whoever reads it can push to that device -
+// and every transport failure arrives wrapped in a *url.Error carrying the full
+// URL, so the error must never be logged verbatim. Errors from below the
+// transport are reported by kind only, for the same reason.
+func pushErrorKind(err error) string {
+	var urlErr *url.Error
+	if !errors.As(err, &urlErr) {
+		// Failures before the request exists (payload encryption, VAPID
+		// signing) have no endpoint in them and are the ones worth reading.
+		return err.Error()
+	}
+
+	inner := urlErr.Err
+	switch {
+	case urlErr.Timeout():
+		return "the push service did not answer in time"
+	case errors.Is(inner, context.Canceled):
+		return "the request was cancelled"
+	}
+
+	var dnsErr *net.DNSError
+	if errors.As(inner, &dnsErr) {
+		return "the push service host could not be resolved"
+	}
+	var certErr *tls.CertificateVerificationError
+	if errors.As(inner, &certErr) {
+		return "the push service TLS certificate could not be verified"
+	}
+	return fmt.Sprintf("the request to the push service failed (%T)", inner)
 }
 
 func lastBadgeCountKey(userID int64) string {
 	return lastBadgeCountKeyPrefix + strconv.FormatInt(userID, 10)
 }
 
-// Stored as a string because the redis backend hands values back as strings
-// while the memory one returns whatever was put in.
 func getLastBadgeCount(userID int64) (count int64, known bool) {
 	value, exists, err := keyvalue.Get(lastBadgeCountKey(userID))
 	if err != nil {
@@ -219,19 +345,32 @@ func getLastBadgeCount(userID int64) (count int64, known bool) {
 		return 0, false
 	}
 
-	stored, is := value.(string)
-	if !is {
-		return 0, false
-	}
-	count, err = strconv.ParseInt(stored, 10, 64)
-	if err != nil {
-		return 0, false
-	}
-	return count, true
+	return parseLastBadgeCount(value)
 }
 
+// parseLastBadgeCount normalises the two shapes the backends hand an integer
+// back as: the memory store returns the int64 it was given, redis returns its
+// decimal string (pkg/modules/keyvalue/redis/redis.go).
+func parseLastBadgeCount(value interface{}) (count int64, known bool) {
+	switch v := value.(type) {
+	case int64:
+		return v, true
+	case string:
+		parsed, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			return 0, false
+		}
+		return parsed, true
+	default:
+		return 0, false
+	}
+}
+
+// setLastBadgeCount must hand keyvalue an integer type: the redis backend
+// stores those raw and gob-encodes everything else, and gob bytes are not
+// something Get can hand back as a readable value.
 func setLastBadgeCount(userID, count int64) error {
-	return keyvalue.Put(lastBadgeCountKey(userID), strconv.FormatInt(count, 10))
+	return keyvalue.Put(lastBadgeCountKey(userID), count)
 }
 
 func forgetLastBadgeCount(userID int64) error {
@@ -256,37 +395,39 @@ func RegisterBadgePushCron() {
 	}
 
 	if config.WebPushPublicKey.GetString() == "" || config.WebPushPrivateKey.GetString() == "" {
-		log.Warning("[Web Push] webpush.enabled is set but no VAPID key pair is configured, not sending badge pushes. Generate one with `vikunja webpush-keys`.")
+		log.Critical("[Web Push] webpush.enabled is set but no VAPID key pair is configured, not sending badge pushes. Generate one with `vikunja webpush-keys`.")
 		return
 	}
 
-	err := cron.Schedule("@every "+badgePushInterval().String(), func() {
-		s := db.NewSession()
-		defer s.Close()
+	// The runtime grows with the number of devices and with how fast the push
+	// services answer, so it is not bounded by the interval: without skipping, a
+	// slow run would be joined by the next one pushing the same counts again.
+	err := cron.ScheduleWithoutOverlap("@every "+badgePushInterval().String(), runBadgePushCron)
+	if err != nil {
+		// ADR-0005: the schedule comes from operator config, so a bad value
+		// disables badge pushes rather than taking the instance down.
+		log.Criticalf("[Web Push] Could not register the badge push cron (webpush.badgeinterval), badge pushes are disabled: %s", err)
+	}
+}
 
-		userIDs, err := getUserIDsWithPushSubscriptions(s)
-		if err != nil {
-			log.Errorf("[Web Push] Could not load the users with push subscriptions: %s", err)
-			return
-		}
-
-		if len(userIDs) == 0 {
-			return
-		}
-
-		log.Debugf("[Web Push] Refreshing the badge count of %d users", len(userIDs))
-
-		for _, userID := range userIDs {
-			if err := SendBadgePush(s, userID); err != nil {
-				log.Errorf("[Web Push] Could not send the badge push to user %d: %s", userID, err)
-			}
-		}
-
-		if err := s.Commit(); err != nil {
-			log.Errorf("[Web Push] Could not commit: %s", err)
-		}
+func runBadgePushCron() {
+	var userIDs []int64
+	err := inShortSession(func(s *xorm.Session) (err error) {
+		userIDs, err = getUserIDsWithPushSubscriptions(s)
+		return err
 	})
 	if err != nil {
-		log.Fatalf("Could not register web push badge cron: %s", err)
+		log.Errorf("[Web Push] Could not load the users with push subscriptions: %s", err)
+		return
+	}
+
+	if len(userIDs) == 0 {
+		return
+	}
+
+	log.Debugf("[Web Push] Refreshing the badge count of %d users", len(userIDs))
+
+	for _, userID := range userIDs {
+		sendBadgePushForUser(userID)
 	}
 }

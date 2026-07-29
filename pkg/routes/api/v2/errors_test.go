@@ -18,10 +18,12 @@ package apiv2
 
 import (
 	"errors"
+	"net/http"
 	"os"
 	"testing"
 
 	"code.vikunja.io/api/pkg/log"
+	"code.vikunja.io/api/pkg/models"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/stretchr/testify/assert"
@@ -58,4 +60,19 @@ func TestNewErrorWithContext_StripsServerErrorDetail(t *testing.T) {
 		require.Len(t, vm.Errors, 1, "client errors keep their detail")
 		assert.Equal(t, secret.Error(), vm.Errors[0].Message)
 	})
+}
+
+// TestTranslateDomainError_TooManyPushSubscriptions pins that the subscription
+// cap reaches the client as a 409 with Vikunja's error code, rather than as a
+// bare 500 the way an untranslated domain error would.
+func TestTranslateDomainError_TooManyPushSubscriptions(t *testing.T) {
+	err := translateDomainError(models.ErrTooManyPushSubscriptions{UserID: 1, Max: 20})
+
+	var se huma.StatusError
+	require.ErrorAs(t, err, &se)
+	assert.Equal(t, http.StatusConflict, se.GetStatus())
+
+	vm, ok := se.(*vikunjaErrorModel)
+	require.True(t, ok)
+	assert.Equal(t, models.ErrCodeTooManyPushSubscriptions, vm.Code)
 }

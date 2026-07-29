@@ -19,6 +19,7 @@ package apiv2
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"code.vikunja.io/api/pkg/config"
 	"code.vikunja.io/api/pkg/models"
@@ -26,6 +27,15 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 )
+
+// pushSubscriptionResponse is the response view of a subscription. p256dh and
+// auth are write-only: they are the device's payload-encryption secrets, and
+// echoing them back would put them in every log, proxy and cache on the way out.
+type pushSubscriptionResponse struct {
+	ID       int64     `json:"id" readOnly:"true" doc:"The unique, numeric id of this subscription."`
+	Endpoint string    `json:"endpoint" readOnly:"true" doc:"The push service URL this subscription delivers to."`
+	Created  time.Time `json:"created" readOnly:"true" doc:"A timestamp when this subscription was registered."`
+}
 
 // pushPublicKeyBody tells the client whether it can subscribe at all and, if
 // so, which application server key to hand PushManager.subscribe().
@@ -90,7 +100,7 @@ func pushPublicKey(ctx context.Context, _ *struct{}) (*pushPublicKeyBody, error)
 
 func pushSubscriptionsCreate(ctx context.Context, in *struct {
 	Body models.PushSubscription
-}) (*singleBody[models.PushSubscription], error) {
+}) (*singleBody[pushSubscriptionResponse], error) {
 	a, err := authFromCtx(ctx)
 	if err != nil {
 		return nil, err
@@ -98,7 +108,11 @@ func pushSubscriptionsCreate(ctx context.Context, in *struct {
 	if err := handler.DoCreate(ctx, &in.Body, a); err != nil {
 		return nil, translateDomainError(err)
 	}
-	return &singleBody[models.PushSubscription]{Body: &in.Body}, nil
+	return &singleBody[pushSubscriptionResponse]{Body: &pushSubscriptionResponse{
+		ID:       in.Body.ID,
+		Endpoint: in.Body.Endpoint,
+		Created:  in.Body.Created,
+	}}, nil
 }
 
 func pushSubscriptionsDelete(ctx context.Context, in *struct {
