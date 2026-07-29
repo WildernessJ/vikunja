@@ -466,6 +466,40 @@ func TestSendBadgePushRemembersOnlyDeliveredCounts(t *testing.T) {
 	})
 }
 
+// TestSendBadgePushKeepsARefreshedSubscription covers the window the
+// read-send-write-back split opens. The sends run with no transaction held, so
+// the row can be re-registered while one is in flight - the frontend re-posts
+// the same endpoint whenever the browser still has a subscription, and Create
+// upserts that row in place, keeping its id. A 410 for what was there before
+// must not take the fresh registration with it: the toggle would stay on with
+// no server row behind it and pushes would stop for good.
+func TestSendBadgePushKeepsARefreshedSubscription(t *testing.T) {
+	db.LoadAndAssertFixtures(t)
+	fake := setupWebPush(t, http.StatusGone)
+	clearLastBadgeCount(t, 2)
+
+	freshP256dh, freshAuth := newTestSubscriptionKeys(t)
+	fake.duringSend = func() error {
+		return inShortSession(func(s *xorm.Session) error {
+			return (&PushSubscription{
+				Endpoint: "https://push.example.com/subscription-user2-a",
+				P256dh:   freshP256dh,
+				Auth:     freshAuth,
+			}).Create(s, &user.User{ID: 2})
+		})
+	}
+
+	sendBadgePushForUser(2)
+
+	require.NoError(t, fake.duringSendErr)
+	require.Len(t, fake.requests, 1)
+	db.AssertExists(t, "push_subscriptions", map[string]interface{}{
+		"id":     3,
+		"p256dh": freshP256dh,
+		"auth":   freshAuth,
+	}, false)
+}
+
 // TestPushErrorKind pins that a failed send never puts the endpoint in the log.
 // A push endpoint is a bearer capability, and net/http wraps every transport
 // failure in a *url.Error carrying the full URL.

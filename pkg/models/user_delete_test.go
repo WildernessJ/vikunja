@@ -23,6 +23,7 @@ import (
 	"code.vikunja.io/api/pkg/notifications"
 	"code.vikunja.io/api/pkg/user"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -46,6 +47,23 @@ func TestDeleteUser(t *testing.T) {
 		db.AssertExists(t, "projects", map[string]interface{}{"id": 9}, false)
 		db.AssertExists(t, "projects", map[string]interface{}{"id": 10}, false)
 		db.AssertExists(t, "projects", map[string]interface{}{"id": 11}, false)
+	})
+	t.Run("forgets the remembered badge count", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+		notifications.Fake()
+
+		u := &user.User{ID: 4}
+		require.NoError(t, setLastBadgeCount(u.ID, 7))
+
+		require.NoError(t, DeleteUser(s, u))
+		require.NoError(t, s.Commit())
+
+		// It is keyed by user id, so leaving it behind hands the next user to be
+		// given that id a badge count that was never theirs.
+		_, known := getLastBadgeCount(u.ID)
+		assert.False(t, known)
 	})
 	t.Run("user with no projects", func(t *testing.T) {
 		db.LoadAndAssertFixtures(t)

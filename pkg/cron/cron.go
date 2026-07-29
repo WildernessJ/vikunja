@@ -17,6 +17,8 @@
 package cron
 
 import (
+	"code.vikunja.io/api/pkg/log"
+
 	"github.com/robfig/cron/v3"
 )
 
@@ -39,9 +41,27 @@ func Schedule(schedule string, f func()) (err error) {
 // Use it for jobs whose runtime is not bounded by the interval - network
 // fan-outs, anything proportional to the number of users.
 func ScheduleWithoutOverlap(schedule string, f func()) (err error) {
-	job := cron.NewChain(cron.SkipIfStillRunning(cron.DiscardLogger)).Then(cron.FuncJob(f))
+	job := cron.NewChain(cron.SkipIfStillRunning(&skipLogger{schedule: schedule})).Then(cron.FuncJob(f))
 	_, err = c.AddJob(schedule, job)
 	return
+}
+
+// skipLogger routes the job wrapper's messages into Vikunja's logger. Once a
+// job outruns its own interval every following run is dropped and the job
+// effectively stops, so the drop has to be visible: with a discarding logger
+// that instance looks healthy while nothing happens on it any more.
+type skipLogger struct {
+	schedule string
+}
+
+// Info only ever receives SkipIfStillRunning's "skip" (robfig/cron/v3/chain.go),
+// which is why this is a warning and not an info line.
+func (l *skipLogger) Info(msg string, _ ...interface{}) {
+	log.Warningf("[Cron] Dropped a run of the %q job (%s): its previous run is still going", l.schedule, msg)
+}
+
+func (l *skipLogger) Error(err error, msg string, _ ...interface{}) {
+	log.Errorf("[Cron] The %q job reported an error (%s): %s", l.schedule, msg, err)
 }
 
 // Stop stops the cron scheduler

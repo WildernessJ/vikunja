@@ -9,7 +9,8 @@ import {
 
 // The id of the row the server created for this device. Kept so unsubscribing
 // can delete exactly it; when it's missing (cleared storage, other browser
-// profile) we re-post the endpoint to resolve the id instead.
+// profile) the explicit unsubscribe re-posts the endpoint to resolve the id.
+// Logout deliberately does not — see dropDevicePushSubscription.
 const SUBSCRIPTION_ID_KEY = 'pushSubscriptionId'
 
 export type PushPermission = 'default' | 'granted' | 'denied'
@@ -132,7 +133,24 @@ async function removeDeviceSubscription(): Promise<void> {
  */
 export async function dropDevicePushSubscription(): Promise<void> {
 	try {
-		await removeDeviceSubscription()
+		const registration = await getRegistration()
+		const subscription = await registration?.pushManager.getSubscription() ?? null
+		const id = storedSubscriptionId()
+
+		// Browser side first, and unconditionally: whatever the server call
+		// does, this device has to stop being reachable before the session ends.
+		await subscription?.unsubscribe()
+		window.localStorage.removeItem(SUBSCRIPTION_ID_KEY)
+
+		// Deliberately no post-to-resolve-the-id here, unlike the explicit
+		// unsubscribe above: posting registers the endpoint to the user who is
+		// logging out, and if the delete behind it failed they would keep
+		// receiving their counts on a shared device for a full cron interval.
+		// Losing a row we cannot name is the lesser evil — it is pruned by its
+		// next 410 anyway.
+		if (id !== null) {
+			await deletePushSubscription(id)
+		}
 	} catch (e) {
 		console.debug('Could not remove this device\'s push subscription on logout', e)
 	}

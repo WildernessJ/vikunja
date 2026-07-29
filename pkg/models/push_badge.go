@@ -130,10 +130,11 @@ type badgePushJob struct {
 }
 
 // badgePushResult is what the fan-out learned and the database still has to be
-// told about.
+// told about. Revocations carry the whole subscription, not just its id: by the
+// time they are written back the row may be a different one.
 type badgePushResult struct {
 	delivered int
-	revoked   []int64
+	revoked   []*PushSubscription
 }
 
 type pushSendOutcome int
@@ -188,7 +189,7 @@ func deliverBadgePush(job *badgePushJob) (res badgePushResult) {
 		case pushDelivered:
 			res.delivered++
 		case pushRevoked:
-			res.revoked = append(res.revoked, sub.ID)
+			res.revoked = append(res.revoked, sub)
 		case pushFailed:
 		}
 	}
@@ -198,9 +199,19 @@ func deliverBadgePush(job *badgePushJob) (res badgePushResult) {
 // applyBadgePushResult writes back what the fan-out found: revoked devices go
 // away, and the count is remembered only if a device actually got it.
 func applyBadgePushResult(s *xorm.Session, job *badgePushJob, res badgePushResult) error {
-	for _, id := range res.revoked {
-		if _, err := s.Where("id = ?", id).Delete(&PushSubscription{}); err != nil {
-			return fmt.Errorf("could not delete revoked push subscription %d: %w", id, err)
+	for _, sub := range res.revoked {
+		// Matching the whole channel, not just the id: nothing was locked while
+		// the push was in flight, so the row may since have been re-registered
+		// (PushSubscription.Create upserts in place and keeps the id, and the id
+		// itself can be reused after a delete). Only the channel the push
+		// service actually rejected may go - a fresh registration is not covered
+		// by a revocation of what used to be there.
+		_, err := s.
+			Where("id = ? AND user_id = ? AND endpoint = ? AND p256dh = ? AND auth = ?",
+				sub.ID, sub.UserID, sub.Endpoint, sub.P256dh, sub.Auth).
+			Delete(&PushSubscription{})
+		if err != nil {
+			return fmt.Errorf("could not delete revoked push subscription %d: %w", sub.ID, err)
 		}
 	}
 
