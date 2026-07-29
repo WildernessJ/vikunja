@@ -1,0 +1,22 @@
+# p256dh values are real uncompressed P-256 public keys and auth values real
+# 16-byte secrets, both base64url-encoded: the webpush library refuses to
+# encrypt against anything else, so placeholder strings would make every
+# send-path test fail on decryption instead of on what it means to assert.
+- id: 1
+  user_id: 1
+  endpoint: 'https://push.example.com/subscription-user1-a'
+  p256dh: 'BHZKIUKCQcksPIYOf84rkQRLPM3seJEB0G2-qFb7JprQrerf-IoE0XqPN7DAz05RKfEcdxrjjHSgwSh1H-YA6QQ'
+  auth: 'IcnAXDQJpTl34g82cPAoSA'
+  created: 2026-07-01 07:00:00
+- id: 2
+  user_id: 1
+  endpoint: 'https://push.example.com/subscription-user1-b'
+  p256dh: 'BCpeZf2x3oql-rD6r2vAeDqWiltVEslWjT1zr7nRknxExNXwIPeBE0sxjK1UGvYgw7SOPZ3o4M13z_uuhesUGaM'
+  auth: 'krkzLyr0MR67wHqvUJv1YQ'
+  created: 2026-07-01 07:00:00
+- id: 3
+  user_id: 2
+  endpoint: 'https://push.example.com/subscription-user2-a'
+  p256dh: 'BLinfffcn9tbjyQ0ZU0EZ19xa55fKVWZG7DugUQh_PvHRvyc03019POQGa7ZFF6MasjvDm167wqH0gSpwCKezzw'
+  auth: 'qVXbAoG56u0KyofefGMsmw'
+  created: 2026-07-01 07:00:00

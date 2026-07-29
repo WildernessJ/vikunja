@@ -1008,6 +1008,32 @@
             ]
         },
         {
+            "key": "webpush",
+            "comment": "Web Push notifications keep the app-icon badge current while the app is closed. Because iOS requires every push to show a visible notification, each badge refresh also surfaces one; users who only want the badge can mute the notification surfaces per device in the OS settings.",
+            "children": [
+                {
+                    "key": "enabled",
+                    "default_value": "false",
+                    "comment": "Whether to enable Web Push notifications. Requires a VAPID key pair (see below); generate one with `vikunja webpush-keys`.\nSending is independent of the mailer - push works with mail disabled."
+                },
+                {
+                    "key": "publickey",
+                    "default_value": "",
+                    "comment": "The VAPID public key, handed to browsers when they subscribe.\nDo not change this once devices have subscribed: rotating the key pair invalidates every existing subscription."
+                },
+                {
+                    "key": "privatekey",
+                    "default_value": "",
+                    "comment": "The VAPID private key, used to sign push requests. Keep this secret.\nDo not change this once devices have subscribed: rotating the key pair invalidates every existing subscription."
+                },
+                {
+                    "key": "badgeinterval",
+                    "default_value": "3h",
+                    "comment": "How often to push a badge-count refresh to subscribed devices, as a Go duration (for example `30m` or `3h`).\nShorter intervals keep the badge fresher at the cost of more notifications."
+                }
+            ]
+        },
+        {
             "key": "audit",
             "comment": "Audit logging writes structured JSONL records of authentication, authorization and data lifecycle events. Requires the licensed `audit_logs` feature — with `audit.enabled: true` but no active license, listeners are registered but nothing is written until a license with the feature becomes active.",
             "children": [

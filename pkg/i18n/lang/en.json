@@ -144,6 +144,12 @@
                 "action": "Manage API Tokens"
             }
         },
+        "push": {
+            "badge": {
+                "title": "Vikunja",
+                "body": "Nothing due today | 1 task due or overdue | %[1]d tasks due or overdue"
+            }
+        },
         "common": {
             "have_nice_day": "Have a nice day!",
             "copy_url": "If the button above doesn't work, copy the url below and paste it in your browser's address bar:",
