@@ -91,6 +91,23 @@ describe('dropDevicePushSubscription', () => {
 		expect(window.localStorage.getItem(SUBSCRIPTION_ID_KEY)).toBeNull()
 	})
 
+	// The mirror of the case above, and the one that actually strands a row: the
+	// browser refusing to detach must not cancel the server-side delete. Logout
+	// clears localStorage right after, so an id skipped here is unrecoverable,
+	// and a live endpoint never 410s — the row would keep pushing the departing
+	// user's counts to a device someone else now uses.
+	it('deletes the remembered row even when the browser refuses to detach', async () => {
+		window.localStorage.setItem(SUBSCRIPTION_ID_KEY, '7')
+		unsubscribeMock.mockRejectedValue(new DOMException('network', 'AbortError'))
+		stubPushCapableBrowser(fakeBrowserSubscription())
+
+		await expect(dropDevicePushSubscription()).resolves.toBeUndefined()
+
+		expect(createPushSubscriptionMock).not.toHaveBeenCalled()
+		expect(deletePushSubscriptionMock).toHaveBeenCalledWith(7)
+		expect(window.localStorage.getItem(SUBSCRIPTION_ID_KEY)).toBeNull()
+	})
+
 	it('does nothing when the browser has no subscription', async () => {
 		stubPushCapableBrowser(null)
 

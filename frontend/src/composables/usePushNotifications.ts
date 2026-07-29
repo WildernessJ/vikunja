@@ -137,20 +137,21 @@ export async function dropDevicePushSubscription(): Promise<void> {
 		const subscription = await registration?.pushManager.getSubscription() ?? null
 		const id = storedSubscriptionId()
 
-		// Browser side first, and unconditionally: whatever the server call
-		// does, this device has to stop being reachable before the session ends.
-		await subscription?.unsubscribe()
 		window.localStorage.removeItem(SUBSCRIPTION_ID_KEY)
 
-		// Deliberately no post-to-resolve-the-id here, unlike the explicit
-		// unsubscribe above: posting registers the endpoint to the user who is
-		// logging out, and if the delete behind it failed they would keep
-		// receiving their counts on a shared device for a full cron interval.
-		// Losing a row we cannot name is the lesser evil — it is pruned by its
-		// next 410 anyway.
-		if (id !== null) {
-			await deletePushSubscription(id)
-		}
+		// Neither side may cancel the other. Sequential awaits would let a
+		// browser that refuses to detach skip the delete, and logout clears
+		// localStorage immediately after, so an id skipped here can never be
+		// recovered — while a still-live endpoint never 410s, leaving the row
+		// pushing the departing user's counts at whoever holds the device next.
+		//
+		// Deliberately no post-to-resolve-the-id: posting registers the endpoint
+		// to the user on their way out, which is the leak this exists to close.
+		// Losing a row we cannot name is the lesser evil.
+		await Promise.allSettled([
+			subscription?.unsubscribe() ?? Promise.resolve(),
+			id !== null ? deletePushSubscription(id) : Promise.resolve(),
+		])
 	} catch (e) {
 		console.debug('Could not remove this device\'s push subscription on logout', e)
 	}
