@@ -75,15 +75,76 @@ self.addEventListener('message', (e: ExtendableMessageEvent) => {
 	}
 })
 
+// The Badging API is not in the TS worker lib yet.
+type BadgingWorkerNavigator = WorkerNavigator & {
+	setAppBadge?: (count?: number) => Promise<void>
+	clearAppBadge?: () => Promise<void>
+}
+
+interface BadgePushPayload {
+	title?: string
+	body?: string
+	badgeCount?: number
+	type?: string
+}
+
+// Mirrors the pushed count onto the app icon. Best-effort: the promise rejects
+// on iOS depending on install and notification-permission state, and the API is
+// missing entirely on some browsers.
+function applyPushedBadge(count: number): Promise<void> {
+	const nav = self.navigator as BadgingWorkerNavigator
+
+	if (count > 0) {
+		return nav.setAppBadge?.(count).catch(() => {}) ?? Promise.resolve()
+	}
+	return nav.clearAppBadge?.().catch(() => {}) ?? Promise.resolve()
+}
+
+// Badge refresh pushed by the server. iOS drops the push subscription of an app
+// that receives a push without showing a notification, so every push shows one;
+// users who only want the badge mute the surfaces in the OS settings instead.
+self.addEventListener('push', (event: PushEvent) => {
+	if (!event.data) {
+		return
+	}
+
+	let payload: BadgePushPayload
+	try {
+		payload = event.data.json()
+	} catch {
+		return
+	}
+
+	const badgeCount = typeof payload.badgeCount === 'number' ? payload.badgeCount : 0
+
+	event.waitUntil(Promise.all([
+		self.registration.showNotification(payload.title ?? 'Vikunja', {
+			body: payload.body ?? '',
+			icon: `${fullBaseUrl}images/icons/android-chrome-192x192.png`,
+			badge: `${fullBaseUrl}images/icons/android-chrome-192x192.png`,
+			// One tag for all badge pushes so a new count replaces the previous
+			// one instead of stacking up a notification per refresh.
+			tag: 'vikunja-badge',
+			data: {type: payload.type},
+		}),
+		applyPushedBadge(badgeCount),
+	]))
+})
+
 // Notification action
 self.addEventListener('notificationclick', function (event: NotificationEvent) {
-	const taskId = event.notification.data.taskId
+	const taskId = event.notification.data?.taskId
 	event.notification.close()
 
 	switch (event.action) {
 		case 'show-task':
-			self.clients.openWindow(`${fullBaseUrl}tasks/${taskId}`)
+			event.waitUntil(self.clients.openWindow(`${fullBaseUrl}tasks/${taskId}`))
 			break
+		default:
+			// Badge pushes carry no action; clicking one opens the app.
+			event.waitUntil(self.clients.openWindow(
+				taskId ? `${fullBaseUrl}tasks/${taskId}` : fullBaseUrl,
+			))
 	}
 })
 
