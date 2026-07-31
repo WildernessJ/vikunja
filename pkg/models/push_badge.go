@@ -27,6 +27,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -112,12 +113,27 @@ func buildBadgePayload(count int64, lang string) ([]byte, error) {
 }
 
 // vapidSubscriber is the `sub` claim of the VAPID JWT: a way for the push
-// service to reach whoever runs this instance. RFC 8292 accepts an https URL.
-func vapidSubscriber() string {
-	if publicURL := config.ServicePublicURL.GetString(); publicURL != "" {
-		return publicURL
+// service to reach whoever runs this instance. RFC 8292 accepts an https URL,
+// and only that - webpush-go prefixes anything else with `mailto:`, so an
+// http:// public URL goes out as `sub: "mailto:http://…"` and every send comes
+// back as a bare 403 the log cannot explain. There is deliberately no fallback:
+// a default would claim vikunja.io's operators as the contact for this
+// instance's pushes.
+func vapidSubscriber() (string, error) {
+	publicURL := config.ServicePublicURL.GetString()
+	if publicURL == "" {
+		return "", fmt.Errorf("%s is not set", config.ServicePublicURL)
 	}
-	return "https://vikunja.io"
+
+	parsed, err := url.Parse(publicURL)
+	if err != nil {
+		return "", fmt.Errorf("%s is not a valid URL: %w", config.ServicePublicURL, err)
+	}
+	if !strings.EqualFold(parsed.Scheme, "https") {
+		return "", fmt.Errorf("%s must be an https:// URL", config.ServicePublicURL)
+	}
+
+	return publicURL, nil
 }
 
 // badgePushJob is everything one user's fan-out needs, read up front so the
@@ -271,6 +287,12 @@ func inShortSession(fn func(s *xorm.Session) error) error {
 }
 
 func sendBadgePushToSubscription(sub *PushSubscription, payload []byte, count int64) pushSendOutcome {
+	subscriber, err := vapidSubscriber()
+	if err != nil {
+		log.Errorf("[Web Push] Could not send badge push to subscription %d of user %d: %s", sub.ID, sub.UserID, err)
+		return pushFailed
+	}
+
 	res, err := webpush.SendNotification(payload, &webpush.Subscription{
 		Endpoint: sub.Endpoint,
 		Keys: webpush.Keys{
@@ -279,7 +301,7 @@ func sendBadgePushToSubscription(sub *PushSubscription, payload []byte, count in
 		},
 	}, &webpush.Options{
 		HTTPClient:      getPushHTTPClient(),
-		Subscriber:      vapidSubscriber(),
+		Subscriber:      subscriber,
 		VAPIDPublicKey:  config.WebPushPublicKey.GetString(),
 		VAPIDPrivateKey: config.WebPushPrivateKey.GetString(),
 		TTL:             badgePushTTLSeconds,
@@ -406,6 +428,14 @@ func RegisterBadgePushCron() {
 
 	if config.WebPushPublicKey.GetString() == "" || config.WebPushPrivateKey.GetString() == "" {
 		log.Critical("[Web Push] webpush.enabled is set but no VAPID key pair is configured, not sending badge pushes. Generate one with `vikunja webpush-keys`.")
+		return
+	}
+
+	// Every send signs a VAPID JWT with this as its `sub` claim, so an unusable
+	// value is a guaranteed rejection on every push, forever. Better to say so
+	// once, here, than to register a cron that logs the same 403 every interval.
+	if _, err := vapidSubscriber(); err != nil {
+		log.Criticalf("[Web Push] %s, so the VAPID subscriber cannot be built and no badge push could be delivered. Set service.publicurl to this instance's https:// URL.", err)
 		return
 	}
 

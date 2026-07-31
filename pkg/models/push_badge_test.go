@@ -36,6 +36,7 @@ import (
 	"time"
 
 	"code.vikunja.io/api/pkg/config"
+	"code.vikunja.io/api/pkg/cron"
 	"code.vikunja.io/api/pkg/db"
 	"code.vikunja.io/api/pkg/log"
 	"code.vikunja.io/api/pkg/modules/keyvalue"
@@ -634,6 +635,102 @@ func TestRunBadgePushCron(t *testing.T) {
 	for _, id := range []int64{1, 2, 3} {
 		db.AssertMissing(t, "push_subscriptions", map[string]interface{}{"id": id})
 	}
+}
+
+// The `sub` claim is a way for the push service operator to reach whoever runs
+// this instance. webpush-go prefixes anything that is not an https URL with
+// `mailto:`, so `http://…` goes out as `sub: "mailto:http://…"` - which APNs
+// answers with a bare 403 that names nothing.
+func TestVapidSubscriber(t *testing.T) {
+	t.Run("accepted", func(t *testing.T) {
+		for _, publicURL := range []string{
+			"https://vikunja.example.com/",
+			"HTTPS://vikunja.example.com/",
+			"https://vikunja.example.com/subpath/",
+		} {
+			t.Run(publicURL, func(t *testing.T) {
+				config.ServicePublicURL.Set(publicURL)
+				t.Cleanup(func() { config.ServicePublicURL.Set("") })
+
+				subscriber, err := vapidSubscriber()
+				require.NoError(t, err)
+				assert.Equal(t, publicURL, subscriber)
+			})
+		}
+	})
+
+	t.Run("rejected", func(t *testing.T) {
+		// "" used to fall back to https://vikunja.io, which claims the upstream
+		// project's operators as the contact for this instance's pushes.
+		for _, publicURL := range []string{
+			"",
+			"http://vikunja.example.com/",
+			"ftp://vikunja.example.com/",
+			"vikunja.example.com",
+			"://nonsense",
+		} {
+			t.Run(publicURL, func(t *testing.T) {
+				config.ServicePublicURL.Set(publicURL)
+				t.Cleanup(func() { config.ServicePublicURL.Set("") })
+
+				subscriber, err := vapidSubscriber()
+				require.Error(t, err)
+				assert.Empty(t, subscriber)
+				assert.Contains(t, err.Error(), "service.publicurl",
+					"the operator has to be told which key to fix")
+			})
+		}
+	})
+}
+
+// ADR-0005: a cron driven by operator config fails soft. Registering one that
+// can only ever 403 is worse than not registering it - it buries the cause in a
+// per-interval error line for the life of the instance.
+func TestRegisterBadgePushCron(t *testing.T) {
+	configure := func(t *testing.T, publicURL string) func() string {
+		t.Helper()
+		config.WebPushEnabled.Set(true)
+		config.WebPushPublicKey.Set("BTestPublicKeyValue")
+		config.WebPushPrivateKey.Set("TestPrivateKeyValue")
+		config.ServicePublicURL.Set(publicURL)
+		t.Cleanup(func() {
+			config.WebPushEnabled.Set(false)
+			config.WebPushPublicKey.Set("")
+			config.WebPushPrivateKey.Set("")
+			config.ServicePublicURL.Set("")
+		})
+		return captureLogs(t)
+	}
+
+	for name, publicURL := range map[string]string{
+		"unset":          "",
+		"plain http":     "http://vikunja.example.com/",
+		"not parseable":  "://nonsense",
+		"scheme missing": "vikunja.example.com",
+	} {
+		t.Run("refuses to register when service.publicurl is "+name, func(t *testing.T) {
+			readLog := configure(t, publicURL)
+
+			// cron.Init is deliberately not called here: nothing may be
+			// scheduled on this path, and the scheduler is untouched by it.
+			RegisterBadgePushCron()
+
+			logged := readLog()
+			assert.Contains(t, logged, "level=ERROR")
+			assert.Contains(t, logged, "service.publicurl",
+				"the critical must name the key the operator has to set")
+		})
+	}
+
+	t.Run("registers with a usable public url", func(t *testing.T) {
+		readLog := configure(t, "https://vikunja.example.com/")
+		cron.Init()
+		t.Cleanup(cron.Stop)
+
+		RegisterBadgePushCron()
+
+		assert.NotContains(t, readLog(), "level=ERROR")
+	})
 }
 
 // ADR-0010 rests on a spike that ran with the library's default urgency. A
