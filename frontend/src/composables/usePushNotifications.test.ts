@@ -190,6 +190,21 @@ describe('usePushNotifications', () => {
 	})
 
 	describe('load', () => {
+		// A browser without push support must not even be asked about it: load()
+		// returns before the request, so `loading` never flips and the toggle
+		// stays hidden. Asserting the call count is what makes this meaningful —
+		// `available` would read false either way.
+		it('asks the server nothing when the browser has no push support', async () => {
+			vi.stubGlobal('navigator', {userAgent: USER_AGENT})
+
+			const push = mountComposable()
+			await Promise.resolve()
+
+			expect(getPushPublicKeyMock).not.toHaveBeenCalled()
+			expect(push.available.value).toBe(false)
+			expect(push.subscribed.value).toBe(false)
+		})
+
 		it('is unavailable when the instance does not offer push', async () => {
 			getPushPublicKeyMock.mockResolvedValue({enabled: false, publicKey: ''})
 			stubPushCapableBrowser(null)
