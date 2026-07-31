@@ -46,7 +46,7 @@
                 {
                     "key": "publicurl",
                     "default_value": "",
-                    "comment": "The public facing URL where your users can reach Vikunja. Used in emails and for the communication between api and frontend. The url must be a valid http or https url. This setting is required when cors.enable is true."
+                    "comment": "The public facing URL where your users can reach Vikunja. Used in emails and for the communication between api and frontend. The url must be a valid http or https url. This setting is required when cors.enable is true.\nWeb Push additionally requires it to be set to an https url: it becomes the VAPID subscriber claim, and push services reject anything else. Badge pushes stay disabled until it is."
                 },
                 {
                     "key": "rootpath",
@@ -1014,7 +1014,7 @@
                 {
                     "key": "enabled",
                     "default_value": "false",
-                    "comment": "Whether to enable Web Push notifications. Requires a VAPID key pair (see below); generate one with `vikunja webpush-keys`.\nSending is independent of the mailer - push works with mail disabled."
+                    "comment": "Whether to enable Web Push notifications. Requires a VAPID key pair (see below); generate one with `vikunja webpush-keys`.\nAlso requires service.publicurl to be an https url - it becomes the VAPID subscriber claim. Without both, badge pushes stay disabled and clients are not offered the option.\nSending is independent of the mailer - push works with mail disabled."
                 },
                 {
                     "key": "publickey",

@@ -133,7 +133,13 @@ func vapidSubscriber() (string, error) {
 		return "", fmt.Errorf("%s must be an https:// URL", config.ServicePublicURL)
 	}
 
-	return publicURL, nil
+	// Return the parsed form, not the configured string: webpush-go decides
+	// whether to prefix `mailto:` with a case-SENSITIVE strings.HasPrefix on
+	// whatever it is handed, while url.Parse lowercases the scheme. A configured
+	// `HTTPS://…` would pass the check above and still go out as
+	// `sub: "mailto:HTTPS://…"` - the same silent 403 on every send that
+	// requiring https exists to prevent.
+	return parsed.String(), nil
 }
 
 // WebPushDeliverable reports whether a badge push could actually reach a device:

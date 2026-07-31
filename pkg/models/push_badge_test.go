@@ -643,10 +643,14 @@ func TestRunBadgePushCron(t *testing.T) {
 // answers with a bare 403 that names nothing.
 func TestVapidSubscriber(t *testing.T) {
 	t.Run("accepted", func(t *testing.T) {
-		for _, publicURL := range []string{
-			"https://vikunja.example.com/",
-			"HTTPS://vikunja.example.com/",
-			"https://vikunja.example.com/subpath/",
+		for publicURL, want := range map[string]string{
+			"https://vikunja.example.com/":         "https://vikunja.example.com/",
+			"https://vikunja.example.com/subpath/": "https://vikunja.example.com/subpath/",
+			// Accepted, but only in normalised form: webpush-go decides whether to
+			// prepend `mailto:` with a case-sensitive prefix check, so handing it
+			// the configured spelling would produce `mailto:HTTPS://…` and a bare
+			// 403 on every send.
+			"HTTPS://vikunja.example.com/": "https://vikunja.example.com/",
 		} {
 			t.Run(publicURL, func(t *testing.T) {
 				config.ServicePublicURL.Set(publicURL)
@@ -654,7 +658,11 @@ func TestVapidSubscriber(t *testing.T) {
 
 				subscriber, err := vapidSubscriber()
 				require.NoError(t, err)
-				assert.Equal(t, publicURL, subscriber)
+				assert.Equal(t, want, subscriber)
+				// The invariant that actually matters, stated the way the library
+				// states it (vapid.go: strings.HasPrefix(subscriber, "https:")).
+				assert.True(t, strings.HasPrefix(subscriber, "https:"),
+					"webpush-go would prefix mailto: and every send would 403")
 			})
 		}
 	})
