@@ -182,17 +182,23 @@ export function usePushNotifications() {
 		loading.value = true
 		try {
 			const key = await getPushPublicKey()
-			available.value = key.enabled
 			publicKey = key.publicKey
+			available.value = false
 
-			if (!available.value) {
+			if (!key.enabled) {
 				return
 			}
 
+			// The instance offering push is only half of it: without a registered
+			// service worker nothing can receive one, so the toggle would prompt
+			// for notification permission and then throw. That is every dev build
+			// (registerServiceWorker only registers under PROD) and a production
+			// first visit before `window.load` has run.
 			const registration = await getRegistration()
 			if (registration === null) {
 				return
 			}
+			available.value = true
 
 			const subscription = await registration.pushManager.getSubscription()
 			subscribed.value = subscription !== null && usesApplicationServerKey(subscription, publicKey)
