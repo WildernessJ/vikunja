@@ -28,6 +28,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Create validates that p256dh is a point on P-256 and that auth decodes to 16
+// bytes, so the request bodies below carry real key material - the fixtures'
+// (pkg/db/fixtures/push_subscriptions.yml).
+const (
+	testP256dh    = "BHZKIUKCQcksPIYOf84rkQRLPM3seJEB0G2-qFb7JprQrerf-IoE0XqPN7DAz05RKfEcdxrjjHSgwSh1H-YA6QQ"
+	testAuth      = "IcnAXDQJpTl34g82cPAoSA"
+	rotatedP256dh = "BCpeZf2x3oql-rD6r2vAeDqWiltVEslWjT1zr7nRknxExNXwIPeBE0sxjK1UGvYgw7SOPZ3o4M13z_uuhesUGaM"
+	rotatedAuth   = "krkzLyr0MR67wHqvUJv1YQ"
+)
+
 // Fixture topology (pkg/db/fixtures/push_subscriptions.yml):
 //   - #1, #2: user1's two devices.
 //   - #3: user2's device — user1 must not be able to touch it.
@@ -42,7 +52,7 @@ func TestHumaPushSubscription(t *testing.T) {
 	t.Run("Create", func(t *testing.T) {
 		t.Run("Normal", func(t *testing.T) {
 			rec, err := testHandler.testCreateWithUser(nil, nil,
-				`{"endpoint":"https://push.example.com/fresh-device","p256dh":"BPublicKey","auth":"AuthSecret"}`)
+				`{"endpoint":"https://push.example.com/fresh-device","p256dh":"`+testP256dh+`","auth":"`+testAuth+`"}`)
 			require.NoError(t, err)
 			assert.Equal(t, http.StatusCreated, rec.Code)
 			assert.Contains(t, rec.Body.String(), `"endpoint":"https://push.example.com/fresh-device"`)
@@ -51,8 +61,8 @@ func TestHumaPushSubscription(t *testing.T) {
 			// p256dh and auth are the device's payload-encryption secrets and
 			// are write-only: echoing them back puts them in every log, proxy
 			// and cache between here and the browser.
-			assert.NotContains(t, rec.Body.String(), "BPublicKey")
-			assert.NotContains(t, rec.Body.String(), "AuthSecret")
+			assert.NotContains(t, rec.Body.String(), testP256dh)
+			assert.NotContains(t, rec.Body.String(), testAuth)
 			assert.NotContains(t, rec.Body.String(), `"p256dh"`)
 			assert.NotContains(t, rec.Body.String(), `"auth"`)
 		})
@@ -64,7 +74,7 @@ func TestHumaPushSubscription(t *testing.T) {
 			} {
 				t.Run(endpoint, func(t *testing.T) {
 					rec, err := testHandler.testCreateWithUser(nil, nil,
-						`{"endpoint":"`+endpoint+`","p256dh":"BPublicKey","auth":"AuthSecret"}`)
+						`{"endpoint":"`+endpoint+`","p256dh":"`+testP256dh+`","auth":"`+testAuth+`"}`)
 					require.Error(t, err)
 					assert.Equal(t, http.StatusUnprocessableEntity, getHTTPErrorCode(err))
 					assert.Contains(t, rec.Body.String(), "endpoint",
@@ -75,14 +85,14 @@ func TestHumaPushSubscription(t *testing.T) {
 		})
 		t.Run("Re-subscribing with a known endpoint updates it in place", func(t *testing.T) {
 			rec, err := testHandler.testCreateWithUser(nil, nil,
-				`{"endpoint":"https://push.example.com/subscription-user1-a","p256dh":"BRotated","auth":"RotatedAuth"}`)
+				`{"endpoint":"https://push.example.com/subscription-user1-a","p256dh":"`+rotatedP256dh+`","auth":"`+rotatedAuth+`"}`)
 			require.NoError(t, err)
 			assert.Equal(t, http.StatusCreated, rec.Code)
 			assert.Contains(t, rec.Body.String(), `"id":1`,
 				"the existing row must be reused rather than a second one created; body: %s", rec.Body.String())
 		})
 		t.Run("Missing endpoint", func(t *testing.T) {
-			_, err := testHandler.testCreateWithUser(nil, nil, `{"p256dh":"BPublicKey","auth":"AuthSecret"}`)
+			_, err := testHandler.testCreateWithUser(nil, nil, `{"p256dh":"`+testP256dh+`","auth":"`+testAuth+`"}`)
 			require.Error(t, err)
 			assert.Equal(t, http.StatusUnprocessableEntity, getHTTPErrorCode(err))
 		})
@@ -91,11 +101,32 @@ func TestHumaPushSubscription(t *testing.T) {
 			// schema validation; the full problem+json shape is asserted once
 			// globally in TestHuma_ErrorShapeIsRFC9457.
 			rec, err := testHandler.testCreateWithUser(nil, nil,
-				`{"endpoint":"not-a-url","p256dh":"BPublicKey","auth":"AuthSecret"}`)
+				`{"endpoint":"not-a-url","p256dh":"`+testP256dh+`","auth":"`+testAuth+`"}`)
 			require.Error(t, err)
 			assert.Equal(t, http.StatusUnprocessableEntity, getHTTPErrorCode(err))
 			assert.Contains(t, rec.Body.String(), "endpoint",
 				"the offending field must be named in invalid_fields")
+		})
+		// Keys the sender cannot encrypt against fail before any HTTP request
+		// exists, so the push service never answers 410 and the row is never
+		// pruned - registration is the last point the caller can be told.
+		t.Run("Keys must be usable", func(t *testing.T) {
+			for _, tc := range []struct {
+				name  string
+				body  string
+				field string
+			}{
+				{"p256dh is not a P-256 point", `{"endpoint":"https://push.example.com/bad-key","p256dh":"BPublicKey","auth":"` + testAuth + `"}`, "p256dh"},
+				{"auth is not 16 bytes", `{"endpoint":"https://push.example.com/bad-auth","p256dh":"` + testP256dh + `","auth":"AuthSecret"}`, "auth"},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					rec, err := testHandler.testCreateWithUser(nil, nil, tc.body)
+					require.Error(t, err)
+					assert.Equal(t, http.StatusUnprocessableEntity, getHTTPErrorCode(err))
+					assert.Contains(t, rec.Body.String(), tc.field,
+						"the offending field must be named in invalid_fields")
+				})
+			}
 		})
 	})
 

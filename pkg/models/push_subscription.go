@@ -17,6 +17,8 @@
 package models
 
 import (
+	"crypto/ecdh"
+	"encoding/base64"
 	"strings"
 	"time"
 
@@ -30,6 +32,9 @@ import (
 // Every subscription costs the badge cron one blocking HTTP send per run, so an
 // unbounded list is a way for a single account to monopolise the sender.
 const maxPushSubscriptionsPerUser = 20
+
+// pushAuthSecretLength is the length RFC 8291 fixes the auth secret at.
+const pushAuthSecretLength = 16
 
 // PushSubscription is one browser's Web Push channel, as returned by
 // PushManager.subscribe(). One user can have many — one per device/browser.
@@ -73,6 +78,10 @@ func (p *PushSubscription) Create(s *xorm.Session, a web.Auth) (err error) {
 		)
 	}
 
+	if err := validatePushSubscriptionKeys(p.P256dh, p.Auth); err != nil {
+		return err
+	}
+
 	p.ID = 0
 	p.UserID = caller.ID
 
@@ -102,6 +111,47 @@ func (p *PushSubscription) Create(s *xorm.Session, a web.Auth) (err error) {
 
 	_, err = s.Insert(p)
 	return err
+}
+
+// decodePushSubscriptionKey mirrors webpush-go's decodeSubscriptionKey: pad,
+// try the standard alphabet, fall back to base64url. Anything stricter would
+// reject keys the sender can encrypt against perfectly well.
+func decodePushSubscriptionKey(key string) ([]byte, error) {
+	if rem := len(key) % 4; rem != 0 {
+		key += strings.Repeat("=", 4-rem)
+	}
+	if decoded, err := base64.StdEncoding.DecodeString(key); err == nil {
+		return decoded, nil
+	}
+	return base64.URLEncoding.DecodeString(key)
+}
+
+// validatePushSubscriptionKeys rejects a device whose keys the sender could
+// never encrypt against. Such a send fails before any HTTP request exists, so
+// the push service never answers 404/410, the subscription is never pruned, and
+// it logs an error every interval forever. Registration is the only point where
+// the failure can still be reported to somebody able to fix it.
+func validatePushSubscriptionKeys(p256dh, auth string) error {
+	publicKey, err := decodePushSubscriptionKey(p256dh)
+	if err == nil {
+		_, err = ecdh.P256().NewPublicKey(publicKey)
+	}
+	if err != nil {
+		return InvalidFieldErrorWithMessage(
+			[]string{"p256dh: must be a base64url-encoded P-256 public key"},
+			"The p256dh key must be a base64url-encoded P-256 public key.",
+		)
+	}
+
+	authSecret, err := decodePushSubscriptionKey(auth)
+	if err != nil || len(authSecret) != pushAuthSecretLength {
+		return InvalidFieldErrorWithMessage(
+			[]string{"auth: must be a base64url-encoded 16 byte secret"},
+			"The auth secret must be a base64url-encoded 16 byte value.",
+		)
+	}
+
+	return nil
 }
 
 // Delete removes a single device's subscription. Ownership is verified in
