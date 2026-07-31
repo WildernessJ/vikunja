@@ -221,4 +221,25 @@ func TestHumaPushSubscription_PublicKey(t *testing.T) {
 		assert.True(t, enabled)
 		assert.Equal(t, "BTestPublicKeyValue", key)
 	})
+
+	// The cron refuses to register when the VAPID subscriber cannot be built,
+	// which tells the operator but not the user. If this surface still said
+	// "enabled" the client would happily subscribe to a channel that can never
+	// send, and push would look broken rather than switched off.
+	t.Run("Unusable VAPID subscriber reports disabled", func(t *testing.T) {
+		config.WebPushEnabled.Set(true)
+		config.WebPushPublicKey.Set("BTestPublicKeyValue")
+		config.WebPushPrivateKey.Set("TestPrivateKeyValue")
+		config.ServicePublicURL.Set("http://vikunja.example.com/")
+		t.Cleanup(func() {
+			config.WebPushEnabled.Set(false)
+			config.WebPushPublicKey.Set("")
+			config.WebPushPrivateKey.Set("")
+			config.ServicePublicURL.Set("https://localhost")
+		})
+
+		enabled, key := readBody(t)
+		assert.False(t, enabled, "an http:// public URL makes every send a guaranteed 403, so subscribing must not be offered")
+		assert.Empty(t, key)
+	})
 }

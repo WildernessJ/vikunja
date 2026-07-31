@@ -136,6 +136,25 @@ func vapidSubscriber() (string, error) {
 	return publicURL, nil
 }
 
+// WebPushDeliverable reports whether a badge push could actually reach a device:
+// the feature switched on, a VAPID key pair present, and a usable subscriber
+// claim. The cron refuses to register without all three, so the client-facing
+// surface has to answer the same question — otherwise an instance with, say, an
+// http:// public URL still invites devices to subscribe to a channel that can
+// never send, which looks to the user like push is simply broken.
+func WebPushDeliverable() bool {
+	if !config.WebPushEnabled.GetBool() {
+		return false
+	}
+
+	if config.WebPushPublicKey.GetString() == "" || config.WebPushPrivateKey.GetString() == "" {
+		return false
+	}
+
+	_, err := vapidSubscriber()
+	return err == nil
+}
+
 // badgePushJob is everything one user's fan-out needs, read up front so the
 // blocking sends can happen with no database transaction open.
 type badgePushJob struct {

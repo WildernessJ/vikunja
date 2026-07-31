@@ -88,7 +88,7 @@ func pushPublicKey(ctx context.Context, _ *struct{}) (*pushPublicKeyBody, error)
 	}
 
 	publicKey := config.WebPushPublicKey.GetString()
-	enabled := config.WebPushEnabled.GetBool() && publicKey != "" && config.WebPushPrivateKey.GetString() != ""
+	enabled := models.WebPushDeliverable()
 
 	out := &pushPublicKeyBody{}
 	out.Body.Enabled = enabled
