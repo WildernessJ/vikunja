@@ -132,6 +132,11 @@ func vapidSubscriber() (string, error) {
 	if !strings.EqualFold(parsed.Scheme, "https") {
 		return "", fmt.Errorf("%s must be an https:// URL", config.ServicePublicURL)
 	}
+	// `https:` and `https://` parse cleanly and would go out as a contact URI
+	// that reaches nobody, which is the one thing this claim exists to provide.
+	if parsed.Host == "" {
+		return "", fmt.Errorf("%s must include a host", config.ServicePublicURL)
+	}
 
 	// Return the parsed form, not the configured string: webpush-go decides
 	// whether to prefix `mailto:` with a case-SENSITIVE strings.HasPrefix on

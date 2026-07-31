@@ -95,6 +95,32 @@ func (f *fakePushService) Do(req *http.Request) (*http.Response, error) {
 	}, nil
 }
 
+// vapidSubClaim pulls the `sub` claim back out of the signed VAPID JWT on an
+// outgoing request. Asserting our own HasPrefix rule only ever asks Vikunja
+// what Vikunja believes; this asks the library what it actually sent, so a
+// webpush-go change to how the subscriber is treated fails here instead of
+// turning into a 403 on every send.
+func vapidSubClaim(t *testing.T, req *http.Request) string {
+	t.Helper()
+
+	// `vapid t=<jwt>, k=<key>`
+	_, rest, found := strings.Cut(req.Header.Get("Authorization"), "t=")
+	require.True(t, found, "no VAPID token in the Authorization header")
+	token, _, _ := strings.Cut(rest, ",")
+
+	parts := strings.Split(token, ".")
+	require.Len(t, parts, 3, "a JWT has three segments")
+
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	require.NoError(t, err)
+
+	var claims struct {
+		Sub string `json:"sub"`
+	}
+	require.NoError(t, json.Unmarshal(payload, &claims))
+	return claims.Sub
+}
+
 // newTestSubscriptionKeys returns a p256dh/auth pair the webpush library can
 // actually encrypt against, so a bad key never passes silently.
 func newTestSubscriptionKeys(t *testing.T) (p256dh, auth string) {
@@ -306,6 +332,8 @@ func TestSendBadgePushForUser(t *testing.T) {
 			assert.Equal(t, "86400", req.Header.Get("TTL"), "TTL must be 24h")
 			assert.Equal(t, "aes128gcm", req.Header.Get("Content-Encoding"))
 			assert.NotEmpty(t, req.Header.Get("Authorization"), "the VAPID header must be signed")
+			assert.Equal(t, "https://vikunja.example.com/", vapidSubClaim(t, req),
+				"the subscriber has to survive the library as an https URI")
 		}
 	})
 
@@ -676,6 +704,9 @@ func TestVapidSubscriber(t *testing.T) {
 			"ftp://vikunja.example.com/",
 			"vikunja.example.com",
 			"://nonsense",
+			// Scheme-correct but hostless: a contact URI that reaches nobody.
+			"https://",
+			"https:",
 		} {
 			t.Run(publicURL, func(t *testing.T) {
 				config.ServicePublicURL.Set(publicURL)
@@ -753,6 +784,25 @@ func TestSendBadgePushUsesTheDefaultUrgency(t *testing.T) {
 
 	require.Len(t, fake.requests, 1)
 	assert.Empty(t, fake.requests[0].Header.Get("Urgency"))
+}
+
+// The regression this exists for: webpush-go decides whether to prepend
+// `mailto:` with a case-sensitive prefix check, while url.Parse lowercases the
+// scheme. Handing it the configured spelling sent `sub: "mailto:HTTPS://…"`,
+// which every push service answers with a bare 403. Asserting through a real
+// signed request is what makes this catch it - a check on our own return value
+// would pass either way, since the two only differ for a spelling no other test
+// configures.
+func TestSendBadgePushNormalisesTheSubscriber(t *testing.T) {
+	db.LoadAndAssertFixtures(t)
+	fake := setupWebPush(t, http.StatusCreated)
+	config.ServicePublicURL.Set("HTTPS://vikunja.example.com/")
+	clearLastBadgeCount(t, 2)
+
+	sendBadgePushForUser(2)
+
+	require.Len(t, fake.requests, 1)
+	assert.Equal(t, "https://vikunja.example.com/", vapidSubClaim(t, fake.requests[0]))
 }
 
 func clearLastBadgeCount(t *testing.T, userID int64) {
