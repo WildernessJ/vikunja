@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 
 import {getFullBaseUrl} from './helpers/getFullBaseUrl'
+import {handleBadgePush, type BadgingNavigator} from './helpers/badgePush'
 
 declare let self: ServiceWorkerGlobalScope & typeof globalThis
 declare const __WORKBOX_VERSION__: string
@@ -75,64 +76,14 @@ self.addEventListener('message', (e: ExtendableMessageEvent) => {
 	}
 })
 
-// The Badging API is not in the TS worker lib yet.
-type BadgingWorkerNavigator = WorkerNavigator & {
-	setAppBadge?: (count?: number) => Promise<void>
-	clearAppBadge?: () => Promise<void>
-}
-
-interface BadgePushPayload {
-	title?: string
-	body?: string
-	badgeCount?: number
-	type?: string
-}
-
-// Mirrors the pushed count onto the app icon. Best-effort: the promise rejects
-// on iOS depending on install and notification-permission state, and the API is
-// missing entirely on some browsers.
-function applyPushedBadge(count: number): Promise<void> {
-	const nav = self.navigator as BadgingWorkerNavigator
-
-	if (count > 0) {
-		return nav.setAppBadge?.(count).catch(() => {}) ?? Promise.resolve()
-	}
-	return nav.clearAppBadge?.().catch(() => {}) ?? Promise.resolve()
-}
-
-// Badge refresh pushed by the server. iOS drops the push subscription of an app
-// that receives a push without showing a notification, so every push shows one;
-// users who only want the badge mute the surfaces in the OS settings instead.
+// Badge refresh pushed by the server.
 self.addEventListener('push', (event: PushEvent) => {
-	// A missing or unparseable payload is still a push that was accepted, so it
-	// still has to surface something — returning early is exactly the silent
-	// push iOS revokes the subscription over.
-	let payload: BadgePushPayload = {}
-	try {
-		payload = event.data?.json() ?? {}
-	} catch {
-		// Keep the defaults.
-	}
-
-	const work: Promise<unknown>[] = [
-		self.registration.showNotification(payload.title ?? 'Vikunja', {
-			body: payload.body ?? '',
-			icon: `${fullBaseUrl}images/icons/android-chrome-192x192.png`,
-			badge: `${fullBaseUrl}images/icons/android-chrome-192x192.png`,
-			// One tag for all badge pushes so a new count replaces the previous
-			// one instead of stacking up a notification per refresh.
-			tag: 'vikunja-badge',
-			data: {type: payload.type},
-		}),
-	]
-
-	// Without a count there is nothing to say about the badge; clearing it would
-	// wipe a number that is still correct.
-	if (typeof payload.badgeCount === 'number') {
-		work.push(applyPushedBadge(payload.badgeCount))
-	}
-
-	event.waitUntil(Promise.all(work))
+	event.waitUntil(handleBadgePush(
+		event,
+		self.registration,
+		self.navigator as WorkerNavigator & BadgingNavigator,
+		fullBaseUrl,
+	))
 })
 
 // Notification action
