@@ -636,6 +636,20 @@ func TestRunBadgePushCron(t *testing.T) {
 	}
 }
 
+// ADR-0010 rests on a spike that ran with the library's default urgency. A
+// delivery-affecting header the spike never exercised would put the evidence
+// and the shipped behaviour out of agreement.
+func TestSendBadgePushUsesTheDefaultUrgency(t *testing.T) {
+	db.LoadAndAssertFixtures(t)
+	fake := setupWebPush(t, http.StatusCreated)
+	clearLastBadgeCount(t, 2)
+
+	sendBadgePushForUser(2)
+
+	require.Len(t, fake.requests, 1)
+	assert.Empty(t, fake.requests[0].Header.Get("Urgency"))
+}
+
 func clearLastBadgeCount(t *testing.T, userID int64) {
 	t.Helper()
 	require.NoError(t, forgetLastBadgeCount(userID))

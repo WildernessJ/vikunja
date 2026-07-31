@@ -283,7 +283,6 @@ func sendBadgePushToSubscription(sub *PushSubscription, payload []byte, count in
 		VAPIDPublicKey:  config.WebPushPublicKey.GetString(),
 		VAPIDPrivateKey: config.WebPushPrivateKey.GetString(),
 		TTL:             badgePushTTLSeconds,
-		Urgency:         webpush.UrgencyLow,
 	})
 	if err != nil {
 		log.Errorf("[Web Push] Could not send badge push to subscription %d of user %d: %s", sub.ID, sub.UserID, pushErrorKind(err))
