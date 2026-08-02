@@ -1,5 +1,5 @@
 ---
-status: Accepted
+status: Implemented (2026-08-02)
 date: 2026-07-27
 deciders: Jason
 phase: —
