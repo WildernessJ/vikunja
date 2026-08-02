@@ -10,6 +10,7 @@ import AvatarService from '@/services/avatar'
 import UserSettingsService from '@/services/userSettings'
 import {getToken, refreshToken, removeToken, saveToken} from '@/helpers/auth'
 import {useWebSocket} from '@/composables/useWebSocket'
+import {dropDevicePushSubscription} from '@/composables/usePushNotifications'
 import {setModuleLoading} from '@/stores/helper'
 import {success, error, translate} from '@/message'
 import {
@@ -594,6 +595,12 @@ export const useAuthStore = defineStore('auth', () => {
 	async function logout() {
 		const {disconnect} = useWebSocket()
 		disconnect()
+
+		// Detach this device from push before the token goes away: the browser's
+		// subscription is per origin, not per session, so leaving it in place
+		// would keep pushing this user's task counts to whoever logs in next on
+		// the same installed app. Never throws.
+		await dropDevicePushSubscription()
 
 		// Revoke the server session so the refresh token can't be reused.
 		// Best-effort: if the network call fails, still clean up locally.

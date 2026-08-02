@@ -2821,3 +2821,36 @@ func (err ErrUserDataExportDoesNotExist) HTTPError() web.HTTPError {
 		Message:  "No user data export found.",
 	}
 }
+
+// =========================
+// Push subscription errors
+// =========================
+
+// ErrTooManyPushSubscriptions represents an error where a user tried to register
+// more devices for push notifications than they are allowed to.
+type ErrTooManyPushSubscriptions struct {
+	UserID int64
+	Max    int
+}
+
+// IsErrTooManyPushSubscriptions checks if an error is ErrTooManyPushSubscriptions.
+func IsErrTooManyPushSubscriptions(err error) bool {
+	_, ok := err.(ErrTooManyPushSubscriptions)
+	return ok
+}
+
+func (err ErrTooManyPushSubscriptions) Error() string {
+	return fmt.Sprintf("User has reached the push subscription limit [UserID: %v, Max: %v]", err.UserID, err.Max)
+}
+
+// ErrCodeTooManyPushSubscriptions holds the unique world-error code of this error
+const ErrCodeTooManyPushSubscriptions = 20001
+
+// HTTPError holds the http error description
+func (err ErrTooManyPushSubscriptions) HTTPError() web.HTTPError {
+	return web.HTTPError{
+		HTTPCode: http.StatusConflict,
+		Code:     ErrCodeTooManyPushSubscriptions,
+		Message:  "You have registered the maximum number of devices for push notifications. Remove one of them before registering another.",
+	}
+}

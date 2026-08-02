@@ -26,6 +26,29 @@ describe('FormCheckbox', () => {
 		expect(wrapper.props('modelValue')).toBe(true)
 	})
 
+	it('reverts the box when the parent does not adopt the change', async () => {
+		// A toggle whose handler fails or is declined never changes modelValue,
+		// so Vue issues no patch — without re-asserting it the box would stay
+		// visually on while nothing is subscribed.
+		const wrapper = mount(FormCheckbox, {props: {label: 'Toggle', modelValue: false}})
+		const input = wrapper.find('input[type="checkbox"]')
+
+		await input.setValue(true)
+
+		expect(wrapper.emitted('update:modelValue')).toEqual([[true]])
+		expect((input.element as HTMLInputElement).checked).toBe(false)
+	})
+
+	it('follows modelValue when the parent adopts the change later', async () => {
+		const wrapper = mount(FormCheckbox, {props: {label: 'Toggle', modelValue: false}})
+		const input = wrapper.find('input[type="checkbox"]')
+
+		await input.setValue(true)
+		await wrapper.setProps({modelValue: true})
+
+		expect((input.element as HTMLInputElement).checked).toBe(true)
+	})
+
 	it('applies disabled', () => {
 		const wrapper = mount(FormCheckbox, {
 			props: {label: 'X', disabled: true},

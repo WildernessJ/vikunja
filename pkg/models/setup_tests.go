@@ -81,6 +81,7 @@ func SetupTests() {
 		"oauth_codes",
 		"notifications",
 		"activities",
+		"push_subscriptions",
 	)
 	if err != nil {
 		log.Fatal(err)

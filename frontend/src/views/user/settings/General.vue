@@ -115,6 +115,27 @@
 					@keyup.enter="updateSettings"
 				/>
 			</FormField>
+			<div
+				v-if="pushAvailable"
+				class="field"
+			>
+				<FormCheckbox
+					v-cy="'pushNotifications'"
+					:model-value="pushSubscribed"
+					:disabled="pushLoading || pushPermission === 'denied'"
+					:label="$t('user.settings.general.pushNotifications')"
+					@update:modelValue="togglePushNotifications"
+				/>
+				<p class="help">
+					{{ $t('user.settings.general.pushNotificationsDescription') }}
+				</p>
+				<p
+					v-if="pushPermission === 'denied'"
+					class="help"
+				>
+					{{ $t('user.settings.general.pushNotificationsDenied') }}
+				</p>
+			</div>
 		</div>
 	</Card>
 
@@ -379,6 +400,8 @@ import {AuthenticatedHTTPFactory} from '@/helpers/fetcher'
 import {formatDisplayDateFormat} from '@/helpers/time/formatDate'
 
 import {useTitle} from '@/composables/useTitle'
+import {usePushNotifications} from '@/composables/usePushNotifications'
+import {success, error} from '@/message'
 
 import {useProjectStore} from '@/stores/projects'
 import {useAuthStore} from '@/stores/auth'
@@ -717,6 +740,35 @@ async function updateSettings() {
 	})
 	initialSettings.value = JSON.parse(JSON.stringify(settings.value))
 	isDirty.value = false
+}
+
+const {
+	available: pushAvailable,
+	subscribed: pushSubscribed,
+	permission: pushPermission,
+	loading: pushLoading,
+	subscribe: subscribeToPush,
+	unsubscribe: unsubscribeFromPush,
+} = usePushNotifications()
+
+// Applied immediately rather than through the sticky save button: the browser
+// only grants notification permission from a user gesture, so it cannot be
+// deferred until a later click.
+async function togglePushNotifications(enable: boolean) {
+	try {
+		if (enable) {
+			await subscribeToPush()
+			if (pushSubscribed.value) {
+				success({message: t('user.settings.general.pushNotificationsEnableSuccess')})
+			}
+			return
+		}
+
+		await unsubscribeFromPush()
+		success({message: t('user.settings.general.pushNotificationsDisableSuccess')})
+	} catch (e) {
+		error(e)
+	}
 }
 </script>
 

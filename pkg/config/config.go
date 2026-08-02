@@ -222,6 +222,11 @@ const (
 	WebhooksProxyPassword       Key = `webhooks.proxypassword`
 	WebhooksAllowNonRoutableIPs Key = `webhooks.allownonroutableips`
 
+	WebPushEnabled       Key = `webpush.enabled`
+	WebPushPublicKey     Key = `webpush.publickey`
+	WebPushPrivateKey    Key = `webpush.privatekey`
+	WebPushBadgeInterval Key = `webpush.badgeinterval`
+
 	AuditEnabled           Key = `audit.enabled`
 	AuditLogfile           Key = `audit.logfile`
 	AuditRotationMaxSizeMB Key = `audit.rotation.maxsizemb`
@@ -497,6 +502,11 @@ func InitDefaultConfig() {
 	WebhooksEnabled.setDefault(true)
 	WebhooksTimeoutSeconds.setDefault(30)
 	WebhooksAllowNonRoutableIPs.setDefault(false)
+	// Web Push
+	WebPushEnabled.setDefault(false)
+	WebPushPublicKey.setDefault("")
+	WebPushPrivateKey.setDefault("")
+	WebPushBadgeInterval.setDefault("3h")
 	// Audit
 	AuditEnabled.setDefault(false)
 	AuditLogfile.setDefault("") // empty means <log.path>/audit.log, resolved at init

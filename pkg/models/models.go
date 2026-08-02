@@ -73,6 +73,7 @@ func GetTables() []interface{} {
 		&OAuthCode{},
 		&TimeEntry{},
 		&Activity{},
+		&PushSubscription{},
 	}
 }
 

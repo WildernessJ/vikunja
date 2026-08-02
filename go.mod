@@ -23,6 +23,7 @@ require (
 	dario.cat/mergo v1.0.2
 	github.com/JohannesKaufmann/dom v0.3.1
 	github.com/JohannesKaufmann/html-to-markdown/v2 v2.5.2
+	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/ThreeDotsLabs/watermill v1.5.2
 	github.com/adlio/trello v1.12.0
 	github.com/arran4/golang-ical v0.3.5
@@ -75,6 +76,7 @@ require (
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
 	github.com/swaggo/swag v1.16.6
+	github.com/teambition/rrule-go v1.8.2
 	github.com/tkuchiki/go-timezone v0.2.3
 	github.com/traefik/yaegi v0.16.1
 	github.com/ulule/limiter/v3 v3.11.2
@@ -190,7 +192,6 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/syndtr/goleveldb v1.0.0 // indirect
-	github.com/teambition/rrule-go v1.8.2 // indirect
 	github.com/tj/assert v0.0.3 // indirect
 	github.com/urfave/cli/v2 v2.3.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
@@ -203,7 +204,6 @@ require (
 	go.opentelemetry.io/otel/metric v1.41.0 // indirect
 	go.opentelemetry.io/otel/trace v1.41.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
-	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/mod v0.37.0 // indirect
 	golang.org/x/time v0.15.0 // indirect

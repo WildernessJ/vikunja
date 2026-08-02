@@ -169,6 +169,7 @@ func DeleteUser(s *xorm.Session, u *user.User) (err error) {
 		{"user_id", &Reaction{}},
 		{"user_id", &Favorite{}},
 		{"owner_id", &APIToken{}},
+		{"user_id", &PushSubscription{}},
 	}
 
 	for _, entity := range relatedEntities {
@@ -176,6 +177,13 @@ func DeleteUser(s *xorm.Session, u *user.User) (err error) {
 		if err != nil {
 			return err
 		}
+	}
+
+	// The badge count the push cron remembers lives in keyvalue, so the purge
+	// above cannot reach it. Not fatal: a stale entry is only a number keyed by
+	// an id nobody has any more, and failing here would strand the deletion.
+	if err := forgetLastBadgeCount(u.ID); err != nil {
+		log.Errorf("[Web Push] Could not forget the last badge count of deleted user %d: %s", u.ID, err)
 	}
 
 	// Notify before deleting the user row, because ShouldNotify will try to

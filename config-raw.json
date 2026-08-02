@@ -46,7 +46,7 @@
                 {
                     "key": "publicurl",
                     "default_value": "",
-                    "comment": "The public facing URL where your users can reach Vikunja. Used in emails and for the communication between api and frontend. The url must be a valid http or https url. This setting is required when cors.enable is true."
+                    "comment": "The public facing URL where your users can reach Vikunja. Used in emails and for the communication between api and frontend. The url must be a valid http or https url. This setting is required when cors.enable is true.\nWeb Push additionally requires it to be set to an https url: it becomes the VAPID subscriber claim, and push services reject anything else. Badge pushes stay disabled until it is."
                 },
                 {
                     "key": "rootpath",
@@ -1004,6 +1004,32 @@
                     "key": "allownonroutableips",
                     "default_value": "false",
                     "comment": "Deprecated: use outgoingrequests.allownonroutableips instead. If set to true, webhook target URLs may resolve to non-globally-routable IP addresses (private networks, loopback, link-local, etc). When false (the default), Vikunja blocks outgoing webhook requests to these addresses to prevent SSRF attacks. Set this to true if you need webhooks to reach services on your internal network."
+                }
+            ]
+        },
+        {
+            "key": "webpush",
+            "comment": "Web Push notifications keep the app-icon badge current while the app is closed. Because iOS requires every push to show a visible notification, each badge refresh also surfaces one; users who only want the badge can mute the notification surfaces per device in the OS settings.",
+            "children": [
+                {
+                    "key": "enabled",
+                    "default_value": "false",
+                    "comment": "Whether to enable Web Push notifications. Requires a VAPID key pair (see below); generate one with `vikunja webpush-keys`.\nAlso requires service.publicurl to be an https url - it becomes the VAPID subscriber claim. Without both, badge pushes stay disabled and clients are not offered the option.\nSending is independent of the mailer - push works with mail disabled."
+                },
+                {
+                    "key": "publickey",
+                    "default_value": "",
+                    "comment": "The VAPID public key, handed to browsers when they subscribe.\nDo not change this once devices have subscribed: rotating the key pair invalidates every existing subscription."
+                },
+                {
+                    "key": "privatekey",
+                    "default_value": "",
+                    "comment": "The VAPID private key, used to sign push requests. Keep this secret.\nDo not change this once devices have subscribed: rotating the key pair invalidates every existing subscription."
+                },
+                {
+                    "key": "badgeinterval",
+                    "default_value": "3h",
+                    "comment": "How often to push a badge-count refresh to subscribed devices, as a Go duration (for example `30m` or `3h`).\nShorter intervals keep the badge fresher at the cost of more notifications."
                 }
             ]
         },

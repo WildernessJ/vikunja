@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 
 import {getFullBaseUrl} from './helpers/getFullBaseUrl'
+import {handleBadgePush, type BadgingNavigator} from './helpers/badgePush'
 
 declare let self: ServiceWorkerGlobalScope & typeof globalThis
 declare const __WORKBOX_VERSION__: string
@@ -75,15 +76,30 @@ self.addEventListener('message', (e: ExtendableMessageEvent) => {
 	}
 })
 
+// Badge refresh pushed by the server.
+self.addEventListener('push', (event: PushEvent) => {
+	event.waitUntil(handleBadgePush(
+		event,
+		self.registration,
+		self.navigator as WorkerNavigator & BadgingNavigator,
+		fullBaseUrl,
+	))
+})
+
 // Notification action
 self.addEventListener('notificationclick', function (event: NotificationEvent) {
-	const taskId = event.notification.data.taskId
+	const taskId = event.notification.data?.taskId
 	event.notification.close()
 
 	switch (event.action) {
 		case 'show-task':
-			self.clients.openWindow(`${fullBaseUrl}tasks/${taskId}`)
+			event.waitUntil(self.clients.openWindow(`${fullBaseUrl}tasks/${taskId}`))
 			break
+		default:
+			// Badge pushes carry no action; clicking one opens the app.
+			event.waitUntil(self.clients.openWindow(
+				taskId ? `${fullBaseUrl}tasks/${taskId}` : fullBaseUrl,
+			))
 	}
 })
 
