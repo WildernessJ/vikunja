@@ -38,6 +38,7 @@ import ProjectUserService from '@/services/projectUsers'
 import {useAuthStore} from '@/stores/auth'
 import TaskCollectionService, {type TaskFilterParams} from '@/services/taskCollection'
 import {getRandomColorHex} from '@/helpers/color/randomColor'
+import {runWrites} from '@/helpers/runWrites'
 import {REPEAT_TYPES} from '@/types/IRepeatAfter'
 import {TASK_REPEAT_MODES} from '@/types/IRepeatMode'
 import type {Priority} from '@/constants/priorities'
@@ -74,22 +75,6 @@ export function buildDefaultRemindersForQuickAdd(
 		relativePeriod: d.relativePeriod,
 		relativeTo: REMINDER_PERIOD_RELATIVE_TO_TYPES.DUEDATE,
 	}))
-}
-
-// runWrites applies a write to each item. SQLite deadlocks on concurrent writes
-// (read-then-write upgrade conflict), so callers pass concurrent=false to serialize.
-export async function runWrites<T>(
-	items: readonly T[],
-	write: (item: T) => Promise<unknown>,
-	concurrent: boolean,
-): Promise<void> {
-	if (concurrent) {
-		await Promise.all(items.map(item => write(item)))
-		return
-	}
-	for (const item of items) {
-		await write(item)
-	}
 }
 
 // IDEA: maybe use a small fuzzy search here to prevent errors
@@ -505,7 +490,7 @@ export const useTaskStore = defineStore('task', () => {
 		return foundProjectId
 	}
 	
-	async function createNewTask({
+	async function buildTaskFromQuickAddTitle({
 		title,
 		bucketId,
 		projectId,
@@ -516,23 +501,20 @@ export const useTaskStore = defineStore('task', () => {
 		// quick add magic parsing has nothing meaningful to parse without it.
 		Partial<ITask> & Pick<ITask, 'title'>,
 	overrides?: CreateNewTaskOverrides,
-	) {
-		const cancel = setModuleLoading(setIsLoading)
+	): Promise<{task: TaskModel, parsedLabels: string[]}> {
 		const quickAddMagicMode = authStore.settings.frontendSettings.quickAddMagicMode
 		const parsedTask = parseTaskText(title, quickAddMagicMode)
 
 		if(parsedTask.text === '' && !(overrides !== undefined && Object.keys(overrides).length > 0)) {
-			const taskService = new TaskService()
-			try {
-				return taskService.create(new TaskModel({
+			return {
+				task: new TaskModel({
 					title,
 					projectId,
 					bucketId,
 					position,
 					index,
-				}))
-			} finally {
-				cancel()
+				}),
+				parsedLabels: [],
 			}
 		}
 
@@ -544,7 +526,6 @@ export const useTaskStore = defineStore('task', () => {
 			: await findProjectId({project: parsedTask.project, projectId: projectId || 0})
 
 		if(foundProjectId === null || foundProjectId === 0) {
-			cancel()
 			throw new Error('NO_PROJECT')
 		}
 
@@ -604,15 +585,81 @@ export const useTaskStore = defineStore('task', () => {
 			task.repeatMode = TASK_REPEAT_MODES.REPEAT_MODE_MONTH
 		}
 
-		const taskService = new TaskService()
+		// A chip override (present, even empty []) wins over labels parsed from magic-text.
+		const overrideLabels = resolveOverride(overrides, 'labels', undefined)
+		return {
+			task,
+			parsedLabels: overrideLabels !== undefined ? overrideLabels.map(l => l.title) : parsedTask.labels,
+		}
+	}
+
+	async function createNewTask({
+		title,
+		bucketId,
+		projectId,
+		position,
+		index,
+	} :
+		Partial<ITask> & Pick<ITask, 'title'>,
+	overrides?: CreateNewTaskOverrides,
+	) {
+		const cancel = setModuleLoading(setIsLoading)
 		try {
+			const {task, parsedLabels} = await buildTaskFromQuickAddTitle({
+				title,
+				bucketId,
+				projectId,
+				position,
+				index,
+			}, overrides)
+
+			const taskService = new TaskService()
 			const createdTask = await taskService.create(task)
 			void projectCountsStore.loadCounts()
-			const overrideLabels = resolveOverride(overrides, 'labels', undefined)
 			return await addLabelsToTask({
 				task: createdTask,
-				parsedLabels: overrideLabels !== undefined ? overrideLabels.map(l => l.title) : parsedTask.labels,
+				parsedLabels,
 			})
+		} finally {
+			cancel()
+		}
+	}
+
+	// Returns the created tasks aligned 1:1 with entries (null = not created),
+	// error is null when nothing failed. A present `labels` entry (even empty)
+	// replaces the labels parsed from the title, so callers can pass only
+	// successfully pre-resolved labels and a failed one isn't re-toasted per line.
+	async function createNewTasksBulk(
+		entries: {title: string, projectId: number, labels?: string[]}[],
+	): Promise<{tasks: (ITask | null)[], error: unknown}> {
+		const cancel = setModuleLoading(setIsLoading)
+		try {
+			const built = await Promise.all(entries.map(async ({title, projectId, labels}) => {
+				const {task, parsedLabels} = await buildTaskFromQuickAddTitle({title, projectId})
+				return {task, parsedLabels: labels ?? parsedLabels}
+			}))
+
+			const taskService = new TaskService()
+			const {tasks, error: bulkError} = await taskService.bulkCreate(built.map(b => b.task))
+			void projectCountsStore.loadCounts()
+
+			const withLabels = built
+				.map(({parsedLabels}, index) => ({task: tasks[index], parsedLabels}))
+				.filter(c => c.task !== null && c.parsedLabels.length > 0)
+
+			try {
+				await runWrites(
+					withLabels,
+					c => addLabelsToTask({task: c.task as ITask, parsedLabels: c.parsedLabels}),
+					configStore.concurrentWrites,
+				)
+			} catch (e) {
+				// The tasks exist by now, so failing here must not look like the
+				// whole creation failed — the caller would let the user resubmit.
+				error(e)
+			}
+
+			return {tasks, error: bulkError}
 		} finally {
 			cancel()
 		}
@@ -693,6 +740,7 @@ export const useTaskStore = defineStore('task', () => {
 		removeLabel,
 		addLabelsToTask,
 		createNewTask,
+		createNewTasksBulk,
 		setCoverImage,
 		findProjectId,
 		ensureLabelsExist,

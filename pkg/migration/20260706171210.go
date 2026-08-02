@@ -36,7 +36,7 @@ func init() {
 		ID:          "20260706171210",
 		Description: "Add deadline column to tasks",
 		Migrate: func(tx *xorm.Engine) error {
-			return tx.Sync(TaskDeadline20260706171210{})
+			return partialSync(tx, TaskDeadline20260706171210{})
 		},
 		Rollback: func(tx *xorm.Engine) error {
 			return nil

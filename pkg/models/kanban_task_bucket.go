@@ -97,7 +97,11 @@ func resolveBucketWithCount(s *xorm.Session, a web.Auth, task *Task, bucketID in
 	if err != nil {
 		return nil, err
 	}
-	taskCount, err := checkBucketLimit(s, a, task, bucket)
+	view, err := GetProjectViewByID(s, bucket.ProjectViewID)
+	if err != nil {
+		return nil, err
+	}
+	taskCount, err := checkBucketLimit(s, a, task, bucket, view, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +215,7 @@ func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 	// Check the bucket limit
 	// Only check the bucket limit if the task is being moved between buckets, allow reordering the task within a bucket
 	if b.BucketID != 0 && b.BucketID != oldTaskBucket.BucketID && !repeatingTaskPassesThroughDoneBucket(view, task, b.BucketID) {
-		taskCount, err := checkBucketLimit(s, a, task, bucket)
+		taskCount, err := checkBucketLimit(s, a, task, bucket, view, 0)
 		if err != nil {
 			return err
 		}

@@ -15,9 +15,11 @@ vi.mock('@/message', () => ({
 }))
 
 const taskCreateMock = vi.hoisted(() => vi.fn())
+const taskBulkCreateMock = vi.hoisted(() => vi.fn())
 vi.mock('@/services/task', () => ({
 	default: class {
 		create = taskCreateMock
+		bulkCreate = taskBulkCreateMock
 		getAll = vi.fn().mockResolvedValue([])
 	},
 }))
@@ -114,6 +116,10 @@ describe('AddTask integration - real task/label store chain (#57)', () => {
 		setActivePinia(createPinia())
 		errorMock.mockClear()
 		taskCreateMock.mockReset().mockImplementation(async task => task)
+		taskBulkCreateMock.mockReset().mockImplementation(async (tasks: {title: string}[]) => ({
+			tasks: tasks.map((t, index) => ({...t, id: index + 1})),
+			error: null,
+		}))
 		labelCreateMock.mockReset()
 		labelTaskCreateMock.mockReset().mockResolvedValue({})
 	})
@@ -158,7 +164,8 @@ describe('AddTask integration - real task/label store chain (#57)', () => {
 		textarea.trigger('keydown.enter')
 		await flushPromises()
 
-		expect(taskCreateMock).toHaveBeenCalledTimes(2)
+		expect(taskBulkCreateMock).toHaveBeenCalledOnce()
+		expect(taskBulkCreateMock.mock.calls[0][0]).toHaveLength(2)
 		expect(errorMock).toHaveBeenCalledOnce()
 		expect(labelTaskCreateMock).not.toHaveBeenCalled()
 	})

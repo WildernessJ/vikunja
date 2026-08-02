@@ -34,7 +34,7 @@ func init() {
 		ID:          "20260706211046",
 		Description: "Add estimated_duration column to tasks",
 		Migrate: func(tx *xorm.Engine) error {
-			return tx.Sync(TaskEstimatedDuration20260706211046{})
+			return partialSync(tx, TaskEstimatedDuration20260706211046{})
 		},
 		Rollback: func(tx *xorm.Engine) error {
 			return nil

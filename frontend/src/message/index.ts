@@ -58,6 +58,10 @@ export function getErrorText(r: unknown): string {
 	return message
 }
 
+export function translatedError(key: string): Error {
+	return new Error(translate(key))
+}
+
 export interface Action {
 	title: string,
 	callback: () => void,

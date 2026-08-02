@@ -235,32 +235,32 @@ import Reminders from '@/components/tasks/partials/Reminders.vue'
 import QacChipClear from '@/components/tasks/partials/QacChipClear.vue'
 import PropertyChip from '@/components/tasks/partials/PropertyChip.vue'
 import QuickAddAutocompleteResults from '@/components/tasks/partials/QuickAddAutocompleteResults.vue'
-import {parseSubtasksViaIndention} from '@/helpers/parseSubtasksViaIndention'
+import {parseSubtasksViaIndention, type TaskWithParent} from '@/helpers/parseSubtasksViaIndention'
 import {getProjectTitle} from '@/helpers/getProjectTitle'
 import TaskRelationService from '@/services/taskRelation'
 import TaskRelationModel from '@/models/taskRelation'
 import {getLabelsFromPrefix} from '@/modules/quickAddMagic'
+import {runWrites} from '@/helpers/runWrites'
+import {error} from '@/message'
 import {PRIORITIES} from '@/constants/priorities'
 import {buildQuickAddRepeatsLabel} from '@/helpers/recurrencePatternSummary'
 import {REMINDER_PERIOD_RELATIVE_TO_TYPES} from '@/types/IReminderPeriodRelativeTo'
 
 import {useAuthStore} from '@/stores/auth'
+import {useConfigStore} from '@/stores/config'
 import {useTaskStore} from '@/stores/tasks'
 import {useProjectStore} from '@/stores/projects'
 
 import {useAutoHeightTextarea} from '@/composables/useAutoHeightTextarea'
 import {useQuickAddComposer} from '@/composables/useQuickAddComposer'
 import {useQuickAddAutocomplete, type TitleAutocompleteItem} from '@/composables/useQuickAddAutocomplete'
-import TaskService from '@/services/task'
-import TaskModel from '@/models/task'
 
-const props = withDefaults(defineProps<{
-	defaultPosition?: number,
-}>(), {
-	defaultPosition: undefined,
-})
-
-const emit = defineEmits(['taskAdded'])
+// taskAdded fires once per created task (ProjectCalendar consumes it);
+// tasksAdded fires once per submission with every created task.
+const emit = defineEmits<{
+	taskAdded: [task: ITask],
+	tasksAdded: [tasks: ITask[]],
+}>()
 
 const textareaId = computed(() => `task-add-textarea-${Math.random().toString(36).substr(2, 9)}`)
 
@@ -269,6 +269,7 @@ const {textarea: newTaskInput} = useAutoHeightTextarea(newTaskTitle)
 
 const {t} = useI18n({useScope: 'global'})
 const authStore = useAuthStore()
+const configStore = useConfigStore()
 const taskStore = useTaskStore()
 const projectStore = useProjectStore()
 const router = useRouter()
@@ -474,13 +475,13 @@ async function addTask() {
 
 	try {
 		const taskTitleBackup = newTaskTitle.value
-		// This allows us to find the tasks with the title they had before being parsed
-		// by quick add magic.
-		const createdTasks: { [key: ITask['title']]: ITask } = {}
+		// Keyed by the title the task had before quick add magic parsed it. A Map,
+		// because a user-entered `__proto__` would corrupt plain-object lookups.
+		const createdTasks = new Map<ITask['title'], ITask>()
 		const tasksToCreate = parseSubtasksViaIndention(newTaskTitle.value, quickAddMagicMode.value)
 
 		// The composer's chip overrides only apply to a single-task submission - a
-		// multiline submission falls back to the plain multi-create/subtask path.
+		// multiline submission falls back to the bulk creation path.
 		const composerOverrides = tasksToCreate.length === 1 ? toStoreOverrides() : undefined
 
 		// We ensure all labels exist prior to passing them down to the create task method
@@ -493,7 +494,7 @@ async function addTask() {
 		const resolvedLabelsByTitle = new Map(resolvedLabels.map(l => [l.title.toLowerCase(), l]))
 
 		// Every task (single or multi) gets its labels pre-resolved and passed down as an
-		// override, so createNewTask never re-resolves by title and re-toasts a label that
+		// override, so the store never re-resolves by title and re-toasts a label that
 		// already failed in the batch resolve above.
 		const labelsOverrideFor = (title: string): ILabel[] | undefined => {
 			if (composerOverrides?.labels !== undefined) {
@@ -522,65 +523,86 @@ async function addTask() {
 			}
 		}
 
-		const taskCollectionService = new TaskService()
-		const projectIndices = new Map<number, number>()
-
 		const currentProjectIdValue = currentProjectId.value
 
-		// Create a map of project indices before creating tasks
-		if (tasksToCreate.length > 1) {
-			for (const {project} of tasksToCreate) {
+		// A single task goes through createNewTask so the composer's chip overrides
+		// keep applying; multiline submissions use the bulk endpoint (indexes and
+		// positions are assigned per batch server-side).
+		if (tasksToCreate.length === 1) {
+			const {title, project} = tasksToCreate[0]
+			if (title === '') {
+				errorMessage.value = t('project.create.addTitleRequired')
+				return
+			}
+
+			try {
+				newTaskTitle.value = ''
+
 				const projectId = (project !== null
 					? await taskStore.findProjectId({project, projectId: 0})
 					: currentProjectIdValue) ?? 0
 
-				if (!projectIndices.has(projectId)) {
-					const newestTask = await taskCollectionService.getAll(new TaskModel({}), {
-						sort_by: ['id'],
-						order_by: ['desc'],
-						per_page: 1,
-						filter: `project_id = ${projectId}`,
-					})
-					projectIndices.set(projectId, newestTask[0]?.index || 0)
+				const task = await taskStore.createNewTask({
+					title,
+					projectId: projectId || authStore.settings.defaultProjectId,
+				}, overridesFor(title))
+
+				emit('taskAdded', task)
+				emit('tasksAdded', [task])
+
+				if (composerOverrides !== undefined) {
+					clearComposerOverrides()
 				}
+			} catch (e) {
+				newTaskTitle.value = taskTitleBackup
+				const err = e as { message?: string }
+				if (err.message === 'NO_PROJECT') {
+					errorMessage.value = t('project.create.addProjectRequired')
+					return
+				}
+				throw e
 			}
+			return
 		}
-
-		const newTasks = tasksToCreate.map(async ({title, project}, index) => {
-			if (title === '') {
-				return
-			}
-
-			// If the task has a project specified, make sure to use it
-			const projectId = (project !== null
-				? await taskStore.findProjectId({project, projectId: 0})
-				: currentProjectIdValue) ?? 0
-
-			// Calculate new index for this task per project
-			let taskIndex: number | undefined
-			if (tasksToCreate.length > 1) {
-				const lastIndex = projectIndices.get(projectId) ?? 0
-				taskIndex = lastIndex + index + 1
-			}
-
-			const task = await taskStore.createNewTask({
-				title,
-				projectId: projectId || authStore.settings.defaultProjectId,
-				position: props.defaultPosition,
-				index: taskIndex,
-			}, overridesFor(title))
-			createdTasks[title] = task
-			return task
-		})
 
 		try {
 			newTaskTitle.value = ''
-			await Promise.all(newTasks)
+
+			const entries = await Promise.all(tasksToCreate
+				.filter(({title}) => title !== '')
+				.map(async ({title, project}) => ({
+					title,
+					projectId: (project !== null
+						? await taskStore.findProjectId({project, projectId: 0})
+						: currentProjectIdValue) || authStore.settings.defaultProjectId || 0,
+					labels: labelsOverrideFor(title)?.map(l => l.title),
+				})))
+
+			// Input like a lone bullet passes the empty check but parses to nothing.
+			if (entries.length === 0) {
+				newTaskTitle.value = taskTitleBackup
+				errorMessage.value = t('project.create.addTitleRequired')
+				return
+			}
+
+			// Separate from createdTasks: duplicate lines create two tasks but collapse
+			// into a single map entry.
+			const allCreated: ITask[] = []
+
+			const bulk = await taskStore.createNewTasksBulk(entries)
+			entries.forEach(({title}, index) => {
+				const task = bulk.tasks[index]
+				if (task === null) {
+					return
+				}
+				createdTasks.set(title, task)
+				allCreated.push(task)
+			})
 
 			const taskRelationService = new TaskRelationService()
 			const allParentTasks = tasksToCreate.filter(t => t.parent !== null).map(t => t.parent)
-			const relations = tasksToCreate.map(async t => {
-				const createdTask = createdTasks[t.title]
+			const createRelation = async (t: TaskWithParent) => {
+				const createdTask = createdTasks.get(t.title)
 				if (typeof createdTask === 'undefined') {
 					return
 				}
@@ -590,7 +612,7 @@ async function addTask() {
 					return
 				}
 
-				const createdParentTask = t.parent !== null ? createdTasks[t.parent] : undefined
+				const createdParentTask = createdTasks.get(t.parent ?? '')
 				if (typeof createdTask === 'undefined' || typeof createdParentTask === 'undefined') {
 					return
 				}
@@ -624,16 +646,24 @@ async function addTask() {
 				})
 
 				return rel
-			})
-			await Promise.all(relations)
+			}
 
-			// We're emitting all tasks at once at the end to avoid the same task showing up multiple times
-			Object.values(createdTasks).forEach(task => {
-				emit('taskAdded', task)
-			})
+			try {
+				await runWrites(tasksToCreate, createRelation, configStore.concurrentWrites)
+			} catch (e) {
+				// The tasks themselves exist by now — reporting and moving on beats
+				// restoring the input and letting the user duplicate all of them.
+				error(e)
+			}
 
-			if (composerOverrides !== undefined) {
-				clearComposerOverrides()
+			if (allCreated.length > 0) {
+				emit('tasksAdded', allCreated)
+				allCreated.forEach(task => emit('taskAdded', task))
+			}
+
+			if (bulk.error !== null) {
+				newTaskTitle.value = taskTitleBackup
+				error(bulk.error)
 			}
 		} catch (e) {
 			newTaskTitle.value = taskTitleBackup

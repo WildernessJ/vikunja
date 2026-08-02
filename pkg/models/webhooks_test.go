@@ -17,9 +17,17 @@
 package models
 
 import (
+	"bytes"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
+	"code.vikunja.io/api/pkg/config"
 	"code.vikunja.io/api/pkg/db"
+	"code.vikunja.io/api/pkg/log"
 	"code.vikunja.io/api/pkg/user"
 
 	"github.com/stretchr/testify/assert"
@@ -46,4 +54,42 @@ func TestWebhook_Create(t *testing.T) {
 		require.Error(t, err)
 		assert.True(t, IsErrProjectIsTemplate(err), "webhook on a template must return ErrProjectIsTemplate")
 	})
+}
+
+func TestWebhookErrorResponseBodyIsTruncated(t *testing.T) {
+	const bodyMarker = "A"
+	const bodySize = 5 << 20
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write(bytes.Repeat([]byte(bodyMarker), bodySize))
+	}))
+	defer ts.Close()
+
+	// httptest binds to loopback, which the SSRF-safe client blocks by default.
+	previousAllowNonRoutable := config.OutgoingRequestsAllowNonRoutableIPs.GetBool()
+	config.OutgoingRequestsAllowNonRoutableIPs.Set(true)
+	previousClient := webhookClient
+	webhookClient = nil
+
+	logDir := t.TempDir()
+	log.ConfigureStandardLogger(true, "file", logDir, "ERROR", "text")
+
+	t.Cleanup(func() {
+		config.OutgoingRequestsAllowNonRoutableIPs.Set(previousAllowNonRoutable)
+		webhookClient = previousClient
+		log.InitLogger()
+	})
+
+	w := &Webhook{ID: 42, TargetURL: ts.URL}
+	err := w.sendWebhookPayload(&WebhookPayload{EventName: "task.updated"})
+	require.Error(t, err)
+
+	logged, err := os.ReadFile(filepath.Join(logDir, "standard.log"))
+	require.NoError(t, err)
+
+	assert.Contains(t, string(logged), "from webhook 42")
+	loggedBodyBytes := strings.Count(string(logged), bodyMarker)
+	assert.Positive(t, loggedBodyBytes, "the response body should still be logged for diagnostics")
+	assert.LessOrEqual(t, loggedBodyBytes, maxWebhookErrorBodySize, "the response body must not be read and logged unbounded")
 }

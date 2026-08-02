@@ -34,7 +34,7 @@ func init() {
 		ID:          "20260707100141",
 		Description: "Add is_template column to projects",
 		Migrate: func(tx *xorm.Engine) error {
-			return tx.Sync(projectIsTemplate20260707100141{})
+			return partialSync(tx, projectIsTemplate20260707100141{})
 		},
 		Rollback: func(tx *xorm.Engine) error {
 			return nil

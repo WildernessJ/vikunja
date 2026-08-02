@@ -39,7 +39,7 @@ func init() {
 		ID:          "20260706092628",
 		Description: "Add repeat_rrule and repeat_from_completion columns to tasks",
 		Migrate: func(tx *xorm.Engine) error {
-			return tx.Sync(TaskRepeatRRule20260706092628{})
+			return partialSync(tx, TaskRepeatRRule20260706092628{})
 		},
 		Rollback: func(tx *xorm.Engine) error {
 			return nil

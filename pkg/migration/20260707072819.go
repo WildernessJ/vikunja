@@ -34,7 +34,7 @@ func init() {
 		ID:          "20260707072819",
 		Description: "Add repeat_rrule column to task_reminders",
 		Migrate: func(tx *xorm.Engine) error {
-			return tx.Sync(TaskReminderRepeatRRule20260707072819{})
+			return partialSync(tx, TaskReminderRepeatRRule20260707072819{})
 		},
 		Rollback: func(tx *xorm.Engine) error {
 			return nil

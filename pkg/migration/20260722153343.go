@@ -35,7 +35,7 @@ func init() {
 		ID:          "20260722153343",
 		Description: "Add default_sort_by and default_order_by columns to project_views",
 		Migrate: func(tx *xorm.Engine) error {
-			return tx.Sync(projectViewDefaultSort20260722153343{})
+			return partialSync(tx, projectViewDefaultSort20260722153343{})
 		},
 		Rollback: func(tx *xorm.Engine) error {
 			return nil

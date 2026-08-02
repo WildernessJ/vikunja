@@ -3,6 +3,11 @@ import {mount, flushPromises} from '@vue/test-utils'
 import {createPinia, setActivePinia} from 'pinia'
 
 const createNewTaskMock = vi.fn()
+const createNewTasksBulkMock = vi.fn()
+const bulkCreateSucceeds = async (entries: {title: string}[]) => ({
+	tasks: entries.map(({title}, index) => ({id: index + 1, title, relatedTasks: {}})),
+	error: null,
+})
 const ensureLabelsExistMock = vi.fn().mockResolvedValue([])
 const findProjectIdMock = vi.fn()
 
@@ -12,6 +17,14 @@ vi.mock('@/stores/tasks', () => ({
 		ensureLabelsExist: ensureLabelsExistMock,
 		findProjectId: findProjectIdMock,
 		createNewTask: createNewTaskMock,
+		createNewTasksBulk: createNewTasksBulkMock,
+	}),
+}))
+
+// false = the production default: relation writes run sequentially.
+vi.mock('@/stores/config', () => ({
+	useConfigStore: () => ({
+		concurrentWrites: false,
 	}),
 }))
 
@@ -97,6 +110,7 @@ function mountAddTask() {
 describe('AddTask double-submit guard', () => {
 	beforeEach(() => {
 		createNewTaskMock.mockReset().mockImplementation(async ({title}: {title: string}) => ({id: 1, title}))
+		createNewTasksBulkMock.mockReset().mockImplementation(bulkCreateSucceeds)
 		ensureLabelsExistMock.mockClear()
 		findProjectIdMock.mockReset()
 	})
@@ -135,6 +149,7 @@ describe('AddTask double-submit guard', () => {
 describe('AddTask chip state', () => {
 	beforeEach(() => {
 		createNewTaskMock.mockReset().mockImplementation(async ({title}: {title: string}) => ({id: 1, title}))
+		createNewTasksBulkMock.mockReset().mockImplementation(bulkCreateSucceeds)
 		ensureLabelsExistMock.mockClear()
 		findProjectIdMock.mockReset()
 	})
@@ -181,9 +196,12 @@ describe('AddTask chip state', () => {
 		textarea.trigger('keydown.enter')
 		await flushPromises()
 
-		expect(createNewTaskMock).toHaveBeenCalledTimes(2)
-		for (const call of createNewTaskMock.mock.calls) {
-			expect(call[1]).toBeUndefined()
+		expect(createNewTaskMock).not.toHaveBeenCalled()
+		expect(createNewTasksBulkMock).toHaveBeenCalledTimes(1)
+		const [entries] = createNewTasksBulkMock.mock.calls[0]
+		expect(entries.map((e: {title: string}) => e.title)).toEqual(['First task', 'Second task'])
+		for (const entry of entries) {
+			expect(entry.labels).toBeUndefined()
 		}
 	})
 
@@ -206,6 +224,7 @@ describe('AddTask label failure surfacing (#57)', () => {
 	beforeEach(() => {
 		setActivePinia(createPinia())
 		createNewTaskMock.mockReset().mockImplementation(async ({title}: {title: string}) => ({id: 1, title}))
+		createNewTasksBulkMock.mockReset().mockImplementation(bulkCreateSucceeds)
 		findProjectIdMock.mockReset()
 		errorMock.mockClear()
 		quickAddMagicModeMock.value = 'vikunja'
@@ -252,10 +271,13 @@ describe('AddTask label failure surfacing (#57)', () => {
 		await flushPromises()
 
 		expect(errorMock).toHaveBeenCalledOnce()
-		expect(createNewTaskMock).toHaveBeenCalledTimes(2)
-		for (const call of createNewTaskMock.mock.calls) {
-			const [, overrides] = call
-			expect(overrides.labels).toEqual([])
+		expect(createNewTasksBulkMock).toHaveBeenCalledTimes(1)
+		const [entries] = createNewTasksBulkMock.mock.calls[0]
+		expect(entries).toHaveLength(2)
+		for (const entry of entries) {
+			// Present-but-empty: the failed label is excluded so the store never
+			// re-resolves it by title and re-toasts.
+			expect(entry.labels).toEqual([])
 		}
 	})
 
@@ -270,10 +292,11 @@ describe('AddTask label failure surfacing (#57)', () => {
 		await flushPromises()
 
 		expect(errorMock).not.toHaveBeenCalled()
-		expect(createNewTaskMock).toHaveBeenCalledTimes(2)
-		for (const call of createNewTaskMock.mock.calls) {
-			const [, overrides] = call
-			expect(overrides.labels).toEqual([{id: 1, title: 'shopping'}])
+		expect(createNewTasksBulkMock).toHaveBeenCalledTimes(1)
+		const [entries] = createNewTasksBulkMock.mock.calls[0]
+		expect(entries).toHaveLength(2)
+		for (const entry of entries) {
+			expect(entry.labels).toEqual(['shopping'])
 		}
 	})
 })

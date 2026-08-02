@@ -42,7 +42,7 @@ func init() {
 		ID:          "20260707093628",
 		Description: "Add activities table for the project activity feed",
 		Migrate: func(tx *xorm.Engine) error {
-			return tx.Sync2(Activity20260707093628{})
+			return tx.Sync2(Activity20260707093628{}) //nolint:forbidigo // brand-new table, no pre-existing indexes to drop
 		},
 		Rollback: func(tx *xorm.Engine) error {
 			return nil

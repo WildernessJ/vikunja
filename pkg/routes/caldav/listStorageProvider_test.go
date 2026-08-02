@@ -20,12 +20,15 @@ package caldav
 
 import (
 	"testing"
+	"time"
 
+	"code.vikunja.io/api/pkg/config"
 	"code.vikunja.io/api/pkg/db"
 	"code.vikunja.io/api/pkg/models"
 	"code.vikunja.io/api/pkg/user"
 
 	"github.com/samedi/caldav-go/data"
+	"github.com/samedi/caldav-go/errs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -424,9 +427,9 @@ END:VCALENDAR`
 	})
 
 	//
-	// Edit a subtask and remove its parent
+	// Clients that don't round-trip RELATED-TO used to silently orphan subtasks.
 	//
-	t.Run("edit subtask remove parent", func(t *testing.T) {
+	t.Run("edit subtask without RELATED-TO preserves the parent", func(t *testing.T) {
 		db.LoadAndAssertFixtures(t)
 
 		// Edit the subtask:
@@ -461,10 +464,9 @@ END:VCALENDAR`
 		taskResource, err := storage.UpdateResource(taskUID, taskContent)
 		require.NoError(t, err)
 
-		// Check that the result CALDAV contains the new relation:
 		content, _ := taskResource.GetContentData()
 		assert.Contains(t, content, "UID:"+taskUID)
-		assert.NotContains(t, content, "RELATED-TO;RELTYPE=PARENT:uid-caldav-test-parent-task")
+		assert.Contains(t, content, "RELATED-TO;RELTYPE=PARENT:uid-caldav-test-parent-task")
 
 		// Get the task from the DB with a new session:
 		s = db.NewSession()
@@ -473,17 +475,104 @@ END:VCALENDAR`
 		require.NoError(t, err)
 		task = tasks[0]
 
-		// Check that the parent-child relationship is gone:
-		assert.Empty(t, task.RelatedTasks[models.RelationKindParenttask])
+		assert.Equal(t, "Child task for Caldav Test (edited)", task.Title)
+		require.Len(t, task.RelatedTasks[models.RelationKindParenttask], 1)
+		assert.Equal(t, "uid-caldav-test-parent-task", task.RelatedTasks[models.RelationKindParenttask][0].UID)
 
-		// Get the previous parent from the DB and check that its child is gone:
 		tasks, err = models.GetTasksByUIDs(s, []string{"uid-caldav-test-parent-task"}, u)
 		require.NoError(t, err)
 		task = tasks[0]
-		// We're gone, but our former sibling is still there:
-		assert.Len(t, task.RelatedTasks[models.RelationKindSubtask], 1)
-		formerSiblingSubTask := task.RelatedTasks[models.RelationKindSubtask][0]
-		assert.Equal(t, "uid-caldav-test-child-task-2", formerSiblingSubTask.UID)
+		assert.Len(t, task.RelatedTasks[models.RelationKindSubtask], 2)
+	})
+}
+
+// A client-supplied UID can match several tasks, so UpdateResource must write to the one the permission check covered.
+func TestUpdateResource_TaskIdentity(t *testing.T) {
+	u := &user.User{ID: 15, Username: "user15"}
+
+	// Task 40 in fixtures: uid-caldav-test, project 36, "Title Caldav Test".
+	const victimID = 40
+	const taskUID = "uid-caldav-test"
+	const taskContent = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Vikunja Todo App//EN
+BEGIN:VTODO
+UID:uid-caldav-test
+DTSTAMP:20230301T073337Z
+SUMMARY:Hijacked
+END:VTODO
+END:VCALENDAR`
+
+	assertVictimUntouched := func(t *testing.T) {
+		t.Helper()
+		s := db.NewSession()
+		defer s.Close()
+		task, err := models.GetTaskByIDSimple(s, victimID)
+		require.NoError(t, err)
+		assert.Equal(t, "Title Caldav Test", task.Title)
+		assert.Equal(t, int64(36), task.ProjectID)
+	}
+
+	t.Run("writes to the task matching the checked id, not the first UID match", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+
+		s := db.NewSession()
+		duplicate := &models.Task{
+			Title:       "Duplicate UID task",
+			UID:         taskUID,
+			ProjectID:   38,
+			Index:       99,
+			CreatedByID: u.ID,
+		}
+		_, err := s.Insert(duplicate)
+		require.NoError(t, err)
+		require.NoError(t, s.Commit())
+		s.Close()
+
+		storage := &VikunjaCaldavProjectStorage{
+			project: &models.ProjectWithTasksAndBuckets{Project: models.Project{ID: 38}},
+			task:    &models.Task{ID: duplicate.ID, UID: taskUID, ProjectID: 38},
+			user:    u,
+		}
+
+		_, err = storage.UpdateResource(taskUID, taskContent)
+		require.NoError(t, err)
+
+		s = db.NewSession()
+		defer s.Close()
+		updated, err := models.GetTaskByIDSimple(s, duplicate.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "Hijacked", updated.Title)
+		assertVictimUntouched(t)
+	})
+
+	t.Run("rejects when no stored task matches the checked id", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+
+		storage := &VikunjaCaldavProjectStorage{
+			project: &models.ProjectWithTasksAndBuckets{Project: models.Project{ID: 36}},
+			// id of another task the user may write to, uid of the victim
+			task: &models.Task{ID: 41, UID: taskUID, ProjectID: 36},
+			user: u,
+		}
+
+		_, err := storage.UpdateResource(taskUID, taskContent)
+		require.ErrorIs(t, err, errs.ResourceNotFoundError)
+		assertVictimUntouched(t)
+	})
+
+	t.Run("rejects when the stored task is in another project than the url", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+
+		storage := &VikunjaCaldavProjectStorage{
+			project: &models.ProjectWithTasksAndBuckets{Project: models.Project{ID: 38}},
+			task:    &models.Task{ID: victimID, UID: taskUID, ProjectID: 36},
+			user:    u,
+		}
+
+		_, err := storage.UpdateResource(taskUID, taskContent)
+		require.ErrorIs(t, err, errs.ResourceNotFoundError)
+		assertVictimUntouched(t)
 	})
 }
 
@@ -553,5 +642,134 @@ func TestGetResources_ExcludesTemplates(t *testing.T) {
 		for _, r := range resources {
 			assert.NotEqual(t, "Test1", r.Name, "template project 1 must not appear in the CalDAV listing")
 		}
+	})
+}
+
+// The overlay in UpdateResource must carry the fork's task fields: a PUT that
+// doesn't speak to them keeps stored values, one that does writes them.
+// Regression guard for the 2026-08 upstream sync, where the overlay initially
+// dropped all of them (create worked, update was a silent no-op).
+func TestUpdateResource_ForkFieldsOverlay(t *testing.T) {
+	u := &user.User{ID: 15, Username: "user15"}
+	const taskUID = "uid-caldav-test"
+
+	deadline := time.Date(2026, 9, 1, 12, 0, 0, 0, config.GetTimeZone())
+
+	seedForkFields := func(t *testing.T) {
+		t.Helper()
+		s := db.NewSession()
+		defer s.Close()
+		_, err := s.Where("uid = ?", taskUID).
+			Cols("deadline", "estimated_duration", "repeat_mode", "repeat_rrule", "repeat_from_completion", "repeat_after").
+			Update(&models.Task{
+				Deadline:             deadline,
+				EstimatedDuration:    5400,
+				RepeatMode:           models.TaskRepeatModeRRule,
+				RepeatRRule:          "FREQ=WEEKLY;BYDAY=MO",
+				RepeatFromCompletion: true,
+			})
+		require.NoError(t, err)
+		require.NoError(t, s.Commit())
+	}
+
+	storageForTask := func(t *testing.T) *VikunjaCaldavProjectStorage {
+		t.Helper()
+		s := db.NewSession()
+		defer s.Close()
+		tasks, err := models.GetTasksByUIDs(s, []string{taskUID}, u)
+		require.NoError(t, err)
+		return &VikunjaCaldavProjectStorage{
+			project: &models.ProjectWithTasksAndBuckets{Project: models.Project{ID: 36}},
+			task:    tasks[0],
+			user:    u,
+		}
+	}
+
+	loadTask := func(t *testing.T) *models.Task {
+		t.Helper()
+		s := db.NewSession()
+		defer s.Close()
+		tasks, err := models.GetTasksByUIDs(s, []string{taskUID}, u)
+		require.NoError(t, err)
+		return tasks[0]
+	}
+
+	t.Run("a PUT without the fork properties keeps stored values", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		seedForkFields(t)
+
+		_, err := storageForTask(t).UpdateResource(taskUID, `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Vikunja Todo App//EN
+BEGIN:VTODO
+UID:uid-caldav-test
+DTSTAMP:20230301T073337Z
+SUMMARY:Edited without fork props
+END:VTODO
+END:VCALENDAR`)
+		require.NoError(t, err)
+
+		task := loadTask(t)
+		assert.Equal(t, "Edited without fork props", task.Title)
+		assert.True(t, deadline.Equal(task.Deadline), "deadline must survive an update that doesn't mention it")
+		assert.Equal(t, int64(5400), task.EstimatedDuration)
+		assert.Equal(t, models.TaskRepeatModeRRule, task.RepeatMode)
+		assert.Equal(t, "FREQ=WEEKLY;BYDAY=MO", task.RepeatRRule)
+		assert.True(t, task.RepeatFromCompletion)
+	})
+
+	t.Run("a PUT carrying the fork properties writes them", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+
+		_, err := storageForTask(t).UpdateResource(taskUID, `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Vikunja Todo App//EN
+BEGIN:VTODO
+UID:uid-caldav-test
+DTSTAMP:20230301T073337Z
+SUMMARY:Edited with fork props
+X-VIKUNJA-DEADLINE:20260901T120000Z
+X-VIKUNJA-ESTIMATED-DURATION:7200
+RRULE:FREQ=WEEKLY;BYDAY=FR
+X-VIKUNJA-REPEAT-FROM-COMPLETION:1
+END:VTODO
+END:VCALENDAR`)
+		require.NoError(t, err)
+
+		task := loadTask(t)
+		assert.False(t, task.Deadline.IsZero())
+		assert.Equal(t, int64(7200), task.EstimatedDuration)
+		assert.Equal(t, models.TaskRepeatModeRRule, task.RepeatMode)
+		assert.Equal(t, "FREQ=WEEKLY;BYDAY=FR", task.RepeatRRule)
+		assert.True(t, task.RepeatFromCompletion)
+	})
+
+	t.Run("an incoming RRULE clears a stored interval repeat", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+
+		s := db.NewSession()
+		_, err := s.Where("uid = ?", taskUID).
+			Cols("repeat_after").
+			Update(&models.Task{RepeatAfter: 86400})
+		require.NoError(t, err)
+		require.NoError(t, s.Commit())
+		s.Close()
+
+		_, err = storageForTask(t).UpdateResource(taskUID, `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Vikunja Todo App//EN
+BEGIN:VTODO
+UID:uid-caldav-test
+DTSTAMP:20230301T073337Z
+SUMMARY:Edited with rrule
+RRULE:FREQ=WEEKLY;BYDAY=FR
+END:VTODO
+END:VCALENDAR`)
+		require.NoError(t, err)
+
+		task := loadTask(t)
+		assert.Equal(t, models.TaskRepeatModeRRule, task.RepeatMode)
+		assert.Equal(t, "FREQ=WEEKLY;BYDAY=FR", task.RepeatRRule)
+		assert.Equal(t, int64(0), task.RepeatAfter, "an incoming RRULE must clear the interval repeat")
 	})
 }

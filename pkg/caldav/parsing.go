@@ -219,6 +219,7 @@ func GetCaldavTodosForTasks(project *models.ProjectWithTasksAndBuckets, projectT
 			UID:         t.UID,
 			Summary:     t.Title,
 			Description: t.Description,
+			Done:        t.Done,
 			Completed:   t.DoneAt,
 			// Organizer:     &t.CreatedBy, // Disabled until we figure out how this works
 			Categories:           categories,
@@ -269,14 +270,36 @@ func getHexColorFromCaldavColor(caldavColor string) string {
 	return hexColor
 }
 
+// ParsedVTODOProperties reports which task fields the VTODO spoke to, so a partial
+// update overlays only those. True only when present *and* understood; an empty value
+// is an explicit clear. Labels, reminders and relations signal presence out of band.
+type ParsedVTODOProperties struct {
+	Title       bool
+	Description bool
+	Done        bool
+	Priority    bool
+	DueDate     bool
+	StartDate   bool
+	EndDate     bool
+	Color       bool
+	// Fork extensions: X-VIKUNJA-DEADLINE, X-VIKUNJA-ESTIMATED-DURATION and
+	// RRULE (mode + rule + from-completion travel as one unit).
+	Deadline          bool
+	EstimatedDuration bool
+	Repeat            bool
+}
+
+// ParseTaskFromVTODO parses a VTODO into a Task. Partial updates must overlay only
+// the fields reported by the returned properties, or everything else gets wiped.
+//
 //nolint:gocyclo
-func ParseTaskFromVTODO(content string) (vTask *models.Task, err error) {
+func ParseTaskFromVTODO(content string) (vTask *models.Task, props ParsedVTODOProperties, err error) {
 	parsed, err := ics.ParseCalendar(strings.NewReader(content))
 	if err != nil {
-		return nil, err
+		return nil, props, err
 	}
 	if len(parsed.Components) == 0 {
-		return nil, errors.New("VTODO element does seem not contain any components")
+		return nil, props, errors.New("VTODO element does seem not contain any components")
 	}
 	var vTodo *ics.VTodo
 	for _, comp := range parsed.Components {
@@ -286,13 +309,14 @@ func ParseTaskFromVTODO(content string) (vTask *models.Task, err error) {
 		}
 	}
 	if vTodo == nil {
-		return nil, errors.New("VTODO element not found")
+		return nil, props, errors.New("VTODO element not found")
 	}
 	// We put the vTodo details in a map to be able to handle them more easily
 	task := make(map[string]ics.IANAProperty)
 
 	var relations []ics.IANAProperty
 	var color string
+	var hasColor bool
 	for _, c := range vTodo.UnknownPropertiesIANAProperties() {
 		task[c.IANAToken] = c
 		if strings.HasPrefix(c.IANAToken, "RELATED-TO") {
@@ -300,15 +324,19 @@ func ParseTaskFromVTODO(content string) (vTask *models.Task, err error) {
 		}
 		if c.IANAToken == "X-APPLE-CALENDAR-COLOR" {
 			color = c.Value
+			hasColor = true
 		}
 		if c.IANAToken == "X-OUTLOOK-COLOR" {
 			color = c.Value
+			hasColor = true
 		}
 		if c.IANAToken == "X-FUNAMBOL-COLOR" {
 			color = c.Value
+			hasColor = true
 		}
 		if c.IANAToken == "COLOR" {
 			color = c.Value
+			hasColor = true
 		}
 	}
 
@@ -325,36 +353,37 @@ func ParseTaskFromVTODO(content string) (vTask *models.Task, err error) {
 
 	// Parse the priority
 	var priority int64
-	if _, ok := task["PRIORITY"]; ok {
+	_, hasPriority := task["PRIORITY"]
+	if hasPriority {
 		priorityParsed, err := strconv.ParseInt(task["PRIORITY"].Value, 10, 64)
 		if err != nil {
 			log.Errorf("[CALDAV] Failed to parse PRIORITY: %v", err)
-			return nil, err
+			return nil, props, err
 		}
 
 		priority = parseVTODOPriority(priorityParsed)
 	}
 
-	// Parse the enddate
-	var duration time.Duration
-	if durationProp, ok := task["DURATION"]; ok {
-		duration, _ = time.ParseDuration(durationProp.Value)
-	}
-
 	description := ""
-	if descProp, ok := task["DESCRIPTION"]; ok {
+	descProp, hasDescription := task["DESCRIPTION"]
+	if hasDescription {
 		description = strings.ReplaceAll(descProp.Value, "\\,", ",")
 		description = strings.ReplaceAll(description, "\\n", "\n")
 	}
 
 	var labels []*models.Label
 	if val, ok := task["CATEGORIES"]; ok {
-		categories := strings.Split(val.Value, ",")
-		labels = make([]*models.Label, 0, len(categories))
-		for _, category := range categories {
-			labels = append(labels, &models.Label{
-				Title: category,
-			})
+		if val.Value == "" {
+			// Empty clears labels, absent leaves them untouched.
+			labels = []*models.Label{}
+		} else {
+			categories := strings.Split(val.Value, ",")
+			labels = make([]*models.Label, 0, len(categories))
+			for _, category := range categories {
+				labels = append(labels, &models.Label{
+					Title: category,
+				})
+			}
 		}
 	}
 
@@ -367,18 +396,46 @@ func ParseTaskFromVTODO(content string) (vTask *models.Task, err error) {
 		titleValue = summary.Value
 	}
 
+	dtStartProp, hasDTStart := task["DTSTART"]
+	startDate := caldavTimeToTimestamp(dtStartProp)
+
+	dueProp, hasDue := task["DUE"]
+	dueDate := caldavTimeToTimestamp(dueProp)
+
+	// time.ParseDuration can't read RFC 5545 durations like PT120H0M0S, hence ParseISO8601Duration.
+	dtEndProp, hasDTEnd := task["DTEND"]
+	_, hasDuration := task["DURATION"]
+	var endDate time.Time
+	var hasEndDate bool
+	switch {
+	case hasDTEnd:
+		endDate = caldavTimeToTimestamp(dtEndProp)
+		hasEndDate = parsedDateProperty(dtEndProp, hasDTEnd, endDate)
+	case hasDuration && hasDTStart && !startDate.IsZero():
+		if d := utils.ParseISO8601Duration(task["DURATION"].Value); d > 0 {
+			endDate = startDate.Add(d)
+			hasEndDate = true
+		}
+	}
+
+	hexColor := getHexColorFromCaldavColor(color)
+
+	deadlineProp, hasDeadline := task["X-VIKUNJA-DEADLINE"]
+	deadline := caldavTimeToTimestamp(deadlineProp)
+
 	vTask = &models.Task{
 		UID:         uidValue,
 		Title:       titleValue,
 		Description: description,
 		Priority:    priority,
 		Labels:      labels,
-		DueDate:     caldavTimeToTimestamp(task["DUE"]),
-		Deadline:    caldavTimeToTimestamp(task["X-VIKUNJA-DEADLINE"]),
+		DueDate:     dueDate,
+		Deadline:    deadline,
 		Updated:     caldavTimeToTimestamp(task["DTSTAMP"]),
-		StartDate:   caldavTimeToTimestamp(task["DTSTART"]),
+		StartDate:   startDate,
+		EndDate:     endDate,
 		DoneAt:      caldavTimeToTimestamp(task["COMPLETED"]),
-		HexColor:    getHexColorFromCaldavColor(color),
+		HexColor:    hexColor,
 	}
 
 	for _, c := range relations {
@@ -410,27 +467,37 @@ func ParseTaskFromVTODO(content string) (vTask *models.Task, err error) {
 		})
 	}
 
-	if status, ok := task["STATUS"]; ok && status.Value == "COMPLETED" {
+	_, hasStatus := task["STATUS"]
+	_, hasCompleted := task["COMPLETED"]
+
+	// RFC 5545: COMPLETED alone implies done; explicit STATUS always wins.
+	if hasCompleted {
 		vTask.Done = true
 	}
-
-	if duration > 0 && !vTask.StartDate.IsZero() {
-		vTask.EndDate = vTask.StartDate.Add(duration)
+	if status, ok := task["STATUS"]; ok {
+		vTask.Done = status.Value == "COMPLETED"
 	}
 
+	var hasEstimatedDuration bool
 	if estimated, ok := task["X-VIKUNJA-ESTIMATED-DURATION"]; ok {
 		if seconds, err := strconv.ParseInt(estimated.Value, 10, 64); err == nil {
 			vTask.EstimatedDuration = seconds
+			hasEstimatedDuration = true
+		} else if estimated.Value == "" {
+			// An empty value is an explicit clear, like the date properties.
+			hasEstimatedDuration = true
 		}
 	}
 
 	// RRULE must be read via GetProperty, not the UnknownPropertiesIANAProperties
 	// map above. Unsupported/invalid rules are dropped silently so an exotic
 	// recurrence from an external client never hard-fails the import.
+	var hasRepeat bool
 	if rrule := vTodo.GetProperty(ics.ComponentPropertyRrule); rrule != nil && rrule.Value != "" {
 		if models.IsValidTaskRRule(rrule.Value) {
 			vTask.RepeatMode = models.TaskRepeatModeRRule
 			vTask.RepeatRRule = rrule.Value
+			hasRepeat = true
 			if fromCompletion, ok := task["X-VIKUNJA-REPEAT-FROM-COMPLETION"]; ok && fromCompletion.Value == "1" {
 				vTask.RepeatFromCompletion = true
 			}
@@ -443,7 +510,27 @@ func ParseTaskFromVTODO(content string) (vTask *models.Task, err error) {
 		}
 	}
 
-	return
+	props = ParsedVTODOProperties{
+		Title:             hasSummary,
+		Description:       hasDescription,
+		Done:              hasStatus || hasCompleted,
+		Priority:          hasPriority,
+		DueDate:           parsedDateProperty(dueProp, hasDue, dueDate),
+		StartDate:         parsedDateProperty(dtStartProp, hasDTStart, startDate),
+		EndDate:           hasEndDate,
+		Color:             hasColor && (color == "" || hexColor != ""),
+		Deadline:          parsedDateProperty(deadlineProp, hasDeadline, deadline),
+		EstimatedDuration: hasEstimatedDuration,
+		Repeat:            hasRepeat,
+	}
+
+	return vTask, props, nil
+}
+
+// parsedDateProperty tells an explicit clear (empty value) apart from a value
+// caldavTimeToTimestamp couldn't read - both yield the zero time.
+func parsedDateProperty(prop ics.IANAProperty, present bool, parsed time.Time) bool {
+	return present && (prop.Value == "" || !parsed.IsZero())
 }
 
 func parseVAlarm(vAlarm *ics.VAlarm, vTask *models.Task) *models.Task {
@@ -464,15 +551,14 @@ func parseVAlarm(vAlarm *ics.VAlarm, vTask *models.Task) *models.Task {
 
 		if contains(property.ICalParameters["RELATED"], "END") {
 			// Example: TRIGGER;RELATED=END:-P2D
-			if vTask.EndDate.IsZero() {
-				vTask.Reminders = append(vTask.Reminders, &models.TaskReminder{
-					RelativePeriod: int64(duration.Seconds()),
-					RelativeTo:     models.ReminderRelationDueDate})
-			} else {
-				vTask.Reminders = append(vTask.Reminders, &models.TaskReminder{
-					RelativePeriod: int64(duration.Seconds()),
-					RelativeTo:     models.ReminderRelationEndDate})
+			// We emit due- and end-relative reminders both as RELATED=END, so prefer due_date to keep ours round-tripping.
+			relativeTo := models.ReminderRelationEndDate
+			if !vTask.DueDate.IsZero() || vTask.EndDate.IsZero() {
+				relativeTo = models.ReminderRelationDueDate
 			}
+			vTask.Reminders = append(vTask.Reminders, &models.TaskReminder{
+				RelativePeriod: int64(duration.Seconds()),
+				RelativeTo:     relativeTo})
 			continue
 		}
 

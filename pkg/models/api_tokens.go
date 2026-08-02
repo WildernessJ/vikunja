@@ -253,9 +253,8 @@ func (t *APIToken) HasFeedsAccess() bool {
 
 // GetTokenFromTokenString returns the full token object from the original token string.
 func GetTokenFromTokenString(s *xorm.Session, token string) (apiToken *APIToken, err error) {
-	// Reject anything shorter than prefix+8 before slicing the last eight bytes;
-	// otherwise a prefix-only string like "tk_" panics with a negative index.
-	// Guarding here covers every caller (middleware, CalDAV, feeds).
+	// The slice below would panic on a short string. Real tokens are prefix + 40
+	// hex chars, so anything shorter is invalid by construction.
 	if len(token) < len(APITokenPrefix)+8 {
 		return nil, &ErrAPITokenInvalid{}
 	}

@@ -45,7 +45,7 @@ func init() {
 		ID:          "20260729154002",
 		Description: "Add the push_subscriptions table for Web Push notifications",
 		Migrate: func(tx *xorm.Engine) error {
-			return tx.Sync(PushSubscription20260729154002{})
+			return tx.Sync(PushSubscription20260729154002{}) //nolint:forbidigo // brand-new table, no pre-existing indexes to drop
 		},
 		Rollback: func(tx *xorm.Engine) error {
 			return tx.DropTables(PushSubscription20260729154002{})

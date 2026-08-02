@@ -16,6 +16,14 @@ vi.mock('@/stores/tasks', () => ({
 		ensureLabelsExist: ensureLabelsExistMock,
 		findProjectId: findProjectIdMock,
 		createNewTask: createNewTaskMock,
+		createNewTasksBulk: vi.fn().mockResolvedValue({tasks: [], error: null}),
+	}),
+}))
+
+// false = the production default: relation writes run sequentially.
+vi.mock('@/stores/config', () => ({
+	useConfigStore: () => ({
+		concurrentWrites: false,
 	}),
 }))
 
