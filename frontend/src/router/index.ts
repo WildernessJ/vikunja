@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteLocation, RouterScrollBehavior } from 'vue-router'
 import {saveLastVisited} from '@/helpers/saveLastVisited'
+import {shouldSaveAsLastVisited} from '@/helpers/returnability'
 
 import {getProjectViewId} from '@/helpers/projectView'
 import {parseDateOrString} from '@/helpers/time/parseDateOrString'
@@ -565,10 +566,6 @@ function resolveRedirectHash(hash: string) {
 	// hash overrides the `to.hash` that beforeEach otherwise re-attaches (the redirect hash itself,
 	// which would put us straight back here). oauth.authorize is a static path, so it has no params.
 	return {name: 'oauth.authorize' as const, query: resolved.query, hash: ''}
-}
-
-function shouldSaveAsLastVisited(to: Pick<RouteLocation, 'meta'>) {
-	return to.meta?.returnability !== 'no'
 }
 
 export async function getAuthForRoute(to: RouteLocation, authStore: ReturnType<typeof useAuthStore>) {

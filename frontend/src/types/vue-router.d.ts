@@ -12,6 +12,10 @@ declare module 'vue-router' {
 		 * - `'no-but-restore'` - still restored after a login that interrupted it,
 		 *   because the code we would land on then is a fresh, unconsumed one. Only
 		 *   the migration callback needs this - see its route.
+		 *
+		 * Never compare against this field directly: both halves of the rule live
+		 * in `@/helpers/returnability`, and only going through it keeps the two
+		 * readers from classifying a future value differently.
 		 */
 		returnability?: 'no' | 'no-but-restore'
 

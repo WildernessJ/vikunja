@@ -101,6 +101,7 @@ const CHILD_STUBS = {
 // route, so a garbage back path has to carry the same `returnability` it does in the
 // app. Which real routes carry it is covered in `src/router/index.test.ts`.
 const NON_RETURNABLE = {returnability: 'no'} as const
+const NON_RETURNABLE_BUT_RESTORED = {returnability: 'no-but-restore'} as const
 
 const CATCH_ALL_ROUTES = [
 	{path: '/:pathMatch(.*)*', name: 'not-found', component: {render: () => null}, meta: NON_RETURNABLE},
@@ -122,6 +123,7 @@ async function mountTaskDetail(maxPermission: number, navigation: string[] = ['/
 			{path: '/tasks/:id', name: 'task.detail', component: {render: () => null}},
 			{path: '/login', name: 'user.login', component: {render: () => null}, meta: NON_RETURNABLE},
 			{path: '/auth/openid/:provider', name: 'openid.auth', component: {render: () => null}, meta: NON_RETURNABLE},
+			{path: '/migrate/:service', name: 'migrate.service', component: {render: () => null}, meta: NON_RETURNABLE_BUT_RESTORED},
 			...CATCH_ALL_ROUTES,
 		],
 	})
@@ -232,6 +234,18 @@ describe('TaskDetailView back button', () => {
 
 	it('pushes the project route when the previous history entry is an openid callback', async () => {
 		const {wrapper, router} = await mountTaskDetail(PERMISSIONS.READ_WRITE, ['/auth/openid/gitlab?code=consumed', '/tasks/1'])
+		const {back, push} = spyOnNavigation(router)
+
+		await wrapper.find('.back-button').trigger('click')
+
+		expect(back).not.toHaveBeenCalled()
+		expect(push).toHaveBeenCalledWith(expect.objectContaining({name: 'project.index'}))
+	})
+
+	// `'no-but-restore'` differs from `'no'` only in what the auth guard restores after a login;
+	// both are equally off limits to the back button, whose code is spent by the time we return.
+	it('pushes the project route when the previous history entry is a migration callback', async () => {
+		const {wrapper, router} = await mountTaskDetail(PERMISSIONS.READ_WRITE, ['/migrate/trello?code=one-shot', '/tasks/1'])
 		const {back, push} = spyOnNavigation(router)
 
 		await wrapper.find('.back-button').trigger('click')
@@ -397,6 +411,19 @@ describe('TaskDetailView current project on load', () => {
 		await flushPromises()
 
 		expect(preSet).not.toHaveBeenCalled()
+	})
+
+	// #77 as the user hits it. The spy above cannot see this: the pre-set short-circuits on id
+	// equality, so the stale value only becomes visible once the current project has moved on
+	// from the one cached at mount - which is what changing a task's project does.
+	it('does not overwrite a project set since, when the reused instance loads another task', async () => {
+		const {router} = await mountInRouterView(['/projects/7/70', '/tasks/1'], [7, 9])
+		useBaseStore().setCurrentProject(projectFixture(9))
+
+		await router.push('/tasks/2')
+		await flushPromises()
+
+		expect(useBaseStore().currentProject?.id).toBe(9)
 	})
 })
 

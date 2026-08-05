@@ -58,6 +58,19 @@ describe('returnability route meta', () => {
 	})
 })
 
+// Both of these sit under `/projects/:projectId/...` and would be swallowed by the
+// `/projects/:projectId/:viewId` catch-all if route order ever changed - the task detail
+// breadcrumb reads `parentProjectId` off the first one to know which project it belongs to.
+describe('route ranking below /projects/:projectId', () => {
+	it('resolves the project create form ahead of the view route', () => {
+		expect(resolve('/projects/5/new').name).toBe('project.createFromParent')
+	})
+
+	it('resolves the share settings ahead of the view route', () => {
+		expect(resolve('/projects/5/settings/share').name).toBe('project.settings.share')
+	})
+})
+
 describe('getAuthForRoute', () => {
 	beforeEach(() => localStorage.clear())
 
@@ -97,6 +110,18 @@ describe('getAuthForRoute', () => {
 		'/migrate/trello?code=one-shot',
 	])('still sends an unauthenticated visitor from %s to login', async path => {
 		expect(await getAuthForRoute(resolve(path), ANONYMOUS)).toEqual({name: 'user.login'})
+	})
+
+	// The save gate (`returnability`) and the login gate (`AUTH_ROUTE_NAMES`) are deliberately two
+	// questions about the same route, and the 404 is where they disagree: never worth restoring
+	// after a login, yet an anonymous visitor who lands on one still has to be bounced. Merging
+	// the two predicates back into one breaks exactly one of the assertions below.
+	it('bounces an unauthenticated visitor from a route it refuses to save', async () => {
+		const to = resolve('/some-garbage-path')
+		expect(AUTH_ROUTE_NAMES.has(to.name as string)).toBe(false)
+
+		expect(await getAuthForRoute(to, ANONYMOUS)).toEqual({name: 'user.login'})
+		expect(getLastVisited()).toBeNull()
 	})
 
 	it.each([

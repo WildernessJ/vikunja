@@ -370,6 +370,7 @@ import DropdownItem from '@/components/misc/DropdownItem.vue'
 import {uploadFile} from '@/helpers/attachments'
 import {getProjectTitle} from '@/helpers/getProjectTitle'
 import {isAppleDevice} from '@/helpers/isAppleDevice'
+import {canReturnTo} from '@/helpers/returnability'
 import {scrollIntoView} from '@/helpers/scrollIntoView'
 import {TASK_REPEAT_MODES} from '@/types/IRepeatMode'
 import {REMINDER_PERIOD_RELATIVE_TO_TYPES} from '@/types/IReminderPeriodRelativeTo'
@@ -454,7 +455,7 @@ function resolveBackRoute() {
 function goBack() {
 	const backRoute = resolveBackRoute()
 
-	if (backRoute && !backRoute.meta?.returnability) {
+	if (backRoute && canReturnTo(backRoute)) {
 		router.back()
 		return
 	}
