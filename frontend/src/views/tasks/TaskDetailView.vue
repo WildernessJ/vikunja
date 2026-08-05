@@ -56,7 +56,7 @@
 					<RouterLink
 						v-slot="{ href, navigate }"
 						custom
-						:to="{ name: 'project.index', params: { projectId: p.id } }"
+						:to="{ name: 'project.index', params: { projectId: p.id }, hash: route.hash }"
 					>
 						<a
 							v-shortcut="p.id === project?.id ? 'KeyU' : ''"
@@ -462,26 +462,35 @@ function goBack() {
 	router.push(projectRoute.value)
 }
 
-function backProjectId(): IProject['id'] | null {
-	const projectId = Number(resolveBackRoute()?.params.projectId)
-
-	return Number.isNaN(projectId) || projectId === 0 ? null : projectId
+// Deliberately broad: "which project does this entry belong to" is also answered by a settings
+// modal or the project's activity log, and highlighting that project is right either way.
+// `/projects/:parentProjectId/new` names its param differently but still belongs to its parent.
+function projectIdOf(backRoute: ReturnType<typeof router.resolve> | null): IProject['id'] | null {
+	return Number(backRoute?.params.projectId ?? backRoute?.params.parentProjectId) || null
 }
 
 function lastProject(): IProject | null {
-	const projectId = backProjectId()
+	const projectId = projectIdOf(resolveBackRoute())
 
 	return projectId === null
 		? null
 		: projectStore.projects[projectId] ?? null
 }
 
+// The crumb links to the project's default view, so popping is only equivalent to following the
+// href when the entry we would pop renders that view. Settings modals, the info dialog and the
+// activity log all carry the same projectId but would land the user somewhere else entirely.
+const PROJECT_CONTENT_ROUTE_NAMES = new Set(['project.index', 'project.view'])
+
 // Popping the history entry keeps the previous view's scroll position and state, so prefer it
-// over pushing - but only when the entry we would pop really is a view of the project clicked.
+// over pushing whenever it is equivalent to following the link.
 function onBreadcrumbClick(event: MouseEvent, projectId: IProject['id'], navigate: (event: MouseEvent) => void) {
 	const isPlainClick = !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && event.button === 0
+	const backRoute = resolveBackRoute()
+	const popIsEquivalent = PROJECT_CONTENT_ROUTE_NAMES.has(backRoute?.name as string)
+		&& projectIdOf(backRoute) === projectId
 
-	if (isPlainClick && backProjectId() === projectId) {
+	if (isPlainClick && popIsEquivalent) {
 		event.preventDefault()
 		router.back()
 		return

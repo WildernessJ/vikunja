@@ -202,9 +202,13 @@ const router = createRouter({
 					path: '/migrate/:service',
 					name: 'migrate.service',
 					component: () => import('@/views/migrate/MigrationHandler.vue'),
-					// Consumes the migration provider's one-shot OAuth code.
+					// Consumes the migration provider's one-shot OAuth code: navigating back here
+					// re-fires a code that is already spent. Restoring it after login is the opposite
+					// case - the session expired mid provider round-trip, so the code we'd land on is
+					// the fresh one the provider just handed us and nothing has consumed it yet.
 					meta: {
 						nonReturnable: true,
+						restoreAfterLogin: true,
 					},
 					props: route => ({
 						service: route.params.service as string,
@@ -537,19 +541,41 @@ const router = createRouter({
 	],
 })
 
-export async function getAuthForRoute(to: RouteLocation, authStore: ReturnType<typeof useAuthStore>) {
-	// vue-router already decoded to.hash once, so slicing off the prefix yields the original
+// The redirect hash sits in a URL anyone can author and mail to a victim, so resolving it is not
+// enough - an unrestricted destination gets stored for after login and, for an already-signed-in
+// browser, navigated to with zero interaction. The only value ever legitimately written here is the
+// oauth.authorize fullPath (see the branch below), so that is the only one accepted back out.
+function resolveRedirectHash(hash: string) {
+	if (!hash.startsWith(REDIRECT_HASH_PREFIX)) {
+		return null
+	}
+
+	// vue-router already decoded the hash once, so slicing off the prefix yields the original
 	// fullPath (e.g. /oauth/authorize?...) losslessly — no extra decodeURIComponent needed.
-	const redirectDest = to.name === 'user.login' && to.hash.startsWith(REDIRECT_HASH_PREFIX)
-		? to.hash.slice(REDIRECT_HASH_PREFIX.length)
-		: ''
+	const destination = hash.slice(REDIRECT_HASH_PREFIX.length)
+	const resolved = router.resolve(destination)
+
+	return resolved.name === 'oauth.authorize'
+		? {destination, resolved}
+		: null
+}
+
+// `restoreAfterLogin` overrides `nonReturnable`, which is otherwise the same question asked twice:
+// the migration callback must never be re-entered by the back button yet has to survive a session
+// that expires mid provider round-trip.
+function shouldSaveAsLastVisited(to: Pick<RouteLocation, 'meta'>) {
+	return !to.meta?.nonReturnable || to.meta?.restoreAfterLogin === true
+}
+
+export async function getAuthForRoute(to: RouteLocation, authStore: ReturnType<typeof useAuthStore>) {
+	const redirect = resolveRedirectHash(to.hash)
 
 	if (authStore.authUser || authStore.authLinkShare) {
 		// An already-signed-in browser that opens a copied /login#redirect=<oauth.authorize> URL
 		// must run the OAuth flow with its existing session instead of short-circuiting to home.
 		// The destination has no redirect hash, so the second guard pass just early-returns (#2654).
-		if (redirectDest) {
-			return redirectDest
+		if (to.name === 'user.login' && redirect) {
+			return redirect.destination
 		}
 		return
 	}
@@ -590,20 +616,17 @@ export async function getAuthForRoute(to: RouteLocation, authStore: ReturnType<t
 
 	// Fold the hash destination into localStorage: it's the only bridge that survives the
 	// external OIDC round-trip out of the SPA, so redirectIfSaved() works after any auth method.
-	// vue-router already decoded to.hash once, so it equals the fullPath we wrote above as-is.
-	// Deliberately not gated on `nonReturnable`: this destination is the oauth.authorize URL
-	// we redirected from a few lines up, and resuming it is the entire point of the hash.
-	if (to.hash.startsWith(REDIRECT_HASH_PREFIX)) {
-		const destination = to.hash.slice(REDIRECT_HASH_PREFIX.length)
-		const resolved = router.resolve(destination)
-		saveLastVisited(resolved.name as string, resolved.params, resolved.query)
+	// Deliberately not gated on `nonReturnable`: resuming oauth.authorize is the entire point
+	// of the hash, and resolveRedirectHash() already rejects every other destination.
+	if (redirect) {
+		saveLastVisited(redirect.resolved.name as string, redirect.resolved.params, redirect.resolved.query)
 	}
 
 	// Read here, not earlier: the email confirmation branch above may have just written it.
 	const hasEmailConfirmToken = localStorage.getItem('emailConfirmToken') !== null
 
 	// Only worth restoring after login if the user can meaningfully land there again.
-	if (!to.meta?.nonReturnable && !hasEmailConfirmToken) {
+	if (shouldSaveAsLastVisited(to) && !hasEmailConfirmToken) {
 		saveLastVisited(to.name as string, to.params, to.query)
 	}
 
@@ -613,7 +636,7 @@ export async function getAuthForRoute(to: RouteLocation, authStore: ReturnType<t
 		return {name: 'user.login'}
 	}
 	
-	if(localStorage.getItem('emailConfirmToken') !== null && to.name !== 'user.login') {
+	if(hasEmailConfirmToken && to.name !== 'user.login') {
 		return {name: 'user.login', query: to.query}
 	}
 }
@@ -655,7 +678,7 @@ router.beforeEach(async (to, from) => {
 	}
 
 	if (to.hash.startsWith(LINK_SHARE_HASH_PREFIX) && !authStore.authLinkShare) {
-		if (!to.meta?.nonReturnable) {
+		if (shouldSaveAsLastVisited(to)) {
 			saveLastVisited(to.name as string, to.params, to.query)
 		}
 		return {

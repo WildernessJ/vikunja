@@ -3,10 +3,12 @@ import type {RouteLocation} from 'vue-router'
 
 import router, {getAuthForRoute} from './index'
 import {getLastVisited} from '@/helpers/saveLastVisited'
+import {AUTH_ROUTE_NAMES} from '@/constants/authRouteNames'
 import type {useAuthStore} from '@/stores/auth'
 
 // getAuthForRoute only ever reads these two fields off the store.
 const ANONYMOUS = {authUser: null, authLinkShare: null} as unknown as ReturnType<typeof useAuthStore>
+const AUTHENTICATED = {authUser: {id: 1}, authLinkShare: null} as unknown as ReturnType<typeof useAuthStore>
 
 function resolve(path: string) {
 	return router.resolve(path) as unknown as RouteLocation
@@ -38,6 +40,18 @@ describe('nonReturnable route meta', () => {
 	])('does not flag %s', path => {
 		expect(resolve(path).meta.nonReturnable).toBeUndefined()
 	})
+
+	// A route can drop out of AUTH_ROUTE_NAMES' twin set only by hand, and the failure is
+	// silent: redirectIfSaved() would restore an authenticated user onto an auth page,
+	// rendered in the wrong shell.
+	it('flags every auth route', () => {
+		const authRoutes = router.getRoutes().filter(route => AUTH_ROUTE_NAMES.has(route.name as string))
+
+		expect(authRoutes).toHaveLength(AUTH_ROUTE_NAMES.size)
+		authRoutes.forEach(route => {
+			expect(route.meta.nonReturnable, `${String(route.name)} is missing meta.nonReturnable`).toBe(true)
+		})
+	})
 })
 
 describe('getAuthForRoute', () => {
@@ -51,12 +65,24 @@ describe('getAuthForRoute', () => {
 
 	it.each([
 		'/some-garbage-path',
-		'/migrate/trello?code=one-shot',
 		'/login',
 	])('does not save %s as last visited', async path => {
 		await getAuthForRoute(resolve(path), ANONYMOUS)
 
 		expect(getLastVisited()).toBeNull()
+	})
+
+	// nonReturnable keeps the back button off the migration callback, whose code is spent by
+	// then - but a session expiring mid provider round-trip must still resume it, because the
+	// code we bounced away from was never consumed.
+	it('saves the migration callback so an expired session resumes it after login', async () => {
+		await getAuthForRoute(resolve('/migrate/trello?code=one-shot'), ANONYMOUS)
+
+		expect(getLastVisited()).toEqual(expect.objectContaining({
+			name: 'migrate.service',
+			params: {service: 'trello'},
+			query: {code: 'one-shot'},
+		}))
 	})
 
 	// The flag governs what we save, never who gets bounced to login - a route
@@ -84,5 +110,30 @@ describe('getAuthForRoute', () => {
 		await getAuthForRoute(resolve('/login#redirect=/oauth/authorize?client_id=1'), ANONYMOUS)
 
 		expect(getLastVisited()?.name).toBe('oauth.authorize')
+	})
+
+	// Anyone can mail a victim a /login#redirect=<anything> URL, so the destination is only
+	// trusted where we ourselves write it: the oauth.authorize fullPath.
+	it.each([
+		'/login#redirect=/migrate/trello?code=attacker',
+		'/login#redirect=/projects/1/10',
+	])('does not save an attacker-authored redirect hash (%s)', async path => {
+		await getAuthForRoute(resolve(path), ANONYMOUS)
+
+		expect(getLastVisited()).toBeNull()
+	})
+
+	it('navigates an authenticated visitor to the oauth destination in the redirect hash', async () => {
+		const target = await getAuthForRoute(resolve('/login#redirect=/oauth/authorize?client_id=1'), AUTHENTICATED)
+
+		expect(target).toBe('/oauth/authorize?client_id=1')
+	})
+
+	// Without the restriction this is a zero-interaction redirect: an already-signed-in browser
+	// navigates the raw destination verbatim.
+	it('does not navigate an authenticated visitor to an attacker-authored redirect hash', async () => {
+		const target = await getAuthForRoute(resolve('/login#redirect=/migrate/trello?code=attacker'), AUTHENTICATED)
+
+		expect(target).toBeUndefined()
 	})
 })

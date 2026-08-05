@@ -275,6 +275,8 @@ async function mountInRouterView(navigation: string[], seedProjectIds: number[] 
 				props: route => ({taskId: Number(route.params.id)}),
 			},
 			{path: '/projects/:projectId', name: 'project.index', component: {render: () => null}},
+			{path: '/projects/:parentProjectId/new', name: 'project.createFromParent', component: {render: () => null}},
+			{path: '/projects/:projectId/activity', name: 'project.activity', component: {render: () => null}},
 			{path: '/projects/:projectId/:viewId', name: 'project.view', component: {render: () => null}},
 			...CATCH_ALL_ROUTES,
 		],
@@ -378,6 +380,14 @@ describe('TaskDetailView current project on load', () => {
 		expect(useBaseStore().currentProject?.id).toBe(7)
 	})
 
+	// The create-project route names its param parentProjectId, so a plain projectId read
+	// silently loses the highlight for a task opened from that form.
+	it('sets the current project from the parent of a project create form', async () => {
+		await mountInRouterView(['/projects/5/new', '/tasks/1'], [5])
+
+		expect(useBaseStore().currentProject?.id).toBe(5)
+	})
+
 	it('does not re-apply that project when the reused instance loads a task opened from elsewhere', async () => {
 		const {router} = await mountInRouterView(['/projects/7/70', '/tasks/1'], [7])
 		const preSet = spyOnPreSet()
@@ -434,5 +444,28 @@ describe('TaskDetailView breadcrumb', () => {
 
 		expect(back).not.toHaveBeenCalled()
 		expect(push).toHaveBeenCalledWith(expect.objectContaining({name: 'project.index'}))
+	})
+
+	// These carry the same projectId but are not what the crumb's href points at, so popping
+	// would drop the user somewhere the link never advertised.
+	it.each([
+		'/projects/1/activity',
+		'/projects/1/new',
+	])('pushes the project route when the previous entry is %s', async previous => {
+		const {wrapper, router} = await mountInRouterView([previous, '/tasks/1'], [1])
+		const {back, push} = spyOnNavigation(router)
+
+		await wrapper.find(BREADCRUMB_LINK).trigger('click')
+
+		expect(back).not.toHaveBeenCalled()
+		expect(push).toHaveBeenCalledWith(expect.objectContaining({name: 'project.index'}))
+	})
+
+	// Link share JWTs live in memory only, so a crumb opened in a new tab without the hash
+	// dead-ends at /login.
+	it('keeps the link share hash on the link', async () => {
+		const {wrapper} = await mountInRouterView(['/projects/1/10', '/tasks/1#share=abc123'], [1])
+
+		expect(wrapper.find(BREADCRUMB_LINK).attributes('href')).toBe('/projects/1#share=abc123')
 	})
 })
