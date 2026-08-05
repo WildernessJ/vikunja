@@ -97,10 +97,13 @@ const CHILD_STUBS = {
 
 // Only the routes these tests navigate through, plus the two catch-alls - the real
 // router's `/:pathMatch(.*)*` means `router.resolve()` never returns an unmatched
-// route, so the view's denylist has to see the same 404 names it sees in the app.
+// route, so a garbage back path has to carry the same `nonReturnable` flag it does
+// in the app. Which real routes carry that flag is covered in `src/router/index.test.ts`.
+const NON_RETURNABLE = {nonReturnable: true}
+
 const CATCH_ALL_ROUTES = [
-	{path: '/:pathMatch(.*)*', name: 'not-found', component: {render: () => null}},
-	{path: '/:pathMatch(.*)', name: 'bad-not-found', component: {render: () => null}},
+	{path: '/:pathMatch(.*)*', name: 'not-found', component: {render: () => null}, meta: NON_RETURNABLE},
+	{path: '/:pathMatch(.*)', name: 'bad-not-found', component: {render: () => null}, meta: NON_RETURNABLE},
 ]
 
 async function mountTaskDetail(maxPermission: number, navigation: string[] = ['/']) {
@@ -116,8 +119,8 @@ async function mountTaskDetail(maxPermission: number, navigation: string[] = ['/
 			{path: '/', name: 'home', component: {render: () => null}},
 			{path: '/projects/:projectId', name: 'project.index', component: {render: () => null}},
 			{path: '/tasks/:id', name: 'task.detail', component: {render: () => null}},
-			{path: '/login', name: 'user.login', component: {render: () => null}},
-			{path: '/auth/openid/:provider', name: 'openid.auth', component: {render: () => null}},
+			{path: '/login', name: 'user.login', component: {render: () => null}, meta: NON_RETURNABLE},
+			{path: '/auth/openid/:provider', name: 'openid.auth', component: {render: () => null}, meta: NON_RETURNABLE},
 			...CATCH_ALL_ROUTES,
 		],
 	})
@@ -253,7 +256,9 @@ function projectFixture(id: number) {
 
 // Rendering through a RouterView is what makes `onBeforeRouteLeave` register:
 // it needs the matched-route key RouterView provides, which a plain mount lacks.
-async function mountInRouterView(navigation: string[]) {
+// `seedProjectIds` are put in the store from the wrapping component's setup, the
+// only place they can land before the view's first task load runs.
+async function mountInRouterView(navigation: string[], seedProjectIds: number[] = []) {
 	getMock.mockResolvedValue(taskFixture(PERMISSIONS.READ_WRITE))
 
 	window.history.replaceState(null, '', '/')
@@ -280,7 +285,11 @@ async function mountInRouterView(navigation: string[]) {
 	await router.isReady()
 
 	const App = defineComponent({
-		setup: () => () => h(RouterView),
+		setup() {
+			const projectStore = useProjectStore()
+			seedProjectIds.forEach(id => projectStore.setProject(projectFixture(id)))
+			return () => h(RouterView)
+		},
 	})
 
 	const wrapper = mount(App, {
@@ -353,5 +362,77 @@ describe('TaskDetailView leave guard', () => {
 		await goBackAndSettle(router, '/projects/1/10')
 
 		expect(preSet).not.toHaveBeenCalled()
+	})
+})
+
+describe('TaskDetailView current project on load', () => {
+	beforeEach(() => {
+		setActivePinia(createPinia())
+		useAuthStore().setAuthenticated(true)
+		getMock.mockReset()
+	})
+
+	it('sets the current project from the project view the task was opened from', async () => {
+		await mountInRouterView(['/projects/7/70', '/tasks/1'], [7])
+
+		expect(useBaseStore().currentProject?.id).toBe(7)
+	})
+
+	it('does not re-apply that project when the reused instance loads a task opened from elsewhere', async () => {
+		const {router} = await mountInRouterView(['/projects/7/70', '/tasks/1'], [7])
+		const preSet = spyOnPreSet()
+
+		await router.push('/tasks/2')
+		await flushPromises()
+
+		expect(preSet).not.toHaveBeenCalled()
+	})
+})
+
+const BREADCRUMB_LINK = 'nav[aria-label="Breadcrumb"] a'
+
+describe('TaskDetailView breadcrumb', () => {
+	beforeEach(() => {
+		setActivePinia(createPinia())
+		useAuthStore().setAuthenticated(true)
+		getMock.mockReset()
+	})
+
+	it('stays a real link pointing at the project', async () => {
+		const {wrapper} = await mountInRouterView(['/projects/1/10', '/tasks/1'], [1])
+
+		expect(wrapper.find(BREADCRUMB_LINK).attributes('href')).toBe('/projects/1')
+	})
+
+	it('goes back when the previous entry is a view of that project', async () => {
+		const {wrapper, router} = await mountInRouterView(['/projects/1/10', '/tasks/1'], [1])
+		const {back, push} = spyOnNavigation(router)
+
+		await wrapper.find(BREADCRUMB_LINK).trigger('click')
+
+		expect(back).toHaveBeenCalled()
+		expect(push).not.toHaveBeenCalled()
+	})
+
+	it('pushes the project route when the reused instance came from another task', async () => {
+		const {wrapper, router} = await mountInRouterView(['/projects/1/10', '/tasks/1'], [1])
+		await router.push('/tasks/2')
+		await flushPromises()
+		const {back, push} = spyOnNavigation(router)
+
+		await wrapper.find(BREADCRUMB_LINK).trigger('click')
+
+		expect(back).not.toHaveBeenCalled()
+		expect(push).toHaveBeenCalledWith(expect.objectContaining({name: 'project.index'}))
+	})
+
+	it('pushes the project route when the previous entry belongs to a different project', async () => {
+		const {wrapper, router} = await mountInRouterView(['/projects/2/20', '/tasks/1'], [1])
+		const {back, push} = spyOnNavigation(router)
+
+		await wrapper.find(BREADCRUMB_LINK).trigger('click')
+
+		expect(back).not.toHaveBeenCalled()
+		expect(push).toHaveBeenCalledWith(expect.objectContaining({name: 'project.index'}))
 	})
 })

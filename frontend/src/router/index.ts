@@ -54,12 +54,18 @@ const router = createRouter({
 			path: '/:pathMatch(.*)*',
 			name: 'not-found',
 			component: NotFoundComponent,
+			meta: {
+				nonReturnable: true,
+			},
 		},
 		// if you omit the last `*`, the `/` character in params will be encoded when resolving or pushing
 		{
 			path: '/:pathMatch(.*)',
 			name: 'bad-not-found',
 			component: NotFoundComponent,
+			meta: {
+				nonReturnable: true,
+			},
 		},
 		{
 			path: '/login',
@@ -67,6 +73,7 @@ const router = createRouter({
 			component: Login,
 			meta: {
 				title: 'user.auth.login',
+				nonReturnable: true,
 			},
 		},
 		{
@@ -75,6 +82,7 @@ const router = createRouter({
 			component: () => import('@/views/user/RequestPasswordReset.vue'),
 			meta: {
 				title: 'user.auth.resetPassword',
+				nonReturnable: true,
 			},
 		},
 		{
@@ -83,6 +91,7 @@ const router = createRouter({
 			component: () => import('@/views/user/PasswordReset.vue'),
 			meta: {
 				title: 'user.auth.resetPassword',
+				nonReturnable: true,
 			},
 		},
 		{
@@ -93,6 +102,7 @@ const router = createRouter({
 			component: Register,
 			meta: {
 				title: 'user.auth.createAccount',
+				nonReturnable: true,
 			},
 		},
 		{
@@ -192,6 +202,10 @@ const router = createRouter({
 					path: '/migrate/:service',
 					name: 'migrate.service',
 					component: () => import('@/views/migrate/MigrationHandler.vue'),
+					// Consumes the migration provider's one-shot OAuth code.
+					meta: {
+						nonReturnable: true,
+					},
 					props: route => ({
 						service: route.params.service as string,
 						code: route.query.code as string,
@@ -215,6 +229,9 @@ const router = createRouter({
 			// FIXME: use dynamic imports
 			// component: () => import('@/views/sharing/LinkSharingAuth.vue'),
 			component: LinkSharingAuth,
+			meta: {
+				nonReturnable: true,
+			},
 		},
 		{
 			path: '/tasks/:id',
@@ -466,11 +483,17 @@ const router = createRouter({
 			path: '/auth/openid/:provider',
 			name: 'openid.auth',
 			component: OpenIdAuth,
+			meta: {
+				nonReturnable: true,
+			},
 		},
 		{
 			path: '/oauth/authorize',
 			name: 'oauth.authorize',
 			component: () => import('@/views/user/OAuthAuthorize.vue'),
+			meta: {
+				nonReturnable: true,
+			},
 		},
 		{
 			path: '/about',
@@ -568,22 +591,25 @@ export async function getAuthForRoute(to: RouteLocation, authStore: ReturnType<t
 	// Fold the hash destination into localStorage: it's the only bridge that survives the
 	// external OIDC round-trip out of the SPA, so redirectIfSaved() works after any auth method.
 	// vue-router already decoded to.hash once, so it equals the fullPath we wrote above as-is.
+	// Deliberately not gated on `nonReturnable`: this destination is the oauth.authorize URL
+	// we redirected from a few lines up, and resuming it is the entire point of the hash.
 	if (to.hash.startsWith(REDIRECT_HASH_PREFIX)) {
 		const destination = to.hash.slice(REDIRECT_HASH_PREFIX.length)
 		const resolved = router.resolve(destination)
 		saveLastVisited(resolved.name as string, resolved.params, resolved.query)
 	}
 
-	// Check if the route the user wants to go to is a route which needs authentication. We use this to
-	// redirect the user after successful login.
-	const isValidUserAppRoute = !AUTH_ROUTE_NAMES.has(to.name as string) &&
-		localStorage.getItem('emailConfirmToken') === null
+	// Read here, not earlier: the email confirmation branch above may have just written it.
+	const hasEmailConfirmToken = localStorage.getItem('emailConfirmToken') !== null
 
-	if (isValidUserAppRoute) {
+	// Only worth restoring after login if the user can meaningfully land there again.
+	if (!to.meta?.nonReturnable && !hasEmailConfirmToken) {
 		saveLastVisited(to.name as string, to.params, to.query)
 	}
 
-	if (isValidUserAppRoute) {
+	// Which routes bounce an unauthenticated visitor to login is deliberately *not*
+	// tied to nonReturnable: a 404 or a migration callback still needs the login gate.
+	if (!AUTH_ROUTE_NAMES.has(to.name as string) && !hasEmailConfirmToken) {
 		return {name: 'user.login'}
 	}
 	
@@ -629,7 +655,9 @@ router.beforeEach(async (to, from) => {
 	}
 
 	if (to.hash.startsWith(LINK_SHARE_HASH_PREFIX) && !authStore.authLinkShare) {
-		saveLastVisited(to.name as string, to.params, to.query)
+		if (!to.meta?.nonReturnable) {
+			saveLastVisited(to.name as string, to.params, to.query)
+		}
 		return {
 			name: 'link-share.auth',
 			params: {

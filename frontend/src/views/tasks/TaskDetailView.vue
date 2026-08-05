@@ -53,19 +53,18 @@
 					v-for="p in projectStore.getAncestors(project)"
 					:key="p.id"
 				>
-					<a
-						v-if="String(router.options.history.state?.back ?? '').includes('/projects/'+p.id+'/')"
-						v-shortcut="p.id === project?.id ? 'KeyU' : ''"
-						@click="router.back()"
-					>
-						{{ getProjectTitle(p) }}
-					</a>
 					<RouterLink
-						v-else
-						v-shortcut="p.id === project?.id ? 'KeyU' : ''"
+						v-slot="{ href, navigate }"
+						custom
 						:to="{ name: 'project.index', params: { projectId: p.id } }"
 					>
-						{{ getProjectTitle(p) }}
+						<a
+							v-shortcut="p.id === project?.id ? 'KeyU' : ''"
+							:href="href"
+							@click="onBreadcrumbClick($event, p.id, navigate)"
+						>
+							{{ getProjectTitle(p) }}
+						</a>
 					</RouterLink>
 					<span
 						v-if="p.id !== project?.id"
@@ -348,7 +347,6 @@ import type {IRepeatAfter} from '@/types/IRepeatAfter'
 import {type Priority} from '@/constants/priorities'
 import {PERMISSIONS} from '@/constants/permissions'
 import {PRO_FEATURE} from '@/constants/proFeatures'
-import {AUTH_ROUTE_NAMES} from '@/constants/authRouteNames'
 
 import BaseButton from '@/components/base/BaseButton.vue'
 
@@ -439,24 +437,24 @@ const taskNotFound = ref(false)
 const taskTitle = computed(() => task.value.title)
 useTitle(taskTitle)
 
-// Going back to a one-shot auth URL re-fires it: a consumed OIDC code errors out, /login bounces straight back.
-// The 404 names are needed because the router's catch-all makes resolve() match everything - without them a
-// garbage or stale back path would classify as returnable and Back would land on the not-found page.
-const NON_RETURNABLE_ROUTE_NAMES = new Set([
-	...AUTH_ROUTE_NAMES,
-	'oauth.authorize',
-	'not-found',
-	'bad-not-found',
-])
-
-// Read at click time: history state is not reactive and this instance survives task -> task navigation.
-function goBack() {
+// Every caller resolves history state when it acts, never ahead of time: the state is not
+// reactive and this instance is reused across task -> task navigation, so anything cached
+// (a computed, a render-time branch) keeps answering for the task we were on before.
+function resolveBackRoute() {
 	const backPath = router.options.history.state?.back
-	const backRoute = typeof backPath === 'string' && backPath !== ''
+
+	return typeof backPath === 'string' && backPath !== ''
 		? router.resolve(backPath)
 		: null
+}
 
-	if (backRoute && !NON_RETURNABLE_ROUTE_NAMES.has(backRoute.name as string)) {
+// Going back to a one-shot auth URL re-fires it: a consumed OIDC code errors out, /login bounces
+// straight back. Those routes carry `meta.nonReturnable`, as do the 404s - the router's catch-all
+// makes resolve() match everything, so a garbage or stale back path lands on the not-found page.
+function goBack() {
+	const backRoute = resolveBackRoute()
+
+	if (backRoute && !backRoute.meta?.nonReturnable) {
 		router.back()
 		return
 	}
@@ -464,21 +462,33 @@ function goBack() {
 	router.push(projectRoute.value)
 }
 
-const lastProject = computed(() => {
-	const backRoute = router.options.history.state?.back
-	if (!backRoute || typeof backRoute !== 'string') {
-		return null
+function backProjectId(): IProject['id'] | null {
+	const projectId = Number(resolveBackRoute()?.params.projectId)
+
+	return Number.isNaN(projectId) || projectId === 0 ? null : projectId
+}
+
+function lastProject(): IProject | null {
+	const projectId = backProjectId()
+
+	return projectId === null
+		? null
+		: projectStore.projects[projectId] ?? null
+}
+
+// Popping the history entry keeps the previous view's scroll position and state, so prefer it
+// over pushing - but only when the entry we would pop really is a view of the project clicked.
+function onBreadcrumbClick(event: MouseEvent, projectId: IProject['id'], navigate: (event: MouseEvent) => void) {
+	const isPlainClick = !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && event.button === 0
+
+	if (isPlainClick && backProjectId() === projectId) {
+		event.preventDefault()
+		router.back()
+		return
 	}
 
-	const projectMatch = backRoute.match(/\/projects\/(-?\d+)/)
-	if (!projectMatch || !projectMatch[1]) {
-		return null
-	}
-
-	const id = parseInt(projectMatch[1])
-
-	return projectStore.projects[id] ?? null
-})
+	navigate(event)
+}
 
 // Match native OS conventions for "delete the selected item"
 const deleteShortcut = isAppleDevice() ? 'Backspace' : 'Delete'
@@ -699,8 +709,9 @@ watch(
 				task.value.isUnread = false
 			}
 
-			if (lastProject.value) {
-				await baseStore.handleSetCurrentProjectIfNotSet(lastProject.value)
+			const previousProject = lastProject()
+			if (previousProject) {
+				await baseStore.handleSetCurrentProjectIfNotSet(previousProject)
 			}
 		} catch (caughtError) {
 			const e = caughtError as HTTPErrorResponse
