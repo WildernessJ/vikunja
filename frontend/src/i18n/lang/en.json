@@ -1121,7 +1121,7 @@
       "bucketSelectLabel": "Kanban bucket: {bucket}",
       "bucketChangedSuccess": "The task bucket has been changed successfully.",
       "belongsToProject": "This task belongs to project '{project}'",
-      "back": "Back to project",
+      "goBack": "Back",
       "due": "Due {at}",
       "deadlineChip": "Deadline {at}",
       "closeTaskDetail": "Close task detail",

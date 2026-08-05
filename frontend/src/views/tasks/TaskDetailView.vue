@@ -15,10 +15,10 @@
 			<BaseButton
 				v-if="!isModal"
 				class="back-button mbs-2"
-				@click="lastProject ? router.back() : router.push(projectRoute)"
+				@click="goBack()"
 			>
 				<Icon icon="arrow-left" />
-				{{ $t('task.detail.back') }}
+				{{ $t('task.detail.goBack') }}
 			</BaseButton>
 			<Heading
 				ref="heading"
@@ -348,6 +348,7 @@ import type {IRepeatAfter} from '@/types/IRepeatAfter'
 import {type Priority} from '@/constants/priorities'
 import {PERMISSIONS} from '@/constants/permissions'
 import {PRO_FEATURE} from '@/constants/proFeatures'
+import {AUTH_ROUTE_NAMES} from '@/constants/authRouteNames'
 
 import BaseButton from '@/components/base/BaseButton.vue'
 
@@ -438,6 +439,31 @@ const taskNotFound = ref(false)
 const taskTitle = computed(() => task.value.title)
 useTitle(taskTitle)
 
+// Going back to a one-shot auth URL re-fires it: a consumed OIDC code errors out, /login bounces straight back.
+// The 404 names are needed because the router's catch-all makes resolve() match everything - without them a
+// garbage or stale back path would classify as returnable and Back would land on the not-found page.
+const NON_RETURNABLE_ROUTE_NAMES = new Set([
+	...AUTH_ROUTE_NAMES,
+	'oauth.authorize',
+	'not-found',
+	'bad-not-found',
+])
+
+// Read at click time: history state is not reactive and this instance survives task -> task navigation.
+function goBack() {
+	const backPath = router.options.history.state?.back
+	const backRoute = typeof backPath === 'string' && backPath !== ''
+		? router.resolve(backPath)
+		: null
+
+	if (backRoute && !NON_RETURNABLE_ROUTE_NAMES.has(backRoute.name as string)) {
+		router.back()
+		return
+	}
+
+	router.push(projectRoute.value)
+}
+
 const lastProject = computed(() => {
 	const backRoute = router.options.history.state?.back
 	if (!backRoute || typeof backRoute !== 'string') {
@@ -454,37 +480,35 @@ const lastProject = computed(() => {
 	return projectStore.projects[id] ?? null
 })
 
-const lastProjectOrTaskProject = computed(() => lastProject.value ?? project.value)
-
 // Match native OS conventions for "delete the selected item"
 const deleteShortcut = isAppleDevice() ? 'Backspace' : 'Delete'
 const reminderShortcut = computed(() => isAppleDevice() ? 'Shift+KeyR' : 'Alt+KeyR')
 
-onBeforeRouteLeave(async () => {
+onBeforeRouteLeave(async (to) => {
 	if (taskNotFound.value) {
 		return
 	}
 
-	if (!lastProjectOrTaskProject.value) {
-		await new Promise<void>((resolve) => {
-			const timeout = setTimeout(() => {
-				stop()
-				resolve()
-			}, 5000) // 5 second timeout
-			
-			const stop = watch(lastProjectOrTaskProject, (p) => {
-				if (p) {
-					clearTimeout(timeout)
-					stop()
-					resolve()
-				}
-			})
-		})
+	// Only pre-set the current project when we're heading into a view of that same
+	// project - setting it on the way to a non-project view would highlight a project
+	// the user never navigated to (it can't clear an already-set one; that's ContentAuth's job).
+	const toProjectId = Number(to.params.projectId)
+	if (!toProjectId) {
+		return
 	}
 
-	if (lastProjectOrTaskProject.value) {
-		await baseStore.handleSetCurrentProjectIfNotSet(lastProjectOrTaskProject.value)
+	// Source the project from the destination id, not from history state: on a back
+	// navigation vue-router swaps historyState to the destination entry before guards
+	// run, so `state.back` already points one entry further back than the destination.
+	const toProject = projectStore.projects[toProjectId]
+	if (!toProject) {
+		// Nothing to pre-set with. Waiting for the store to hydrate would stall a
+		// user-initiated navigation; ProjectView loads the project and sets it itself,
+		// so the worst case is the brief flash this pre-set exists to smooth over.
+		return
 	}
+
+	await baseStore.handleSetCurrentProjectIfNotSet(toProject)
 })
 
 // We doubled the task color property here because verte does not have a real change property, leading
