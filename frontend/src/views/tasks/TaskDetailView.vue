@@ -449,12 +449,12 @@ function resolveBackRoute() {
 }
 
 // Going back to a one-shot auth URL re-fires it: a consumed OIDC code errors out, /login bounces
-// straight back. Those routes carry `meta.nonReturnable`, as do the 404s - the router's catch-all
+// straight back. Those routes carry a `meta.returnability`, as do the 404s - the router's catch-all
 // makes resolve() match everything, so a garbage or stale back path lands on the not-found page.
 function goBack() {
 	const backRoute = resolveBackRoute()
 
-	if (backRoute && !backRoute.meta?.nonReturnable) {
+	if (backRoute && !backRoute.meta?.returnability) {
 		router.back()
 		return
 	}
@@ -482,15 +482,33 @@ function lastProject(): IProject | null {
 // activity log all carry the same projectId but would land the user somewhere else entirely.
 const PROJECT_CONTENT_ROUTE_NAMES = new Set(['project.index', 'project.view'])
 
+// Mirrors vue-router's own guardEvent: every click it declines to handle (modifier keys, a
+// non-primary button, a click an ancestor already cancelled, target="_blank") must fall through
+// to the browser here too, or we would pop history for a navigation navigate() never performs.
+function isPlainClick(event: MouseEvent) {
+	if (event.metaKey || event.altKey || event.ctrlKey || event.shiftKey) {
+		return false
+	}
+	if (event.defaultPrevented) {
+		return false
+	}
+	if (event.button !== undefined && event.button !== 0) {
+		return false
+	}
+
+	const target = (event.currentTarget as Element | null)?.getAttribute?.('target')
+
+	return !/\b_blank\b/i.test(target ?? '')
+}
+
 // Popping the history entry keeps the previous view's scroll position and state, so prefer it
 // over pushing whenever it is equivalent to following the link.
 function onBreadcrumbClick(event: MouseEvent, projectId: IProject['id'], navigate: (event: MouseEvent) => void) {
-	const isPlainClick = !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && event.button === 0
 	const backRoute = resolveBackRoute()
 	const popIsEquivalent = PROJECT_CONTENT_ROUTE_NAMES.has(backRoute?.name as string)
 		&& projectIdOf(backRoute) === projectId
 
-	if (isPlainClick && popIsEquivalent) {
+	if (isPlainClick(event) && popIsEquivalent) {
 		event.preventDefault()
 		router.back()
 		return

@@ -55,7 +55,7 @@ const router = createRouter({
 			name: 'not-found',
 			component: NotFoundComponent,
 			meta: {
-				nonReturnable: true,
+				returnability: 'no',
 			},
 		},
 		// if you omit the last `*`, the `/` character in params will be encoded when resolving or pushing
@@ -64,7 +64,7 @@ const router = createRouter({
 			name: 'bad-not-found',
 			component: NotFoundComponent,
 			meta: {
-				nonReturnable: true,
+				returnability: 'no',
 			},
 		},
 		{
@@ -73,7 +73,7 @@ const router = createRouter({
 			component: Login,
 			meta: {
 				title: 'user.auth.login',
-				nonReturnable: true,
+				returnability: 'no',
 			},
 		},
 		{
@@ -82,7 +82,7 @@ const router = createRouter({
 			component: () => import('@/views/user/RequestPasswordReset.vue'),
 			meta: {
 				title: 'user.auth.resetPassword',
-				nonReturnable: true,
+				returnability: 'no',
 			},
 		},
 		{
@@ -91,7 +91,7 @@ const router = createRouter({
 			component: () => import('@/views/user/PasswordReset.vue'),
 			meta: {
 				title: 'user.auth.resetPassword',
-				nonReturnable: true,
+				returnability: 'no',
 			},
 		},
 		{
@@ -102,7 +102,7 @@ const router = createRouter({
 			component: Register,
 			meta: {
 				title: 'user.auth.createAccount',
-				nonReturnable: true,
+				returnability: 'no',
 			},
 		},
 		{
@@ -207,8 +207,7 @@ const router = createRouter({
 					// case - the session expired mid provider round-trip, so the code we'd land on is
 					// the fresh one the provider just handed us and nothing has consumed it yet.
 					meta: {
-						nonReturnable: true,
-						restoreAfterLogin: true,
+						returnability: 'no-but-restore',
 					},
 					props: route => ({
 						service: route.params.service as string,
@@ -234,7 +233,7 @@ const router = createRouter({
 			// component: () => import('@/views/sharing/LinkSharingAuth.vue'),
 			component: LinkSharingAuth,
 			meta: {
-				nonReturnable: true,
+				returnability: 'no',
 			},
 		},
 		{
@@ -488,7 +487,7 @@ const router = createRouter({
 			name: 'openid.auth',
 			component: OpenIdAuth,
 			meta: {
-				nonReturnable: true,
+				returnability: 'no',
 			},
 		},
 		{
@@ -496,7 +495,7 @@ const router = createRouter({
 			name: 'oauth.authorize',
 			component: () => import('@/views/user/OAuthAuthorize.vue'),
 			meta: {
-				nonReturnable: true,
+				returnability: 'no',
 			},
 		},
 		{
@@ -552,19 +551,24 @@ function resolveRedirectHash(hash: string) {
 
 	// vue-router already decoded the hash once, so slicing off the prefix yields the original
 	// fullPath (e.g. /oauth/authorize?...) losslessly — no extra decodeURIComponent needed.
-	const destination = hash.slice(REDIRECT_HASH_PREFIX.length)
-	const resolved = router.resolve(destination)
+	const resolved = router.resolve(hash.slice(REDIRECT_HASH_PREFIX.length))
 
-	return resolved.name === 'oauth.authorize'
-		? {destination, resolved}
-		: null
+	// A `%23` in the URL decodes into a literal `#` here, so a destination that passes the name
+	// check can still smuggle a second hash - a link share token there would authenticate the
+	// victim into the attacker's share on arrival. We never write one, so reject it outright.
+	if (resolved.name !== 'oauth.authorize' || resolved.hash !== '') {
+		return null
+	}
+
+	// Rebuilt from the inspected fields rather than passed through as the raw destination string:
+	// nothing this function did not look at can ride along into the navigation. The explicit empty
+	// hash overrides the `to.hash` that beforeEach otherwise re-attaches (the redirect hash itself,
+	// which would put us straight back here). oauth.authorize is a static path, so it has no params.
+	return {name: 'oauth.authorize' as const, query: resolved.query, hash: ''}
 }
 
-// `restoreAfterLogin` overrides `nonReturnable`, which is otherwise the same question asked twice:
-// the migration callback must never be re-entered by the back button yet has to survive a session
-// that expires mid provider round-trip.
 function shouldSaveAsLastVisited(to: Pick<RouteLocation, 'meta'>) {
-	return !to.meta?.nonReturnable || to.meta?.restoreAfterLogin === true
+	return to.meta?.returnability !== 'no'
 }
 
 export async function getAuthForRoute(to: RouteLocation, authStore: ReturnType<typeof useAuthStore>) {
@@ -575,7 +579,7 @@ export async function getAuthForRoute(to: RouteLocation, authStore: ReturnType<t
 		// must run the OAuth flow with its existing session instead of short-circuiting to home.
 		// The destination has no redirect hash, so the second guard pass just early-returns (#2654).
 		if (to.name === 'user.login' && redirect) {
-			return redirect.destination
+			return redirect
 		}
 		return
 	}
@@ -616,22 +620,26 @@ export async function getAuthForRoute(to: RouteLocation, authStore: ReturnType<t
 
 	// Fold the hash destination into localStorage: it's the only bridge that survives the
 	// external OIDC round-trip out of the SPA, so redirectIfSaved() works after any auth method.
-	// Deliberately not gated on `nonReturnable`: resuming oauth.authorize is the entire point
-	// of the hash, and resolveRedirectHash() already rejects every other destination.
-	if (redirect) {
-		saveLastVisited(redirect.resolved.name as string, redirect.resolved.params, redirect.resolved.query)
+	// Deliberately not gated on `returnability`: resuming oauth.authorize is the entire point
+	// of the hash, and resolveRedirectHash() already rejects every other destination. Only on
+	// /login, the one route we ever write the hash onto - honouring it elsewhere would let any
+	// URL seed the post-login destination.
+	if (to.name === 'user.login' && redirect) {
+		saveLastVisited(redirect.name, {}, redirect.query)
 	}
 
 	// Read here, not earlier: the email confirmation branch above may have just written it.
 	const hasEmailConfirmToken = localStorage.getItem('emailConfirmToken') !== null
 
-	// Only worth restoring after login if the user can meaningfully land there again.
+	// Only worth restoring after login if the user can meaningfully land there again. Runs after
+	// the redirect-hash save and overwrites it, which is what we want everywhere it fires: /login
+	// itself is `returnability: 'no'`, so the hash destination survives exactly there.
 	if (shouldSaveAsLastVisited(to) && !hasEmailConfirmToken) {
 		saveLastVisited(to.name as string, to.params, to.query)
 	}
 
 	// Which routes bounce an unauthenticated visitor to login is deliberately *not*
-	// tied to nonReturnable: a 404 or a migration callback still needs the login gate.
+	// tied to returnability: a 404 or a migration callback still needs the login gate.
 	if (!AUTH_ROUTE_NAMES.has(to.name as string) && !hasEmailConfirmToken) {
 		return {name: 'user.login'}
 	}
@@ -691,12 +699,9 @@ router.beforeEach(async (to, from) => {
 
 	const newRoute = await getAuthForRoute(to, authStore)
 	if(newRoute) {
-		// A string target (the decoded redirect destination for an authed browser) already
-		// carries its own query/path and no redirect hash, so navigate to it verbatim — don't
-		// re-attach to.hash or it would re-enter the redirect loop.
-		if (typeof newRoute === 'string') {
-			return newRoute
-		}
+		// Carrying to.hash across keeps a link share token attached over the login bounce. A
+		// target that must not inherit it — the redirect destination, which would re-enter the
+		// redirect loop — sets its own hash, and the spread lets that win.
 		return {
 			hash: to.hash,
 			...newRoute,

@@ -3,19 +3,17 @@ import 'vue-router'
 declare module 'vue-router' {
 	interface RouteMeta {
 		/**
-		 * Routes a user must never be sent back to or restored onto: one-shot auth
-		 * URLs re-fire their already-consumed code, and the 404 pages are only ever
-		 * reached by accident. Read by the task detail back button and by the auth
-		 * guard when it stores the last visited route.
+		 * Whether a user may be sent to this route without asking for it. Absent
+		 * means yes; both other values exclude it from the task detail back button,
+		 * and differ only in what the auth guard stores as the last visited route:
+		 *
+		 * - `'no'` - never: one-shot auth URLs re-fire their already-consumed code,
+		 *   and the 404 pages are only ever reached by accident.
+		 * - `'no-but-restore'` - still restored after a login that interrupted it,
+		 *   because the code we would land on then is a fresh, unconsumed one. Only
+		 *   the migration callback needs this - see its route.
 		 */
-		nonReturnable?: boolean
-
-		/**
-		 * Overrides `nonReturnable` for the last-visited store only: the route stays
-		 * unreachable by the back button but is still restored after a login that
-		 * interrupted it. Only the migration callback needs this - see its route.
-		 */
-		restoreAfterLogin?: boolean
+		returnability?: 'no' | 'no-but-restore'
 
 		/**
 		 * i18n key for the page title, rendered by AppHeader and NoAuthWrapper.

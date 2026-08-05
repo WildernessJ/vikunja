@@ -14,7 +14,7 @@ function resolve(path: string) {
 	return router.resolve(path) as unknown as RouteLocation
 }
 
-describe('nonReturnable route meta', () => {
+describe('returnability route meta', () => {
 	it.each([
 		'/login',
 		'/register',
@@ -23,10 +23,14 @@ describe('nonReturnable route meta', () => {
 		'/share/abc123/auth',
 		'/auth/openid/gitlab',
 		'/oauth/authorize',
-		'/migrate/trello',
 		'/some-garbage-path',
 	])('flags %s', path => {
-		expect(resolve(path).meta.nonReturnable).toBe(true)
+		expect(resolve(path).meta.returnability).toBe('no')
+	})
+
+	// The one route excluded from the back button yet still restored after login.
+	it('flags /migrate/trello as restorable', () => {
+		expect(resolve('/migrate/trello').meta.returnability).toBe('no-but-restore')
 	})
 
 	it.each([
@@ -38,7 +42,7 @@ describe('nonReturnable route meta', () => {
 		'/user/settings/migrate',
 		'/migrate/csv',
 	])('does not flag %s', path => {
-		expect(resolve(path).meta.nonReturnable).toBeUndefined()
+		expect(resolve(path).meta.returnability).toBeUndefined()
 	})
 
 	// A route can drop out of AUTH_ROUTE_NAMES' twin set only by hand, and the failure is
@@ -49,7 +53,7 @@ describe('nonReturnable route meta', () => {
 
 		expect(authRoutes).toHaveLength(AUTH_ROUTE_NAMES.size)
 		authRoutes.forEach(route => {
-			expect(route.meta.nonReturnable, `${String(route.name)} is missing meta.nonReturnable`).toBe(true)
+			expect(route.meta.returnability, `${String(route.name)} is missing meta.returnability`).toBe('no')
 		})
 	})
 })
@@ -72,7 +76,7 @@ describe('getAuthForRoute', () => {
 		expect(getLastVisited()).toBeNull()
 	})
 
-	// nonReturnable keeps the back button off the migration callback, whose code is spent by
+	// `returnability` keeps the back button off the migration callback, whose code is spent by
 	// then - but a session expiring mid provider round-trip must still resume it, because the
 	// code we bounced away from was never consumed.
 	it('saves the migration callback so an expired session resumes it after login', async () => {
@@ -104,7 +108,7 @@ describe('getAuthForRoute', () => {
 		expect(await getAuthForRoute(resolve(path), ANONYMOUS)).toBeUndefined()
 	})
 
-	// The OAuth destination is nonReturnable for the back button, but its whole
+	// The OAuth destination is off limits to the back button, but its whole
 	// point here is to survive the login round-trip in localStorage (#2654).
 	it('still saves the oauth destination carried in the login redirect hash', async () => {
 		await getAuthForRoute(resolve('/login#redirect=/oauth/authorize?client_id=1'), ANONYMOUS)
@@ -123,10 +127,33 @@ describe('getAuthForRoute', () => {
 		expect(getLastVisited()).toBeNull()
 	})
 
+	// A location object, not the raw destination string: only the fields checked here survive into
+	// the navigation. The empty hash is load-bearing - beforeEach re-attaches `to.hash` to whatever
+	// this returns unless the target names its own, which would carry the redirect hash right back.
 	it('navigates an authenticated visitor to the oauth destination in the redirect hash', async () => {
 		const target = await getAuthForRoute(resolve('/login#redirect=/oauth/authorize?client_id=1'), AUTHENTICATED)
 
-		expect(target).toBe('/oauth/authorize?client_id=1')
+		expect(target).toEqual({name: 'oauth.authorize', query: {client_id: '1'}, hash: ''})
+	})
+
+	// `%23` in the redirect hash decodes to a literal `#`, so the destination can smuggle a second
+	// hash past the name check - a link share token there hijacks the victim's session on arrival.
+	it.each([
+		['anonymous', ANONYMOUS],
+		['authenticated', AUTHENTICATED],
+	] as const)('rejects a redirect hash whose destination carries a nested hash (%s)', async (_who, authStore) => {
+		const target = await getAuthForRoute(resolve('/login#redirect=/oauth/authorize%23share-auth-token=EVIL'), authStore)
+
+		expect(getLastVisited()).toBeNull()
+		expect(target).toBeUndefined()
+	})
+
+	// The redirect hash is only ever written onto /login, so honouring it anywhere else lets any
+	// URL - a 404 included - seed the post-login destination with attacker-authored query params.
+	it('does not save a redirect hash carried by a route other than login', async () => {
+		await getAuthForRoute(resolve('/some-garbage-path#redirect=/oauth/authorize?client_id=attacker'), ANONYMOUS)
+
+		expect(getLastVisited()).toBeNull()
 	})
 
 	// Without the restriction this is a zero-interaction redirect: an already-signed-in browser

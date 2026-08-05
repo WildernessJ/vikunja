@@ -7,6 +7,7 @@ import {createI18n} from 'vue-i18n'
 import en from '@/i18n/lang/en.json'
 
 import {PERMISSIONS} from '@/constants/permissions'
+import {LINK_SHARE_HASH_PREFIX} from '@/constants/linkShareHash'
 
 // Regression for F-C: the hidden field-open shortcut buttons (KeyL/P/C/A/M,
 // reminders, KeyF/KeyR) used to render unconditionally, so v-shortcut could
@@ -97,9 +98,9 @@ const CHILD_STUBS = {
 
 // Only the routes these tests navigate through, plus the two catch-alls - the real
 // router's `/:pathMatch(.*)*` means `router.resolve()` never returns an unmatched
-// route, so a garbage back path has to carry the same `nonReturnable` flag it does
-// in the app. Which real routes carry that flag is covered in `src/router/index.test.ts`.
-const NON_RETURNABLE = {nonReturnable: true}
+// route, so a garbage back path has to carry the same `returnability` it does in the
+// app. Which real routes carry it is covered in `src/router/index.test.ts`.
+const NON_RETURNABLE = {returnability: 'no'} as const
 
 const CATCH_ALL_ROUTES = [
 	{path: '/:pathMatch(.*)*', name: 'not-found', component: {render: () => null}, meta: NON_RETURNABLE},
@@ -464,8 +465,25 @@ describe('TaskDetailView breadcrumb', () => {
 	// Link share JWTs live in memory only, so a crumb opened in a new tab without the hash
 	// dead-ends at /login.
 	it('keeps the link share hash on the link', async () => {
-		const {wrapper} = await mountInRouterView(['/projects/1/10', '/tasks/1#share=abc123'], [1])
+		const hash = `${LINK_SHARE_HASH_PREFIX}abc123`
+		const {wrapper} = await mountInRouterView(['/projects/1/10', `/tasks/1${hash}`], [1])
 
-		expect(wrapper.find(BREADCRUMB_LINK).attributes('href')).toBe('/projects/1#share=abc123')
+		expect(wrapper.find(BREADCRUMB_LINK).attributes('href')).toBe(`/projects/1${hash}`)
+	})
+
+	// vue-router's own guardEvent treats a cancelled click as "not ours", so navigate() no-ops -
+	// popping history on the same event would navigate a click the page already called off.
+	it('does not go back when an ancestor already cancelled the click', async () => {
+		const {wrapper, router} = await mountInRouterView(['/projects/1/10', '/tasks/1'], [1])
+		const {back, push} = spyOnNavigation(router)
+		const link = wrapper.find(BREADCRUMB_LINK)
+		// Capture phase on an ancestor, so it runs before the crumb's own handler - a listener on
+		// the anchor itself would be queued behind the one Vue bound there first.
+		link.element.parentElement?.addEventListener('click', event => event.preventDefault(), true)
+
+		await link.trigger('click')
+
+		expect(back).not.toHaveBeenCalled()
+		expect(push).not.toHaveBeenCalled()
 	})
 })
