@@ -306,44 +306,26 @@ The license system in `pkg/license/` funds Vikunja's ongoing development. Vikunj
 
 ## Workflow (v3 — model-per-phase, adopted 2026-08-09; v2 2026-07-09 before it)
 
-Follows the global **Coding Workflow (v3)** section in `~/.claude/CLAUDE.md`, driven by
-`/flow`: **one change, three phases, three sessions** — plan and review on the judgment
-model (default Fable), execute on the volume model (default Opus). Models are defaults,
-not mandates. What is fixed is **phase discipline** (convention, not enforced — nothing
-can read the session model): plan and review never implement, review runs in a **fresh**
-session, build never merges.
+The doctrine itself is one canonical doc in `jason-claude-skills`, imported below.
+`docs/coding-workflow.md` is a **gitignored symlink** created by that repo's `install.sh` — so in
+a fresh clone of this public fork the import silently resolves to nothing, which is fine: it
+carries no repo-specific instruction. Edit doctrine there, never here.
+
+@./docs/coding-workflow.md
+
+Repo-specific deviations and config only, from here down.
 
 Per-repo config is `.workflow.yaml` at repo root (local-only, git-excluded): mage-based
 build/test commands (plain `go test` does NOT work — see Essential Commands), frontend
 typecheck, `live_verify_mode: browser`, and the `pending_verify` key the Stop hook
 enforces.
 
-- **Plan** (`/flow start`) — sitrep → worktree → settle design → write the spec → light
-  checkpoint. Ends at the spec, no implementation. `mage dev:prepare-worktree <name> ""`
-  still works and creates the worktree in `../` rather than `.worktrees/`; either is fine,
-  but **all `flowlib` run-state commands must run from the worktree root** —
-  `.workflow-run.json` is cwd-relative and both build and review must read the same file.
-- **Execute** (`/flow build`) — arm `pending_verify: <slug>` in the MAIN checkout's
-  `.workflow.yaml` **first, before implementing**, so a dead session can't end silently →
-  build strictly from the spec with `/tdd`, dispatching per its Execution routing →
-  `mage test:web` + `pnpm typecheck` green → commit the whole change. Ambiguity or a stop
-  criterion → append it to the spec's Execution Log and **halt**.
-- **Review** (`/flow review`, fresh session) — dispatch the `verifier` agent on the full
-  committed diff plus a spec-conformance check, filter the report, then the session's own
-  judgment pass → `/session-audit` → live-verify in the browser → merge → clear
-  `pending_verify` → full `/checkpoint`. `/code-review` is Jason's to fire by choice:
-  Claude cannot invoke it and must never ask him to run it.
-
-**Floor:** trivial changes (a one-liner, a small bugfix) skip the cycle — fix in session
-with a repro test; the GitHub issue is the spec.
-
-**Specs changed shape in v3.** A v3 spec is `specs/<slug>.md`, committed on the feature
-branch, with all eight sections — Intent · Design ·
-Implementation plan (files, seams, signatures, edge cases) · Execution routing · Tests
-(red-first list) · Verification (exact commands, done-looks-like) · Stop criteria ·
-Execution Log — required for anything above the floor. v2's "short spec ONLY for a real
-feature, no fat specs" is retired: the spec is now the single artifact the execute session
-works from.
+- **Worktrees:** `mage dev:prepare-worktree <name> ""` still works and creates the worktree in
+  `../` rather than `.worktrees/`; either is fine, but **all `flowlib` run-state commands must
+  run from the worktree root** — `.workflow-run.json` is cwd-relative and both build and review
+  must read the same file.
+- **Suite:** `mage test:web` + `pnpm typecheck` (plain `go test` does NOT work — see Essential
+  Commands). Live-verify is in the browser.
 
 `specs/` was excluded via `.git/info/exclude` until 2026-08-09, grouped with the harness
 run-state files. It is now tracked — v3 needs the spec in the reviewed diff and in the
