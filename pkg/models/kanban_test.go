@@ -288,6 +288,33 @@ func TestBucket_Delete(t *testing.T) {
 	})
 }
 
+func TestBucket_CanDoBucket(t *testing.T) {
+	u := &user.User{ID: 1}
+
+	t.Run("bucket in the url's view", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		b := &Bucket{ID: 1, ProjectID: 1, ProjectViewID: 4}
+		can, err := b.canDoBucket(s, u)
+		require.NoError(t, err)
+		assert.True(t, can)
+	})
+	t.Run("bucket of another view of the same project", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		// Bucket 1 belongs to view 4; the URL names view 1 of the same project
+		b := &Bucket{ID: 1, ProjectID: 1, ProjectViewID: 1}
+		can, err := b.canDoBucket(s, u)
+		require.Error(t, err)
+		assert.True(t, IsErrBucketDoesNotExist(err))
+		assert.False(t, can)
+	})
+}
+
 func TestBucket_Update(t *testing.T) {
 
 	testAndAssertBucketUpdate := func(t *testing.T, b *Bucket, s *xorm.Session) {
@@ -331,5 +358,34 @@ func TestBucket_Update(t *testing.T) {
 		}
 
 		testAndAssertBucketUpdate(t, b, s)
+	})
+	t.Run("does not persist project_view_id", func(t *testing.T) {
+		// GHSA-569v-q83c-3j3g: mass-assigning project_view_id relocated a
+		// bucket into another tenant's view. canDoBucket now rejects a
+		// mismatch up front, but Update's column allow-list is the inner
+		// defense layer and needs its own pressure — this calls Update
+		// directly, bypassing the permission check.
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		b := &Bucket{
+			ID:            1,
+			Title:         "testbucket1",
+			ProjectViewID: 80,
+		}
+		err := b.Update(s, &user.User{ID: 1})
+		require.NoError(t, err)
+		err = s.Commit()
+		require.NoError(t, err)
+
+		db.AssertExists(t, "buckets", map[string]interface{}{
+			"id":              1,
+			"project_view_id": 4,
+		}, false)
+		db.AssertMissing(t, "buckets", map[string]interface{}{
+			"id":              1,
+			"project_view_id": 80,
+		})
 	})
 }

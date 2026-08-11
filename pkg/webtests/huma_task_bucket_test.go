@@ -108,12 +108,12 @@ func TestTaskBucketV2(t *testing.T) {
 		require.NoError(t, err)
 		token := humaTokenFor(t, &testuser1)
 
-		// Bucket 4 lives on view 8 (project 2), so under view 4 / project 1 the
-		// permission check resolves the bucket's own view scoped by the path
-		// project and finds none → 404 before the move's own 400 can fire.
+		// Bucket 4 lives on view 8 (project 2); canDoBucket rejects a bucket
+		// whose real view differs from the URL's → 404 before the move's own
+		// 400 can fire.
 		rec := humaRequest(t, e, http.MethodPut, fmt.Sprintf(path, 4), `{"task_id":1}`, token, "")
 		require.Equal(t, http.StatusNotFound, rec.Code, "body: %s", rec.Body.String())
-		assert.Contains(t, rec.Body.String(), fmt.Sprintf(`"code":%d`, models.ErrCodeProjectViewDoesNotExist))
+		assert.Contains(t, rec.Body.String(), fmt.Sprintf(`"code":%d`, models.ErrCodeBucketDoesNotExist))
 	})
 
 	t.Run("task from a foreign project is forbidden", func(t *testing.T) {

@@ -48,6 +48,11 @@ func (b *Bucket) canDoBucket(s *xorm.Session, a web.Auth) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	// The URL's view must match the bucket's real view — otherwise same-project
+	// cross-view ops corrupt task_buckets and bypass the last-bucket guard.
+	if bb.ProjectViewID != b.ProjectViewID {
+		return false, ErrBucketDoesNotExist{BucketID: b.ID}
+	}
 	pv, err := GetProjectViewByIDAndProject(s, bb.ProjectViewID, b.ProjectID)
 	if err != nil {
 		return false, err
