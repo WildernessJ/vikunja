@@ -156,3 +156,62 @@ a follow-up — not a build-phase call.
 (16 pre-existing warnings) · `pnpm test:unit` **1611 passed / 98 files** (union baseline was
 1609) · `pnpm typecheck:ratchet` reports only the already-open `src/services/task.test.ts: 0 → 4`
 regression carried in from the 2026-08-02 sync — not made worse by this merge.
+
+## Review verdict (2026-08-11) — DO NOT MERGE, hand back to build
+
+Verifier + security agents (both Opus) on the full `main...` diff. The merge is
+well-executed — every fork delta survived, the test union is byte-exact, the link-share
+security batch landed intact with upstream's tests running (not skipped), suite counts
+reproduced. But there is a confirmed BLOCKER regression plus a same-invariant-class second
+finding, which under the v3 fix-loop rule is a hand-back-to-build trigger, not a
+review-session fix.
+
+**Blocks merge (merge-caused):**
+
+1. **BLOCKER — fork `default != done` bucket invariant regresses.** The relocated
+   `checkBucketConfiguration` runs before `Update`, but `syncManualKanbanBuckets` →
+   `healBucketIDs` (`pkg/models/project_view.go:744,781`) then writes recomputed
+   `default_bucket_id`/`done_bucket_id` with NO re-check. On a list→kanban switch
+   (`ViewEditForm.vue:97` now auto-forces manual mode = the `becameManualKanban` branch),
+   when one bucket survives and it is the done bucket, `getDefaultBucketID` returns that same
+   bucket → `default == done` persists. Verified by running: pre-merge `main` persists 0/0,
+   this merge persists 3/3 on identical input. UI-reachable, no test covers it (upstream's
+   round-trip test uses a distinct stored pair and passes). The Execution Log's "invariant
+   is not weakened" claim is false — it reasoned about `resolveBucketIDs` vs the raw request
+   and did not account for the post-`Update` heal write.
+   Fix: re-check after heal/seed, or make `getDefaultBucketID` skip the done bucket; add the
+   regression test (repro above is the spec).
+
+2. **MINOR, same invariant class — migration `20260802162816`** can itself persist
+   `default == done` on odd legacy data (`:129-140,165-171`: `targetBucket` defaults to
+   `buckets[0]` by position, then both id columns are written). Same guard needed. Being a
+   second finding in the invariant's class is what makes this a build hand-back, not an
+   in-session patch.
+
+**Out of scope for this sync — pre-existing upstream v2 code, NOT in this diff — file as
+issues:**
+
+3. **MEDIUM — `GET /api/v2/projects/{project}/users/search` is an email oracle for
+   link-share tokens** (`pkg/routes/api/v2/user_search.go:99` uses
+   `GetUserOrLinkShareUser`; fuzzy match, no discoverability check). Attacker with only the
+   public share URL reconstructs every shared-project member's email. Verified with real
+   read + write shares. The v1 equivalent returns 401 — **this merge is what closed v1**, so
+   v1/v2 now disagree and prod runs v2. Fix: reject `*models.LinkSharing` (swap to
+   `user.GetFromAuth`).
+
+4. **LOW–MEDIUM — `GET /api/v2/users?q=` is an instance-wide username oracle for link-share
+   tokens** (`user_search.go:69`; emails blanked here). Same root cause and fix.
+
+**Owed at eventual merge (deliver-phase, spec Verification items):** FORK-CHANGES.md sync
+entry (prior-sync convention), desktop v0.1.19 (bundle changed), and a recorded decision on
+the vendored raw-SQL `insertTaskBuckets` (not injectable per security agent; violates the
+no-raw-SQL rule — accept-as-vendored or ADR).
+
+**Structural notes (no gap today):** create-path `checkBucketConfiguration` is now vestigial
+(guards a 400, not an invariant, since `createProjectView` zeroes both ids);
+`ProjectDuplicate.CanCreate` refuses link shares only 4 frames deep (fails closed);
+`handler.DoReadAll` runs no permission check so every `ReadAll` must self-guard (all 23 do —
+convention unenforced, `crudable` skill silent on it); `mage check:yaegi-symbols` red on both
+branches (pre-existing, CI auto-regenerates, leaves tree dirty when run locally).
+
+`pending_verify` left ARMED — nothing merged, nothing delivered.
