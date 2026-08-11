@@ -19,6 +19,8 @@
       "Bash(mage test:filter:*)",
       "Bash(pnpm lint:*)",
       "Bash(pnpm lint:fix:*)",
+      "Bash(pnpm run dist)",
+      "Bash(pnpm run dist:*)",
       "Bash(pnpm test:e2e:*)",
       "mcp__playwright__browser_click",
       "mcp__playwright__browser_close",
