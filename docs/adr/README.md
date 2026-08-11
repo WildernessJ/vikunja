@@ -43,10 +43,11 @@ history lives in `../context/RUN_LOG.md`. Upstream's own decisions don't need AD
 | [ADR-0008](ADR-0008-reminder-magic-trailing-only.md) | Reminder `~` magic-text tokens parse only from the trailing run | Enacted | 2026-07-23 | ADR-0002, ADR-0007 |
 | [ADR-0009](ADR-0009-detail-title-autocomplete-accept-only.md) | Task-detail title parses magic-text on autocomplete-accept only (4 prefix tokens) | Enacted | 2026-07-23 | ADR-0002, ADR-0008 |
 | [ADR-0010](ADR-0010-ios-badge-web-push-badges-only.md) | iOS badge via standard Web Push with visible notifications; badge-only UX from device Settings | Implemented (2026-08-02) | 2026-07-27 | ADR-0001 |
+| [ADR-0011](ADR-0011-route-meta-returnability.md) | "Can the user be sent back here?" declared on the route as one three-valued `meta.returnability` field | Enacted | 2026-08-05 | ADR-0001 |
 
 ## How to add a new ADR
 
-1. **Pick the next number** (never reused, even if an ADR is later superseded) — next is **0011**.
+1. **Pick the next number** (never reused, even if an ADR is later superseded) — next is **0012**.
 2. **Copy [`ADR-TEMPLATE.md`](ADR-TEMPLATE.md)** to `ADR-NNNN-<short-slug>.md`; fill in front matter + body (MADR).
 3. If it **supersedes** an existing ADR, set `supersedes:` here and `superseded-by:` + `status:` on the old one.
 4. **Add a row above** and link it from `../context/PROJECT_STATE.md` → References.
