@@ -315,6 +315,39 @@ func TestBucket_CanDoBucket(t *testing.T) {
 	})
 }
 
+func TestGetDefaultBucketID(t *testing.T) {
+	t.Run("live stored default", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		id, err := getDefaultBucketID(s, &ProjectView{ID: 4, DefaultBucketID: 1})
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), id)
+	})
+	t.Run("stale default falls back to the leftmost bucket", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		// A kanban→list kind switch drops the default-clearing write, so a
+		// nonzero default can point at a bucket that no longer exists
+		id, err := getDefaultBucketID(s, &ProjectView{ID: 4, DefaultBucketID: 9999})
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), id)
+	})
+	t.Run("default pointing at another view's bucket falls back", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		// Bucket 4 exists but belongs to view 8, not view 4
+		id, err := getDefaultBucketID(s, &ProjectView{ID: 4, DefaultBucketID: 4})
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), id)
+	})
+}
+
 func TestBucket_Update(t *testing.T) {
 
 	testAndAssertBucketUpdate := func(t *testing.T, b *Bucket, s *xorm.Session) {
