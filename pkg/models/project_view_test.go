@@ -687,3 +687,78 @@ func TestProjectView_DefaultEqualsDoneBucketValidation(t *testing.T) {
 		require.NoError(t, err)
 	})
 }
+
+// TestProjectView_HealKeepsDefaultDistinctFromDone guards the fork invariant that a
+// persisted view never has a nonzero default_bucket_id equal to its done_bucket_id
+// (issue #26) through the list->kanban heal path. checkBucketConfiguration runs before
+// the write, but healBucketIDs then recomputes both ids and persists them without a
+// re-check (review finding 1).
+func TestProjectView_HealKeepsDefaultDistinctFromDone(t *testing.T) {
+	u := &user.User{ID: 1}
+
+	assertDefaultNotDone := func(t *testing.T) {
+		t.Helper()
+		s := db.NewSession()
+		defer s.Close()
+		reloaded, err := GetProjectViewByIDAndProject(s, 4, 1)
+		require.NoError(t, err)
+		assert.False(t, reloaded.DefaultBucketID != 0 && reloaded.DefaultBucketID == reloaded.DoneBucketID,
+			"persisted view must never have a nonzero default_bucket_id equal to done_bucket_id (issue #26), got default=%d done=%d",
+			reloaded.DefaultBucketID, reloaded.DoneBucketID)
+		assert.EqualValues(t, 3, reloaded.DoneBucketID, "the done bucket is load-bearing and must be preserved")
+	}
+
+	t.Run("only the done bucket survives a delete then list to kanban round-trip", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		// View 4 has buckets 1 (default), 2, and 3 (done). Drop the default and the
+		// middle bucket so only the done bucket is left.
+		require.NoError(t, (&Bucket{ID: 1, ProjectViewID: 4, ProjectID: 1}).Delete(s, u))
+		require.NoError(t, (&Bucket{ID: 2, ProjectViewID: 4, ProjectID: 1}).Delete(s, u))
+
+		require.NoError(t, (&ProjectView{ID: 4, ProjectID: 1, Title: "Kanban", ViewKind: ProjectViewKindList}).Update(s, u))
+
+		// Client echoes both ids as 0 - heal picks the sole (done) bucket as default.
+		require.NoError(t, (&ProjectView{
+			ID:                      4,
+			ProjectID:               1,
+			Title:                   "Kanban",
+			ViewKind:                ProjectViewKindKanban,
+			BucketConfigurationMode: BucketConfigurationModeNone,
+		}).Update(s, u))
+		require.NoError(t, s.Commit())
+
+		assertDefaultNotDone(t)
+
+		// Clearing the default must not leave tasks placed in a bucket id of 0.
+		s2 := db.NewSession()
+		defer s2.Close()
+		orphaned, err := s2.Where("project_view_id = ? AND bucket_id = ?", 4, 0).Count(&TaskBucket{})
+		require.NoError(t, err)
+		assert.Zero(t, orphaned, "healed tasks must land in a real bucket, not bucket 0")
+	})
+
+	t.Run("client sends default equal to the stored done bucket", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		require.NoError(t, (&ProjectView{ID: 4, ProjectID: 1, Title: "Kanban", ViewKind: ProjectViewKindList}).Update(s, u))
+
+		// Bucket 3 is the stored done bucket; sending it as the default resolves done
+		// back to 3 during heal, so both ids collide unless the heal normalizes them.
+		require.NoError(t, (&ProjectView{
+			ID:                      4,
+			ProjectID:               1,
+			Title:                   "Kanban",
+			ViewKind:                ProjectViewKindKanban,
+			BucketConfigurationMode: BucketConfigurationModeNone,
+			DefaultBucketID:         3,
+		}).Update(s, u))
+		require.NoError(t, s.Commit())
+
+		assertDefaultNotDone(t)
+	})
+}

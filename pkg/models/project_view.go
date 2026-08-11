@@ -749,8 +749,14 @@ func syncManualKanbanBuckets(s *xorm.Session, a web.Auth, pv, oldView *ProjectVi
 		return
 	}
 
-	// Tasks created while the view was not a kanban view are not in any bucket yet
-	added, err := addTasksToView(s, pv, pv.DefaultBucketID)
+	// Tasks created while the view was not a kanban view are not in any bucket yet.
+	// healBucketIDs may have cleared DefaultBucketID to 0 (default==done collision),
+	// so resolve the concrete placement bucket rather than inserting task_buckets at 0.
+	placementBucketID, err := getDefaultBucketID(s, pv)
+	if err != nil {
+		return err
+	}
+	added, err := addTasksToView(s, pv, placementBucketID)
 	if err != nil || added == 0 {
 		return err
 	}
@@ -778,6 +784,14 @@ func healBucketIDs(s *xorm.Session, pv, oldView *ProjectView) (err error) {
 		if err != nil {
 			return
 		}
+	}
+
+	// Heal must produce a valid config, not reject: a persisted nonzero default==done
+	// reopens the repeating-task bucket-limit bypass (issue #26, review finding 1).
+	// Done semantics are load-bearing, so drop the default - runtime falls back to the
+	// leftmost bucket via getDefaultBucketID.
+	if pv.DefaultBucketID != 0 && pv.DefaultBucketID == pv.DoneBucketID {
+		pv.DefaultBucketID = 0
 	}
 
 	_, err = s.ID(pv.ID).Cols("default_bucket_id", "done_bucket_id").Update(pv)

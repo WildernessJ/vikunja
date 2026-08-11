@@ -227,3 +227,42 @@ func TestRepairKanbanViews20260802162816(t *testing.T) {
 	require.NoError(t, err)
 	require.Zero(t, orphanBucketCountAfterRerun)
 }
+
+// TestRepairKanbanViews20260802162816DefaultEqualsDone guards that the repair never
+// persists a nonzero default_bucket_id equal to done_bucket_id (issue #26, review
+// finding 2). A legacy kanban view whose stored done bucket is also its first bucket by
+// position would otherwise heal the default straight onto the done bucket.
+func TestRepairKanbanViews20260802162816DefaultEqualsDone(t *testing.T) {
+	x, err := db.CreateTestEngine()
+	require.NoError(t, err)
+
+	tables := []interface{}{
+		projectView20260802162816{},
+		bucket20260802162816{},
+		taskBucket20260802162816{},
+		tasksFor20260802162816{},
+	}
+	t.Cleanup(func() {
+		require.NoError(t, x.DropTables(tables...))
+	})
+	require.NoError(t, x.DropTables(tables...))
+	require.NoError(t, x.Sync2(tables...))
+
+	_, err = x.Insert(
+		// Broken kanban view (mode 0) whose stored done bucket is its first bucket.
+		&projectView20260802162816{ID: 1, ProjectID: 1, ViewKind: 3, BucketConfigurationMode: 0, DefaultBucketID: 0, DoneBucketID: 500},
+		&bucket20260802162816{ID: 500, Title: "Only", ProjectViewID: 1, Position: 1, CreatedByID: 42},
+	)
+	require.NoError(t, err)
+
+	require.NoError(t, repairKanbanViews20260802162816(x))
+
+	repaired := &projectView20260802162816{}
+	_, err = x.Where(builder.Eq{"id": 1}).Get(repaired)
+	require.NoError(t, err)
+	require.Equal(t, 1, repaired.BucketConfigurationMode)
+	require.Equal(t, int64(500), repaired.DoneBucketID, "the done bucket is load-bearing and must be preserved")
+	require.False(t, repaired.DefaultBucketID != 0 && repaired.DefaultBucketID == repaired.DoneBucketID,
+		"repair must not persist a nonzero default_bucket_id equal to done_bucket_id (issue #26), got default=%d done=%d",
+		repaired.DefaultBucketID, repaired.DoneBucketID)
+}

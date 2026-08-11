@@ -171,6 +171,14 @@ func repairKanbanViews20260802162816(tx *xorm.Engine) error {
 			}
 		}
 
+		// A view whose first (or only) bucket is already the done bucket would
+		// otherwise persist default==done, reopening the repeating-task bucket-limit
+		// bypass (issue #26, review finding 2). Drop the default - runtime falls back
+		// to the leftmost bucket.
+		if view.DefaultBucketID != 0 && view.DefaultBucketID == view.DoneBucketID {
+			view.DefaultBucketID = 0
+		}
+
 		// Must be the last write for this view: the migration runs without an
 		// enclosing transaction and the mode flip is what excludes the view
 		// from a re-run, so an interrupted run stays resumable.
