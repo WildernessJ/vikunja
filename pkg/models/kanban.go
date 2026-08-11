@@ -406,10 +406,32 @@ func (b *Bucket) Delete(s *xorm.Session, a web.Auth) (err error) {
 		}
 	}
 
-	defaultBucketID, err := getDefaultBucketID(s, pv)
+	// Resolve the relocation target excluding the bucket being deleted — the
+	// fallback in getDefaultBucketID picks the leftmost bucket, which can be
+	// this one (it is still in the table), silently orphaning its tasks.
+	// The stored default can't be trusted either: a kanban→list kind switch
+	// drops the default-clearing write in pv.Update, so it may point at a
+	// bucket that no longer exists.
+	target := &Bucket{}
+	exists, err := s.
+		Where("id = ? AND project_view_id = ? AND id != ?", pv.DefaultBucketID, b.ProjectViewID, b.ID).
+		Get(target)
 	if err != nil {
-		return err
+		return
 	}
+	if !exists {
+		exists, err = s.
+			Where("project_view_id = ? AND id != ?", b.ProjectViewID, b.ID).
+			OrderBy("position asc, id asc").
+			Get(target)
+		if err != nil {
+			return
+		}
+		if !exists {
+			return ErrCannotRemoveLastBucket{BucketID: b.ID, ProjectViewID: b.ProjectViewID}
+		}
+	}
+	defaultBucketID := target.ID
 
 	// Remove all associations of tasks to that bucket
 	_, err = s.

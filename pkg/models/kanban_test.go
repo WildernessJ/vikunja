@@ -203,6 +203,68 @@ func TestBucket_Delete(t *testing.T) {
 			"project_view_id": 72,
 		}, false)
 	})
+	t.Run("delete default bucket relocates tasks to a surviving bucket", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		// Bucket 1 is both the default and the leftmost bucket of view 4
+		b := &Bucket{
+			ID:            1,
+			ProjectID:     1,
+			ProjectViewID: 4,
+		}
+		err := b.Delete(s, u)
+		require.NoError(t, err)
+		err = s.Commit()
+		require.NoError(t, err)
+
+		// No task may still point at the deleted bucket
+		orphaned := []*TaskBucket{}
+		err = s.Where("bucket_id = ?", 1).Find(&orphaned)
+		require.NoError(t, err)
+		assert.Empty(t, orphaned)
+		// Tasks moved to the leftmost surviving bucket
+		moved := []*TaskBucket{}
+		err = s.Where("bucket_id = ?", 2).Find(&moved)
+		require.NoError(t, err)
+		assert.Len(t, moved, 14)
+		db.AssertMissing(t, "buckets", map[string]interface{}{
+			"id":              1,
+			"project_view_id": 4,
+		})
+	})
+	t.Run("stale default bucket id falls back to a surviving bucket", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		// A kanban→list→kanban kind switch can leave default_bucket_id
+		// pointing at a bucket that no longer exists
+		_, err := s.Where("id = ?", 4).
+			Cols("default_bucket_id").
+			Update(&ProjectView{DefaultBucketID: 9999})
+		require.NoError(t, err)
+
+		b := &Bucket{
+			ID:            1,
+			ProjectID:     1,
+			ProjectViewID: 4,
+		}
+		err = b.Delete(s, u)
+		require.NoError(t, err)
+		err = s.Commit()
+		require.NoError(t, err)
+
+		orphaned := []*TaskBucket{}
+		err = s.Where("bucket_id = ? OR bucket_id = ?", 1, 9999).Find(&orphaned)
+		require.NoError(t, err)
+		assert.Empty(t, orphaned)
+		moved := []*TaskBucket{}
+		err = s.Where("bucket_id = ?", 2).Find(&moved)
+		require.NoError(t, err)
+		assert.Len(t, moved, 14)
+	})
 	t.Run("done bucket should be reset", func(t *testing.T) {
 		db.LoadAndAssertFixtures(t)
 		s := db.NewSession()
