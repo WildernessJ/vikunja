@@ -507,8 +507,16 @@ func GetCurrentUser(c *echo.Context) (user *User, err error) {
 	return GetUserFromClaims(claims)
 }
 
+// AuthTypeUser is the value of the `type` claim in a user JWT
+const AuthTypeUser int = 1
+
 // GetUserFromClaims Returns a new user from jwt claims
 func GetUserFromClaims(claims jwt.MapClaims) (user *User, err error) {
+	typ, ok := claims["type"].(float64)
+	if !ok || int64(typ) != int64(AuthTypeUser) {
+		return nil, ErrInvalidUserContext{Reason: "token is not a user token"}
+	}
+
 	userID, err := getClaimAsInt(claims, "id")
 	if err != nil {
 		return nil, err
@@ -540,7 +548,7 @@ func getClaimAsInt(claims jwt.MapClaims, field string) (int64, error) {
 	if !ok {
 		return 0, &ErrInvalidClaimData{
 			Field: field,
-			Type:  reflect.TypeOf(claims[field]).String(),
+			Type:  fmt.Sprintf("%T", claims[field]),
 		}
 	}
 	return int64(value), nil
@@ -559,7 +567,7 @@ func getClaimAsString(claims jwt.MapClaims, field string) (string, error) {
 	if !ok {
 		return "", &ErrInvalidClaimData{
 			Field: field,
-			Type:  reflect.TypeOf(claims[field]).String(),
+			Type:  fmt.Sprintf("%T", claims[field]),
 		}
 	}
 	return value, nil

@@ -97,4 +97,62 @@ the union rule for `project_view_test.go`. Required green, in order:
 
 ## Execution Log
 
-_(appended during execution)_
+Merge ran clean against the dry run: exactly the 3 predicted conflicts, nothing else.
+Conflict resolution dispatched to `executor-max` per the routing; the hand-review of the
+auto-merged hot files was done by the driver.
+
+**Resolutions.** `go.sum` — took upstream wholesale, then `go mod tidy` (run only after the
+`.go` files were marker-free, since tidy parses them). `project_view_test.go` — upstream's
+file verbatim plus the fork's `TestProjectView_DefaultEqualsDoneBucketValidation`; no name
+collisions, no test edited. `project_view.go` — upstream's structure kept; fork deltas
+re-threaded: calendar kind auto-merged untouched, per-project default sort appended to
+upstream's always-written `cols` group (not the kanban-only bucket-id group),
+`checkBucketConfiguration` unchanged in body.
+
+**Deviation — reviewer read this first.** On update, `checkBucketConfiguration` moved from
+before `Update` to *after* `resolveBucketIDs` (`project_view.go:690`), and `updateProjectView`
+gained a `validateBucketConfiguration bool` (duplication passes `false`, matching
+`createProjectView`'s pre-existing flag convention). Forced: with the check on the raw
+request, upstream's `TestProjectView_Update/unchanged_stale_bucket_ids_are_reset_instead_of_rejected`
+fails. Evaluated against the "contradictory tests" stop criterion and rejected as one — the
+two tests use different inputs (fork: bucket 3, belongs to the view, resolves 3/3, still
+rejected; upstream: bucket 4, belongs to view 8, resolves to 0/0, accepted). Both pass on one
+implementation. Behavior change: a request echoing a stale/foreign id in *both* fields is now
+accepted and persists 0/0 instead of being rejected. The fork's actual invariant — no persisted
+view has nonzero `default == done` — is now checked on the values that get persisted, so it is
+not weakened. Placement was chosen here, not specified by the spec.
+
+**Semantic conflict git did not flag.** `pkg/models/project_duplicate.go` auto-merged into a
+compile error: upstream declares `views` as a `map[int64]*ProjectView` and iterates
+`for oldViewID, view := range views`; the fork had replaced it with an ordered slice
+(`OrderBy("position asc, id asc")`, for the deterministic default-view redirect). The merge kept
+the fork's slice under upstream's map-keyed loop. Fixed by indexing the already-present parallel
+`oldViewIDs` slice (`:268-269`), keeping the fork's ordering. It only surfaced because Go is
+statically typed — a same-typed collision elsewhere would have been silent. The auto-merged set
+is not automatically trustworthy.
+
+**Hand-review of the spec's hot files (driver).** `kanban.ts` — upstream's "drop deleted bucket
+from view state" landed beside the fork's code without interaction. `ViewEditForm.vue` — calendar
+still offered (`:191`); bucket UI (`:227`, `:262`) and upstream's new manual-mode preselect watcher
+(`:97`) are all gated on `viewKind === 'kanban'`, so calendar writes no bucket fields. Link-share
+security batch — all guards present post-merge in `webhooks_permissions.go:25`, `webhooks.go:235`,
+`teams_permissions.go:26,47,69`, `team_members_permissions.go:34,56`, `bot_users.go:60`,
+`bot_users_permissions.go:48`; `GetUserFromClaims` now rejects non-user token types
+(`user.go:516`) and `LinkSharing.GetID` returns the negated user id. The fork's own v2 surfaces
+for teams/team members/bots/webhooks (`pkg/routes/api/v2/`) all go through `handler.Do*` →
+model `Can*`, so they inherit the guards; no fork route reimplements an auth-id comparison.
+Migration `20260802162816` is the newest timestamp (fork's last is `20260729154002`) and is
+scoped to `builder.Eq{"view_kind": 3}` — Kanban; calendar is 4, untouched. Huma v2.39.1: v2
+routes compiled with no change.
+
+**Surfaced, out of scope, for the review phase.** Upstream's `insertTaskBuckets`
+(`project_view.go:504-542`) builds a raw `INSERT ... ON CONFLICT` string via `s.Exec` — a direct
+violation of this repo's "No raw SQL" rule, now vendored into the fork. Deliberate upstream
+(xorm exposes no upsert), but the rule as written has no exemption. Accept as vendored, or file
+a follow-up — not a build-phase call.
+
+**Suite.** `mage build` ok · `mage test:web` green · `mage test:feature` green (0 FAIL) ·
+`mage lint` 0 issues · `mage test:filter ProjectView` 27/27 · frontend `pnpm lint` 0 errors
+(16 pre-existing warnings) · `pnpm test:unit` **1611 passed / 98 files** (union baseline was
+1609) · `pnpm typecheck:ratchet` reports only the already-open `src/services/task.test.ts: 0 → 4`
+regression carried in from the 2026-08-02 sync — not made worse by this merge.
