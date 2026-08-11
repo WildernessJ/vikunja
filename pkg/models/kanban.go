@@ -83,8 +83,15 @@ func getBucketByID(s *xorm.Session, id int64) (b *Bucket, err error) {
 }
 
 func getDefaultBucketID(s *xorm.Session, view *ProjectView) (bucketID int64, err error) {
-	if view.DefaultBucketID != 0 {
-		return view.DefaultBucketID, nil
+	// A kanban→list kind switch drops the default-clearing write in
+	// pv.Update, so the stored default can point at a deleted bucket.
+	// Trusting it here writes task_buckets rows at nonexistent buckets.
+	liveID, err := existingBucketID(s, view.ID, view.DefaultBucketID)
+	if err != nil {
+		return 0, err
+	}
+	if liveID != 0 {
+		return liveID, nil
 	}
 
 	bucket := &Bucket{}

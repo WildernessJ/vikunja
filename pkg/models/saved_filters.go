@@ -499,17 +499,20 @@ func RegisterAddTaskToFilterViewCron() {
 			}
 
 			// Collect new tasks to task_buckets and task_positions
+			var defaultBucketID int64
 			for _, task := range tasks {
 				if _, exists := savedTaskBucketMap[task.ID]; !exists {
-					view.DefaultBucketID, err = getDefaultBucketID(s, view)
-					if err != nil {
-						log.Errorf("%sError fetching default bucket for view %d: %s", logPrefix, view.ID, err)
-						continue
+					if defaultBucketID == 0 {
+						defaultBucketID, err = getDefaultBucketID(s, view)
+						if err != nil {
+							log.Errorf("%sError fetching default bucket for view %d: %s", logPrefix, view.ID, err)
+							continue
+						}
 					}
 					tb := &TaskBucket{
 						TaskID:        task.ID,
 						ProjectViewID: view.ID,
-						BucketID:      view.DefaultBucketID,
+						BucketID:      defaultBucketID,
 					}
 					newTaskBuckets = append(newTaskBuckets, tb)
 				}
