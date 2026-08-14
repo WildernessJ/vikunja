@@ -115,15 +115,20 @@ Deviations:
   `xorm:"-" json:"-" param:"project"` (`pkg/models/kanban.go:37`) — the body cannot set it
   through JSON at all, so a body-vs-URL `project_id` test would pass before the fix and
   prove nothing. Test 1's assertions cover the reachable vector.
-- **Test 3 (happy path) not added** — `TestBucket/Create/Normal` already creates with a
-  matching body on project 1 / view 3 and stays green; the Link Share subtest additionally
-  asserts the stored `project_view_id`. Nothing absent to add.
+- **Test 3 (happy path) not added** — `TestBucket/Create/Normal` creates on project 1 /
+  view 3 and stays green (its body carries no `project_view_id`, so it is a no-override
+  case, not a matching-body case — review correction); the Link Share subtest asserts the
+  stored `project_view_id`. A body value equal to the URL's cannot diverge, so no test
+  added.
 
 Red evidence (`/tmp/86-red.log`): `PUT /projects/1/views/4/buckets` with
 `{"title":"ProbeCrossView","project_view_id":1}` returned `"project_view_id":1` before the
 fix. Green after (`/tmp/86-green.log`).
 
-For the reviewer: the change is class-wide across every v1 create route, not just buckets.
+For the reviewer: the change is class-wide across every v1 create route served by
+`WebHandler.CreateWeb` (28 registrations) — custom create handlers (task attachments,
+background upload, link-share auth) bypass it and were individually checked clean at
+review; a future custom create handler inherits the original bug.
 `mage test:web` and `mage test:feature` are both green with no test edits, which is the
 evidence that no existing v1 create route relied on body-overrides-URL — but that is suite
 coverage, not proof. The security agent should look at the re-force running *before*
