@@ -24,8 +24,14 @@ reasoning was inverted. Probe: `POST /projects/1/views/3/buckets/1` body `{"proj
 **Still out of scope:**
 - v2 (already forces URL over body per-handler, e.g. `pkg/routes/api/v2/buckets.go:114-115`).
 - #87 (stale default in repeating-task done routing) — separate issue.
-- `TaskPosition` (#88) and `Webhook` (#89) body-override holes — different mechanism (no `param`
-  tag; the missing check is in the model), filed separately.
+- `TaskPosition` (#88) and `Webhook` (#89) body-override holes — the missing check is in the model,
+  filed separately. **Rationale corrected at review round 3:** the original wording said these models
+  carry "no `param` tag", which is false — `task_position.go:40` (`param:"task"`) and
+  `webhooks.go:54,60` (`param:"webhook"`, `param:"project"`) all do, and their routes carry the
+  matching segments. So this change *does* alter binding on `POST /tasks/:task/position` and
+  `POST|DELETE /projects/:project/webhooks/:webhook` (the URL now wins for those tagged fields);
+  neither route has a test pinning that. Both issues remain valid because the fields they are about
+  (`TaskPosition.ProjectViewID`, `Webhook.UserID`) are the *untagged* ones the re-force cannot reach.
 - Query-param binding on GET/DELETE (echo binds `query`-tagged fields on those verbs) — same
   precedence question, not probed as exploitable; note in residuals, do not fix blind.
 
@@ -315,3 +321,28 @@ test-coverage ones:
   narrowing of the re-force regresses them silently while the kanban tests stay green; and the
   int64/string invariant stays comment-only rather than enforced by a reflection test over the
   CObject models. Both are one small test each if the gap ever bites.
+
+**Session audit, 2026-08-14 (round 3, `.flow-audit.md`).** Cold verdict: ship, after two one-line
+corrections — both applied here. It proved the tests probative mechanically (a `go build -overlay`
+no-op re-force makes exactly the five new/changed subtests fail) and re-ran both suites and lint
+itself.
+
+- **Applied (O1):** the "doc-only fix" of round 2 never touched the document that *defines* the
+  contract. All four swaggo annotations for the `:user` segment — `project_users.go:135,235` and
+  `team_members.go:87,144` — declared `path int`, while the routes bind it to `Username string`.
+  The acceptance rationale for the behavior change was "the swagger annotation is the stale
+  artifact", so leaving it stale shipped a documented contract the code does not honor. All four
+  corrected to `path string`, including the two DELETE siblings the audit did not name (same defect,
+  same re-forced handlers — fixing only the two named would repeat the half-fix the audit criticized).
+- **Applied (O3):** the #88/#89 out-of-scope rationale above, which was factually wrong.
+- **Recorded, not fixed:** the test gap is **52 routes, not 2** — disabling the re-force makes only
+  five subtests fail, all kanban. Honest framing is "one regression guard exists, on kanban only".
+  The auditor explicitly would not hold merge for it. Also unfixed: `read_one.go`/`read_all.go` still
+  carry the byte-identical bind block (so "three copies collapse to one" is three of five, #90); the
+  `any` widening has zero callers and is the diff's clearest speculative generality; no test in this
+  diff exercises real route matching (`integrations.go:118-126` bypasses the router), so the
+  "BindPathValues only touches matched segments" argument is load-bearing for 57 routes and pinned by
+  nothing; `pkg/web/handler` has 0.0% direct coverage; "28 registrations" in this spec is 24.
+- **Calibration:** every ledger item Pass 2 downgraded was a *completeness claim made by hand walk* —
+  the third such refutation in this cycle. The code judgments calibrated well; "we checked
+  everything" did not. Future work in this area should mechanize the walk rather than repeat it.
