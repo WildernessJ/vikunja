@@ -1,4 +1,4 @@
-# fix-86-v1-bucket-create-view — v1 create body must not override the URL's path params
+# fix-86-v1-bucket-create-view — v1 request body must not override the URL's path params (create + update/delete)
 
 ## Intent
 
@@ -11,20 +11,32 @@ in the #84 session). Same-project only — integrity corruption, not privilege e
 Downstream: an injected bucket in a list view trips `hasBuckets` in
 `syncManualKanbanBuckets`, so a later kanban switch heals instead of creating defaults.
 
-**Out of scope:**
-- v1 **update** routes. #84 deliberately chose *reject-on-mismatch* semantics for bucket
-  update (`canDoBucket` 404s when body view ≠ stored view); forcing path values there
-  would silently revert that to ignore-the-body. Decided with Jason 2026-08-14: leave
-  update as-is.
+**Scope widened at review (2026-08-14, amendment 1).** Originally create-only. The review-phase
+cold audit **disproved** the create-only rationale by probe: the same body-override hole is live on
+v1 **update/delete** and defeats #84's guard *today*. `canDoBucket` (`pkg/models/kanban_permissions.go:52-54`)
+compares the stored view against the **bound** `b.ProjectViewID`, which the body overrides on v1
+update/delete; echoing the bucket's real view in the body satisfies the guard regardless of the
+URL's `:view`. Path-forcing on update is **strictly stronger** (closes the bypass; still rejects a
+genuine URL≠stored mismatch), not a reversion — the earlier "would revert #84 to ignore-the-body"
+reasoning was inverted. Probe: `POST /projects/1/views/3/buckets/1` body `{"project_view_id":4}` →
+200 (should be rejected). Jason 2026-08-14: **extend the fix to update/delete now.**
+
+**Still out of scope:**
 - v2 (already forces URL over body per-handler, e.g. `pkg/routes/api/v2/buckets.go:114-115`).
 - #87 (stale default in repeating-task done routing) — separate issue.
+- `TaskPosition` (#88) and `Webhook` (#89) body-override holes — different mechanism (no `param`
+  tag; the missing check is in the model), filed separately.
+- Query-param binding on GET/DELETE (echo binds `query`-tagged fields on those verbs) — same
+  precedence question, not probed as exploitable; note in residuals, do not fix blind.
 
 ## Design
 
-**Settled (Jason picked option B of A/B/C):** fix the class at the shared v1 binding
-site, creates only. In `pkg/web/handler/create.go`, after `ctx.Bind(currentStruct)`
-succeeds, call `echo.BindPathValues(ctx, currentStruct)` to re-apply path params so the
-URL wins over the body — the same semantics v2 implements per-handler.
+**Settled (Jason picked option B of A/B/C, extended at review):** fix the class at the shared v1
+binding sites. After `ctx.Bind(currentStruct)` succeeds, call
+`echo.BindPathValues(ctx, currentStruct)` to re-apply path params so the URL wins over the body —
+the same semantics v2 implements per-handler. Apply in **`CreateWeb` (done, committed) and
+`UpdateWeb`** (this amendment). `DeleteWeb` binds a body too and gets the same treatment; verify by
+reading whether any `Delete*` model relies on a body value the URL also names (none expected).
 
 Why this is safe and sufficient:
 - `BindPathValues` only sets fields whose `param` tag matches a segment **present in the
@@ -32,31 +44,59 @@ Why this is safe and sufficient:
   clients (the frontend) fill body and URL from the same model, so behavior only changes
   on mismatch, which is exactly the corruption vector.
 - Re-running path binding after `Bind` is idempotent for matching values; it's the same
-  code path `Bind` already ran first.
-- Model-level enforcement is structurally impossible for create: `CanCreate` has no
-  stored record and cannot see the raw URL param (issue #86's analysis).
+  code path `Bind` already ran first. (Invariant relied on: every `param`-tagged field is
+  `int64`/`string`. A future `param` field implementing `BindUnmarshaler` with state would break
+  idempotence — note this at the call site.)
+- On update, path-forcing is strictly stronger than #84's reject-on-mismatch (see the scope note):
+  it closes the body-echo bypass and still rejects a genuine URL≠stored mismatch. `Bucket.Update`'s
+  `Cols` allow-list does not write `project_view_id`, so the body value has no legitimate use on
+  that route. All 18 `UpdateWeb` routes were walked at review: none has a path param whose model
+  field the body should legitimately override (the v1 task-update route is `POST /tasks/:projecttask`,
+  no `:project` segment — the "must move a project" concern is a phantom).
 
-Rejected alternatives: (A) also patching `update.go` — reverts #84 semantics and its
-webtests for no probed defect; (C) bucket-route-only wrapper — leaves the same hole open
-on ~20 other v1 create routes with path params (tasks, shares, comments, teams, …).
+Rejected alternatives: (C) bucket-route-only wrapper — leaves the same hole open on ~20 other v1
+create/update routes with path params (tasks, shares, comments, teams, …).
 
 ## Implementation plan
 
+**Done (create, committed `1990d40c4`):**
 - `pkg/web/handler/create.go` (`CreateWeb`, after the `ctx.Bind` error check, before
-  `ctx.Validate`): call `echo.BindPathValues(ctx, currentStruct)`; on error, wrap the
-  same way the `ctx.Bind` error is wrapped (`models.ErrInvalidModel`). One tight comment
-  naming the why (body COULD override path-bound values; URL is authoritative).
-- `pkg/webtests/` — repro + guard tests (see Tests). Follow the existing bucket webtest
-  setup from the #84 work (`pkg/webtests/api_v1_kanban_test.go` or wherever bucket
-  create webtests live; reuse existing fixtures/harness, no new fixtures unless forced).
-- No migration, no frontend change, no i18n (no new user-facing string), no v2 change.
+  `ctx.Validate`): calls `echo.BindPathValues(ctx, currentStruct)`; error wrapped as the
+  `ctx.Bind` error is (`models.ErrInvalidModel`). **Amend the comment** — the current one
+  (`create.go:46-48`) says "no stored record for `Can*` to compare against", implying update is
+  covered by `Can*`; that reason is false (`canDoBucket` compares against the *bound* value). Say
+  instead: URL-over-body, the same precedence v2 does per handler; not a `Can*` matter.
+
+**To do (amendment 1 — build):**
+- `pkg/web/handler/update.go` (`UpdateWeb`): add the identical `echo.BindPathValues` re-force after
+  its `ctx.Bind` succeeds, before validate. Factor the shared re-force + error-wrap into one helper
+  (both `CreateWeb` and `UpdateWeb` call it) rather than copy the block — the cold audit measured the
+  create error branch at **0 coverage / 8 of 11 lines dead**; the minimal form
+  (`if err := echo.BindPathValues(...); err != nil { return models.ErrInvalidModel{Err: err} }`)
+  is enough — drop the unreachable `errors.As`/`he.Message` unwrap. Apply the same minimal form to
+  `CreateWeb` for consistency.
+- `pkg/web/handler/delete.go` (`DeleteWeb`): same re-force. First **read** every `Delete*` model for
+  a body field that shares a `param` name it should legitimately override — none expected; if one
+  exists, that route is a stop criterion, halt and report.
+- `pkg/webtests/` — red-first tests (see Tests). Reuse the existing bucket + task-bucket harness.
+- No migration, no frontend change, no i18n, no v2 change.
+
+**Docs owed with this change (build appends, review/checkpoint corrects on `main`):**
+- `FORK-CHANGES.md:22` — the "a v1 update body … is rejected instead of ignored (GHSA-569v-q83c-3j3g)"
+  claim is **false** (probe: body honored, URL ignored). Correct it to describe what actually shipped
+  for #84, and note this amendment closes the update/delete leg. Add the #86 entry in the same edit.
 
 Edge cases to keep in mind:
 - Validate runs **after** the re-force, so validation sees the effective (URL) values.
 - `subscriptions/:entity/:entityID` binds a string param — `BindPathValues` already
   handles it today on first bind; re-run is the same path.
-- If any existing webtest fails because it deliberately relied on body-overrides-URL on
-  a create route, that is a **stop criterion** (below), not a test to silently rewrite.
+- On update, the re-force closes #84's body-echo bypass; `canDoBucket` then sees the URL view as
+  `b.ProjectViewID` and rejects a genuine URL≠stored mismatch as before.
+- `POST /projects/:project/views/:view/buckets/:bucket/tasks` (task-bucket move, `routes.go:936`,
+  routes through `UpdateWeb`) — the re-force on `UpdateWeb` also fixes the body-`bucket_id`-over-URL
+  hole the audit probed. Add a red-first test for it (Tests §5).
+- If any existing webtest fails because it relied on body-overrides-URL on a create/update route,
+  that is a **stop criterion**, not a test to silently rewrite.
 
 ## Execution routing
 
@@ -76,8 +116,22 @@ Edge cases to keep in mind:
    assertion; may fold into test 1's response assertions if the harness makes it
    natural.)
 3. **No regression on the happy path:** body with matching `project_view_id` (what the
-   real frontend sends) still creates in view 4. Likely already covered by existing
-   bucket-create webtests — verify by reading, only add if absent.
+   real frontend sends) still creates in view 4. Covered by `TestBucket/Create/Normal` +
+   the Link Share subtest — no new test.
+
+**Amendment 1 — update/delete (red-first, must fail before the update/delete re-force):**
+
+4. **Bucket update body-echo bypass (#84 guard defeat):** authed user,
+   `POST /projects/1/views/3/buckets/1` with body `{"title":"X","project_view_id":4}` where bucket 1's
+   real view is 4 → today returns 200 (guard bypassed via body echo). After the fix: the re-force sets
+   `b.ProjectViewID` to the URL's view 3, `canDoBucket` sees 3≠4 → **404/`ErrBucketDoesNotExist`**.
+   Assert the error, and that no cross-view mutation persisted.
+5. **Task-bucket move body `bucket_id` over URL** (`POST /projects/1/views/4/buckets/2/tasks`,
+   `routes.go:936`): body `{"task_id":1,"bucket_id":3}` → today the row lands on bucket 3. After the
+   fix: `db.AssertExists("task_buckets", {task_id:1, bucket_id:2})` (the URL's bucket), and
+   `AssertMissing` on bucket 3.
+6. **Update happy path unregressed:** a normal bucket-title update with no `project_view_id` in the
+   body still succeeds (existing `TestBucket/Update` — verify green, no edit).
 
 Suite: existing `mage test:feature` + `mage test:web` stay green with **zero edits to
 existing tests**. Any existing test that breaks = stop criterion.
@@ -102,6 +156,9 @@ lint clean; the #86 probe request (test 1) creates in the URL's view.
   Execution Log, hand back to plan. Do not rewrite the test to green.
 - `BindPathValues` errors on any route's struct during the suite → same halt.
 - More than one fix round after a red suite → halt per the bounded-fix rule.
+- **Amendment 1:** any existing `TestBucket/Update`, task-move, or other v1 update/delete webtest
+  fails in a way that reveals a legitimate body-overrides-URL case on an update/delete route → halt,
+  append to the Execution Log, hand back to plan. Do not rewrite it green.
 
 ## Execution Log
 
@@ -138,3 +195,20 @@ on.
 Environment note (not part of the diff): the worktree had no `frontend/dist`, so
 `frontend/embed.go`'s `all:dist` embed failed and every test package reported
 `[setup failed]`. Created an empty `frontend/dist/index.html` (gitignored) to build.
+
+**Review session, 2026-08-14 — scope widened, handed back to build (amendment 1).**
+The create-only fix (`1990d40c4`) passed verifier + security + cold session-audit as *code*. But the
+cold audit disproved the create-only *rationale*: the body-override hole is live on v1 update/delete
+and defeats #84's guard today (probes above). Jason chose to extend the fix now rather than file it.
+
+Per the v3 fix-loop rule, extending the re-force to `UpdateWeb`/`DeleteWeb` (18 routes, a semantic
+change on new files) is scope growth a review session does not implement — it amends the spec and
+hands back. **This is that hand-back.** The create fix stays committed; a fresh `/flow build` session
+implements amendment 1 on top of it. `#86 has NOT merged`; `pending_verify` stays armed.
+
+Build session, do in order: (1) fix the `create.go:46-48` comment; (2) factor the shared re-force
+helper and add it to `UpdateWeb` + `DeleteWeb`, dropping the dead error-unwrap; (3) red-first tests
+4–5; (4) append `FORK-CHANGES.md:22` correction + #86 entry. Two pre-existing NON-bucket holes stay
+filed, not fixed here: #88 (TaskPosition), #89 (Webhook). The update/delete bucket-guard bypass and
+the task-bucket move are NOT filed separately — they are now in scope for amendment 1 (tests 4–5);
+the scope expansion is recorded as a comment on #86.
