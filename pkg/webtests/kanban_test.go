@@ -73,23 +73,44 @@ func TestBucket(t *testing.T) {
 			require.NoError(t, err)
 			assert.Contains(t, rec.Body.String(), `"title":"TestLoremIpsum"`)
 		})
-		t.Run("Rejects project_view_id from body", func(t *testing.T) {
+		t.Run("Ignores project_view_id from body", func(t *testing.T) {
 			// GHSA-569v-q83c-3j3g: mass-assigning project_view_id allowed
-			// relocating a bucket into another tenant's view. The body value
-			// overrides the URL param during binding, so canDoBucket now
-			// rejects the mismatch outright (the real client always sends a
-			// body matching the URL).
-			_, err := testHandler.testUpdateWithUser(nil, map[string]string{
+			// relocating a bucket into another tenant's view. The body value no
+			// longer reaches the model at all — #86's re-force restores the
+			// URL's view after binding — so the update succeeds on the URL's
+			// view and the body value is inert.
+			rec, err := testHandler.testUpdateWithUser(nil, map[string]string{
 				"bucket":  "1",
 				"project": "1",
 				"view":    "4",
 			}, `{"title":"TestLoremIpsum","project_view_id":80}`)
-			require.Error(t, err)
-			assertHandlerErrorCode(t, err, models.ErrCodeBucketDoesNotExist)
+			require.NoError(t, err)
+			assert.Contains(t, rec.Body.String(), `"title":"TestLoremIpsum"`)
 			db.AssertExists(t, "buckets", map[string]interface{}{
 				"id":              1,
 				"project_view_id": 4,
 			}, false)
+			db.AssertMissing(t, "buckets", map[string]interface{}{
+				"id":              1,
+				"project_view_id": 80,
+			})
+		})
+		t.Run("Body cannot echo the real view to bypass the URL check", func(t *testing.T) {
+			// #86 + #84: bucket 1 really lives in view 4. Asking for it under
+			// view 3 while echoing project_view_id 4 in the body used to satisfy
+			// canDoBucket, because the guard compared the stored view against
+			// the body-overridden bound value.
+			_, err := testHandler.testUpdateWithUser(nil, map[string]string{
+				"bucket":  "1",
+				"project": "1",
+				"view":    "3",
+			}, `{"title":"BypassProbe","project_view_id":4}`)
+			require.Error(t, err)
+			assertHandlerErrorCode(t, err, models.ErrCodeBucketDoesNotExist)
+			db.AssertMissing(t, "buckets", map[string]interface{}{
+				"id":    1,
+				"title": "BypassProbe",
+			})
 		})
 		t.Run("Nonexisting Bucket", func(t *testing.T) {
 			_, err := testHandler.testUpdateWithUser(nil, map[string]string{
@@ -242,6 +263,17 @@ func TestBucket(t *testing.T) {
 			})
 			require.NoError(t, err)
 			assert.Contains(t, rec.Body.String(), `"message":"Successfully deleted."`)
+		})
+		t.Run("Body cannot echo the real view to bypass the URL check", func(t *testing.T) {
+			// #86: same body-echo bypass as on update — delete binds a body too.
+			_, err := testHandler.testDeleteWithUser(nil, map[string]string{
+				"project": "1",
+				"bucket":  "1",
+				"view":    "3",
+			}, `{"project_view_id":4}`)
+			require.Error(t, err)
+			assertHandlerErrorCode(t, err, models.ErrCodeBucketDoesNotExist)
+			db.AssertExists(t, "buckets", map[string]interface{}{"id": 1}, false)
 		})
 		t.Run("Nonexisting", func(t *testing.T) {
 			_, err := testHandler.testDeleteWithUser(nil, map[string]string{"bucket": "999"})
@@ -530,6 +562,37 @@ func TestBucket(t *testing.T) {
 				"created_by_id":   -2,
 				"title":           "Lorem Ipsum",
 			}, false)
+		})
+	})
+}
+
+// TestTaskBucketV1 covers POST /projects/:project/views/:view/buckets/:bucket/tasks.
+func TestTaskBucketV1(t *testing.T) {
+	testHandler := webHandlerTest{
+		user: &testuser1,
+		strFunc: func() handler.CObject {
+			return &models.TaskBucket{}
+		},
+		t: t,
+	}
+	t.Run("Ignores bucket_id from body", func(t *testing.T) {
+		// #86: the body's bucket_id used to override the URL's :bucket, so a
+		// move landed the task somewhere the caller never named in the path.
+		// Task 3 starts in bucket 2; the URL names bucket 1.
+		_, err := testHandler.testUpdateWithUser(nil, map[string]string{
+			"project": "1",
+			"view":    "4",
+			"bucket":  "1",
+		}, `{"task_id":3,"bucket_id":2}`)
+		require.NoError(t, err)
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":         3,
+			"project_view_id": 4,
+			"bucket_id":       1,
+		}, false)
+		db.AssertMissing(t, "task_buckets", map[string]interface{}{
+			"task_id":   3,
+			"bucket_id": 2,
 		})
 	})
 }

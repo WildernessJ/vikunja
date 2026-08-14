@@ -17,12 +17,8 @@
 package handler
 
 import (
-	"errors"
-	"fmt"
 	"net/http"
 
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/models"
 	"code.vikunja.io/api/pkg/modules/auth"
 
 	"github.com/labstack/echo/v5"
@@ -34,25 +30,8 @@ func (c *WebHandler) CreateWeb(ctx *echo.Context) error {
 	currentStruct := c.EmptyStruct()
 
 	// Get the object & bind params to struct
-	if err := ctx.Bind(currentStruct); err != nil {
-		log.Debugf("Invalid model error. Internal error was: %s", err.Error())
-		var he *echo.HTTPError
-		if errors.As(err, &he) {
-			return models.ErrInvalidModel{Message: fmt.Sprintf("%v", he.Message), Err: err}
-		}
-		return models.ErrInvalidModel{Err: err}
-	}
-
-	// echo binds the body after the path params, so the body can override them. On create
-	// there is no stored record for Can* to compare against, so re-force the URL values —
-	// the same precedence v2 implements per handler. See issue #86.
-	if err := echo.BindPathValues(ctx, currentStruct); err != nil {
-		log.Debugf("Invalid model error. Internal error was: %s", err.Error())
-		var he *echo.HTTPError
-		if errors.As(err, &he) {
-			return models.ErrInvalidModel{Message: fmt.Sprintf("%v", he.Message), Err: err}
-		}
-		return models.ErrInvalidModel{Err: err}
+	if err := bindAndForcePathValues(ctx, currentStruct); err != nil {
+		return err
 	}
 
 	// Validate the struct

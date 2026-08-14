@@ -17,7 +17,14 @@
 package handler
 
 import (
+	"errors"
+	"fmt"
+
+	"code.vikunja.io/api/pkg/log"
+	"code.vikunja.io/api/pkg/models"
 	"code.vikunja.io/api/pkg/web"
+
+	"github.com/labstack/echo/v5"
 )
 
 // WebHandler defines the webhandler object
@@ -30,4 +37,28 @@ type WebHandler struct {
 type CObject interface {
 	web.CRUDable
 	web.Permissions
+}
+
+// bindAndForcePathValues binds the request, then re-applies the URL's path params
+// so the body cannot override a value the route already names — echo binds the
+// body last, and permission checks compare against the bound value. This is the
+// same precedence /api/v2 implements per handler. See issue #86.
+// Relies on every param-tagged field being int64 or string: a BindUnmarshaler
+// carrying state would not survive being bound twice.
+func bindAndForcePathValues(ctx *echo.Context, currentStruct CObject) error {
+	if err := ctx.Bind(currentStruct); err != nil {
+		log.Debugf("Invalid model error. Internal error was: %s", err.Error())
+		var he *echo.HTTPError
+		if errors.As(err, &he) {
+			return models.ErrInvalidModel{Message: fmt.Sprintf("%v", he.Message), Err: err}
+		}
+		return models.ErrInvalidModel{Err: err}
+	}
+
+	if err := echo.BindPathValues(ctx, currentStruct); err != nil {
+		log.Debugf("Invalid model error. Internal error was: %s", err.Error())
+		return models.ErrInvalidModel{Err: err}
+	}
+
+	return nil
 }

@@ -212,3 +212,58 @@ helper and add it to `UpdateWeb` + `DeleteWeb`, dropping the dead error-unwrap; 
 filed, not fixed here: #88 (TaskPosition), #89 (Webhook). The update/delete bucket-guard bypass and
 the task-bucket move are NOT filed separately — they are now in scope for amendment 1 (tests 4–5);
 the scope expansion is recorded as a comment on #86.
+
+**Build session, 2026-08-14 (amendment 1).** Implemented as specced. The helper absorbed the whole
+bind, not just the re-force: `bindAndForcePathValues` (`pkg/web/handler/helper.go`) does
+`ctx.Bind` + `echo.BindPathValues`, and `CreateWeb`/`UpdateWeb`/`DeleteWeb` each call it in place of
+their own duplicated bind block. That deletes more than it adds (three copies of the `errors.As`/
+`he.Message` unwrap collapse to one) and leaves a single site to reason about. The dead second
+unwrap the audit measured is gone; the re-force error path is the minimal
+`models.ErrInvalidModel{Err: err}`.
+
+Deviations from the amendment plan:
+
+- **One existing test rewritten, deliberately** — `TestBucket/Update/Rejects project_view_id from
+  body` became `Ignores project_view_id from body`. Under the re-force, body `project_view_id: 80`
+  with URL view 4 no longer reaches the model, so the update succeeds on view 4 instead of 404ing.
+  This is the semantic change the amendment exists to make (see Design: path-forcing is strictly
+  stronger than reject-on-mismatch), not a stop criterion — it reveals no legitimate
+  body-overrides-URL case. The rewritten test keeps the GHSA assertion (bucket 1 stays in view 4,
+  never lands in 80), and the model-level `Cols` allow-list test at `pkg/models/kanban_test.go:395`
+  is untouched, so that defense keeps its own pressure. **Reviewer: this is the only edit to an
+  existing test in the diff.**
+- **A delete test added beyond the plan** (tests 4–5 named update only). `DeleteWeb` gets the
+  re-force too, so it gets the same body-echo probe; without it the third handler ships unchecked.
+- **Test 5's buckets swapped.** The spec's `POST /projects/1/views/4/buckets/2/tasks` with body
+  `bucket_id: 3` moves into view 4's *done* bucket on the red run (`project_views.yml`: view 4
+  `done_bucket_id: 3`), and URL bucket 2 is at its fixture limit (limit 3, holding tasks 3/4/5), so
+  the post-fix path would have hit the bucket-limit error instead of the move. Used URL bucket 1
+  (limit 9999999) with body `bucket_id: 2` and task 3 (starts in bucket 2): same vector, no
+  done-transition or limit side effects on either side of the fix.
+
+Every `Delete*` model was read for a body field sharing a `param` name it should legitimately
+override, per the plan's gate — none across all 22 v1 delete routes. `echo.BindPathValues`
+(`echo@v5.3.1 bind.go:44-53`) only sets params present in the matched route, so a route lacking a
+segment is untouched — that is what keeps `Task.ProjectID` (`param:"project"`, legitimately movable
+on update) inert: `POST /tasks/:projecttask` has no `:project` segment.
+
+Red evidence (`/tmp/86a-red.log`), all four failing before the change:
+`TestBucket/Update/Ignores_project_view_id_from_body`,
+`TestBucket/Update/Body_cannot_echo_the_real_view_to_bypass_the_URL_check`,
+`TestBucket/Delete/Body_cannot_echo_the_real_view_to_bypass_the_URL_check`,
+`TestTaskBucketV1/Ignores_bucket_id_from_body`. Green after (`/tmp/86a-green.log`). Full suites
+green: `mage test:web` (`/tmp/86a-web.log`), `mage test:feature` (`/tmp/86a-feature.log`),
+`mage lint` 0 issues (`/tmp/86a-lint.log`).
+
+For the reviewer, in order of exposure:
+
+1. The re-force now runs on **57** v1 routes carrying path params
+   (`CreateWeb`/`UpdateWeb`/`DeleteWeb` registrations in `routes.go`), up from 28 create-only.
+   Suite-green is evidence that none relied on body-overrides-URL, not proof.
+2. `bindAndForcePathValues` pulled the `pkg/models` and `pkg/log` imports into `helper.go`; the
+   three handlers dropped `errors`/`fmt`/`log`/`models`. No import cycle — `create.go` already
+   imported `models`.
+3. The re-force still runs **before** `ctx.Validate`, so validation sees the effective URL values.
+   Unchanged from the create fix, but it now applies to update as well.
+4. `FORK-CHANGES.md:22`'s false GHSA claim is corrected in this diff, and the corrected text now
+   states plainly that #84's v1 guard shipped bypassable.
