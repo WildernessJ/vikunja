@@ -298,3 +298,20 @@ crossed by the build session without a spec amendment — the rewrite itself was
 amendment 1's semantics and the justification verified factually true, but the criterion text was
 never revised; recorded rather than repaired, since the criterion's intent (don't silently green a
 test that reveals a legitimate body-override case) was not violated.
+
+**`/code-review medium` (Jason-run, 2026-08-14).** No correctness bug in the changed lines; it
+independently killed the query-param and nested-struct override leads and corroborated the
+read-handler gap (already #90, dropped as actioned). Six findings; Jason took 2–5, declined the two
+test-coverage ones:
+
+- Applied: `kanban_task_bucket.go:33,41` doc strings dropped their `/api/v2` scoping (they implied
+  v1 still honors the body); `kanban_test.go` comment scoped to the write handlers with the #90
+  pointer; `helper.go`'s two error paths collapsed into `invalidModelErr` so the re-force branch no
+  longer drops the `*echo.HTTPError` message the bind branch preserves; the helper now takes `any`
+  instead of `CObject`, so #90 and custom v1 handlers can reuse it rather than hand-copy the
+  precedence.
+- **Declined (recorded, not fixed):** no tests pin URL-wins on the two contract-changing routes
+  (`POST /projects/:project/users/:user`, `POST /teams/:team/members/:user/admin`) — a later
+  narrowing of the re-force regresses them silently while the kanban tests stay green; and the
+  int64/string invariant stays comment-only rather than enforced by a reflection test over the
+  CObject models. Both are one small test each if the gap ever bites.

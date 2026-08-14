@@ -46,20 +46,25 @@ type CObject interface {
 // Relies on every param-tagged field being of int64 or string kind (named
 // string types like RelationKind included): a BindUnmarshaler carrying state
 // would not survive being bound twice.
-func bindAndForcePathValues(ctx *echo.Context, currentStruct CObject) error {
+// Takes any, not CObject, so the read handlers and custom v1 handlers can
+// reuse it rather than hand-copy the precedence a fourth time.
+func bindAndForcePathValues(ctx *echo.Context, currentStruct any) error {
 	if err := ctx.Bind(currentStruct); err != nil {
-		log.Debugf("Invalid model error. Internal error was: %s", err.Error())
-		var he *echo.HTTPError
-		if errors.As(err, &he) {
-			return models.ErrInvalidModel{Message: fmt.Sprintf("%v", he.Message), Err: err}
-		}
-		return models.ErrInvalidModel{Err: err}
+		return invalidModelErr(err)
 	}
 
 	if err := echo.BindPathValues(ctx, currentStruct); err != nil {
-		log.Debugf("Invalid model error. Internal error was: %s", err.Error())
-		return models.ErrInvalidModel{Err: err}
+		return invalidModelErr(err)
 	}
 
 	return nil
+}
+
+func invalidModelErr(err error) error {
+	log.Debugf("Invalid model error. Internal error was: %s", err.Error())
+	var he *echo.HTTPError
+	if errors.As(err, &he) {
+		return models.ErrInvalidModel{Message: fmt.Sprintf("%v", he.Message), Err: err}
+	}
+	return models.ErrInvalidModel{Err: err}
 }
