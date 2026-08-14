@@ -373,6 +373,25 @@ func TestBucket(t *testing.T) {
 			require.NoError(t, err)
 			assert.Contains(t, rec.Body.String(), `"title":"Lorem Ipsum"`)
 		})
+		t.Run("Ignores project_view_id from body", func(t *testing.T) {
+			// #86: echo binds the body after the path params, so a body
+			// project_view_id used to override the URL's view and inject the
+			// bucket into another view of the same project.
+			rec, err := testHandler.testCreateWithUser(nil, map[string]string{
+				"project": "1",
+				"view":    "4",
+			}, `{"title":"ProbeCrossView","project_view_id":1}`)
+			require.NoError(t, err)
+			assert.Contains(t, rec.Body.String(), `"project_view_id":4`)
+			db.AssertExists(t, "buckets", map[string]interface{}{
+				"title":           "ProbeCrossView",
+				"project_view_id": 4,
+			}, false)
+			db.AssertMissing(t, "buckets", map[string]interface{}{
+				"title":           "ProbeCrossView",
+				"project_view_id": 1,
+			})
+		})
 		t.Run("Nonexistent project", func(t *testing.T) {
 			_, err := testHandler.testCreateWithUser(nil, map[string]string{
 				"project": "9999",

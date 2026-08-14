@@ -43,6 +43,18 @@ func (c *WebHandler) CreateWeb(ctx *echo.Context) error {
 		return models.ErrInvalidModel{Err: err}
 	}
 
+	// echo binds the body after the path params, so the body can override them. On create
+	// there is no stored record for Can* to compare against, so re-force the URL values —
+	// the same precedence v2 implements per handler. See issue #86.
+	if err := echo.BindPathValues(ctx, currentStruct); err != nil {
+		log.Debugf("Invalid model error. Internal error was: %s", err.Error())
+		var he *echo.HTTPError
+		if errors.As(err, &he) {
+			return models.ErrInvalidModel{Message: fmt.Sprintf("%v", he.Message), Err: err}
+		}
+		return models.ErrInvalidModel{Err: err}
+	}
+
 	// Validate the struct
 	if err := ctx.Validate(currentStruct); err != nil {
 		return err
