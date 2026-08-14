@@ -45,10 +45,11 @@ history lives in `../context/RUN_LOG.md`. Upstream's own decisions don't need AD
 | [ADR-0010](ADR-0010-ios-badge-web-push-badges-only.md) | iOS badge via standard Web Push with visible notifications; badge-only UX from device Settings | Implemented (2026-08-02) | 2026-07-27 | ADR-0001 |
 | [ADR-0011](ADR-0011-route-meta-returnability.md) | "Can the user be sent back here?" declared on the route as one three-valued `meta.returnability` field | Enacted | 2026-08-05 | ADR-0001 |
 | [ADR-0012](ADR-0012-bucket-invariant-per-site.md) | The `default != done` bucket invariant is enforced per write-site (inductive), not by a DB constraint | Accepted | 2026-08-11 | ADR-0006 |
+| [ADR-0013](ADR-0013-v1-path-params-beat-body.md) | On `/api/v1`, URL path params beat the request body, enforced at the generic handler layer | Accepted | 2026-08-14 | — |
 
 ## How to add a new ADR
 
-1. **Pick the next number** (never reused, even if an ADR is later superseded) — next is **0013**.
+1. **Pick the next number** (never reused, even if an ADR is later superseded) — next is **0014**.
 2. **Copy [`ADR-TEMPLATE.md`](ADR-TEMPLATE.md)** to `ADR-NNNN-<short-slug>.md`; fill in front matter + body (MADR).
 3. If it **supersedes** an existing ADR, set `supersedes:` here and `superseded-by:` + `status:` on the old one.
 4. **Add a row above** and link it from `../context/PROJECT_STATE.md` → References.
