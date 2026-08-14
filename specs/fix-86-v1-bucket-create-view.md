@@ -50,9 +50,13 @@ Why this is safe and sufficient:
 - On update, path-forcing is strictly stronger than #84's reject-on-mismatch (see the scope note):
   it closes the body-echo bypass and still rejects a genuine URL≠stored mismatch. `Bucket.Update`'s
   `Cols` allow-list does not write `project_view_id`, so the body value has no legitimate use on
-  that route. All 18 `UpdateWeb` routes were walked at review: none has a path param whose model
-  field the body should legitimately override (the v1 task-update route is `POST /tasks/:projecttask`,
-  no `:project` segment — the "must move a project" concern is a phantom).
+  that route. All 18 `UpdateWeb` routes were walked at review (the v1 task-update route is
+  `POST /tasks/:projecttask`, no `:project` segment — the "must move a project" concern is a
+  phantom). **Corrected at review round 2:** the walk found one contract change, not none —
+  `POST /projects/:project/users/:user` and `POST /teams/:team/members/:user/admin` bind `:user` as
+  a username while the stale v1 swagger documents a numeric ID; path-forcing breaks only clients
+  following the stale docs (accepted — username-in-path is the settled semantics in the frontend
+  and v2; see the Execution Log).
 
 Rejected alternatives: (C) bucket-route-only wrapper — leaves the same hole open on ~20 other v1
 create/update routes with path params (tasks, shares, comments, teams, …).
@@ -267,3 +271,30 @@ For the reviewer, in order of exposure:
    Unchanged from the create fix, but it now applies to update as well.
 4. `FORK-CHANGES.md:22`'s false GHSA claim is corrected in this diff, and the corrected text now
    states plainly that #84's v1 guard shipped bypassable.
+
+**Review session, 2026-08-14 (amendment 1).** Verifier REFUTED the change as delivered — not the
+code (the fix and all five new/changed tests were independently verified probative; red evidence
+confirmed real) but a **false completeness claim**: "every v1 update and delete route was walked …
+none" had a counter-example. `POST /projects/:project/users/:user` and
+`POST /teams/:team/members/:user/admin` bind `:user` as a username (`project_users.go:35`,
+`teams.go:82`) while the published v1 swagger documents a numeric ID — pre-fix such a client worked
+only because the body username overrode the numeric path value; post-fix it gets
+`ErrUserDoesNotExist`. Neither route has positive-path webtest coverage, so suite-green said
+nothing there. Jason accepted the behavior change (username-in-path is the settled semantics —
+frontend and v2 both build `{username}` URLs; the swagger annotation is the stale artifact) and
+chose the doc-only fix within the review fix-loop threshold; the routes stay untested.
+
+Fix round (this session): corrected the walk claim in FORK-CHANGES.md and this spec's Design;
+added `user_webhooks.go` to the custom-handler accounting (body `id` still beats the URL's
+`:webhook`; saved by `canDoWebhook` reloading ownership from the DB — verifier finding, not
+exploitable); noted the read-handler residual (`ReadOneWeb`/`ReadAllWeb` still bind body-last,
+~30 routes, none exploitable today — both agents attacked independently and failed) and filed it
+as **#90**; fixed the stale `pkg/models/kanban_test.go` comment describing the pre-#86 reject-body
+semantics (comment-only touch outside the reviewed diff, declared here); tightened the helper
+comment's invariant wording (named string types like `RelationKind` are of string kind, not
+`string`). Security agent: no exploitable vulnerability; its medium finding is the same #90
+residual. Process note, acknowledged: the "zero edits to existing tests" stop criterion was
+crossed by the build session without a spec amendment — the rewrite itself was pre-authorized by
+amendment 1's semantics and the justification verified factually true, but the criterion text was
+never revised; recorded rather than repaired, since the criterion's intent (don't silently green a
+test that reveals a legitimate body-override case) was not violated.

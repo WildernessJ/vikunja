@@ -394,10 +394,11 @@ func TestBucket_Update(t *testing.T) {
 	})
 	t.Run("does not persist project_view_id", func(t *testing.T) {
 		// GHSA-569v-q83c-3j3g: mass-assigning project_view_id relocated a
-		// bucket into another tenant's view. canDoBucket now rejects a
-		// mismatch up front, but Update's column allow-list is the inner
-		// defense layer and needs its own pressure — this calls Update
-		// directly, bypassing the permission check.
+		// bucket into another tenant's view. Since #86 a body value never
+		// reaches the model (the URL's view is re-forced after binding) and
+		// canDoBucket rejects a URL≠stored mismatch, but Update's column
+		// allow-list is the inner defense layer and needs its own pressure —
+		// this calls Update directly, bypassing both.
 		db.LoadAndAssertFixtures(t)
 		s := db.NewSession()
 		defer s.Close()

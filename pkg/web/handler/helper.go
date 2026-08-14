@@ -43,8 +43,9 @@ type CObject interface {
 // so the body cannot override a value the route already names — echo binds the
 // body last, and permission checks compare against the bound value. This is the
 // same precedence /api/v2 implements per handler. See issue #86.
-// Relies on every param-tagged field being int64 or string: a BindUnmarshaler
-// carrying state would not survive being bound twice.
+// Relies on every param-tagged field being of int64 or string kind (named
+// string types like RelationKind included): a BindUnmarshaler carrying state
+// would not survive being bound twice.
 func bindAndForcePathValues(ctx *echo.Context, currentStruct CObject) error {
 	if err := ctx.Bind(currentStruct); err != nil {
 		log.Debugf("Invalid model error. Internal error was: %s", err.Error())
