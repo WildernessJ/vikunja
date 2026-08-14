@@ -84,7 +84,7 @@ func (tm *TeamMember) Create(s *xorm.Session, a web.Auth) (err error) {
 // @Produce json
 // @Security JWTKeyAuth
 // @Param id path int true "The ID of the team you want to remove th user from"
-// @Param username path int true "The username of the user you want to remove"
+// @Param username path string true "The username of the user you want to remove"
 // @Success 200 {object} models.Message "The user was successfully removed from the team."
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /teams/{id}/members/{username} [delete]
@@ -141,7 +141,7 @@ func (tm *TeamMember) MembershipExists(s *xorm.Session) (exists bool, err error)
 // @Produce json
 // @Security JWTKeyAuth
 // @Param id path int true "Team ID"
-// @Param userID path int true "User ID"
+// @Param userID path string true "Username"
 // @Success 200 {object} models.Message "The member permission was successfully changed."
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /teams/{id}/members/{userID}/admin [post]

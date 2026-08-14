@@ -132,7 +132,7 @@ func (lu *ProjectUser) Create(s *xorm.Session, a web.Auth) (err error) {
 // @Produce json
 // @Security JWTKeyAuth
 // @Param projectID path int true "Project ID"
-// @Param userID path int true "User ID"
+// @Param userID path string true "Username"
 // @Success 200 {object} models.Message "The user was successfully removed from the project."
 // @Failure 403 {object} web.HTTPError "The user does not have access to the project"
 // @Failure 404 {object} web.HTTPError "user or project does not exist."
@@ -232,7 +232,7 @@ func (lu *ProjectUser) ReadAll(s *xorm.Session, a web.Auth, search string, page 
 // @Accept json
 // @Produce json
 // @Param projectID path int true "Project ID"
-// @Param userID path int true "User ID"
+// @Param userID path string true "Username"
 // @Param project body models.ProjectUser true "The user you want to update."
 // @Security JWTKeyAuth
 // @Success 200 {object} models.ProjectUser "The updated user <-> project relation."
