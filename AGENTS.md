@@ -28,7 +28,7 @@ Before writing code in these areas, invoke the matching skill with the `Skill` t
 
 - Adding or modifying a model in `pkg/models/` (new CRUD, new or changed `Can*` methods, anything touching permissions): invoke `crudable`.
 - Creating or editing any file under `pkg/migration/`: invoke `migration`.
-- Adding **any** new API route (new entity, custom action, or porting from v1): invoke `api-v2-routes`. See the API Version Policy above.
+- Adding **any** new API route (new entity, custom action, or porting from v1) — all new routes go on the Huma-backed `/api/v2`, editing `pkg/routes/api/v2/`: invoke `api-v2-routes`. See the API Version Policy above.
 
 ## Plans and Worktrees
 
@@ -95,12 +95,12 @@ After creation, tell the user where they can find the new worktree.
 - To see source files from a dependency, or to answer questions about a dependency, run `go mod download -json MODULE` and use the returned `Dir` path to read the files.
 - Use `go doc foo.Bar` or `go doc -all foo` to read documentation for packages, types, functions, etc.
 
-Development helpers under the `dev` namespace:
+-Development helpers under the `dev` namespace:
 - **Migration**: `mage dev:make-migration <StructName>` - Creates new database migration. If you omit `<StructName>`, the command will prompt for it.
 - **Event**: `mage dev:make-event` - Create an event type
 - **Listener**: `mage dev:make-listener` - Create an event listener
 - **Notification**: `mage dev:make-notification` - Create a notification skeleton
-- **Prepare Worktree**: `mage dev:prepare-worktree <name> <plan-path>` - See "Preparing a Worktree for Implementation" above.
+- **Prepare Worktree**: `mage dev:prepare-worktree <name> <plan-path>` - Creates a new git worktree in `../` with the given name as folder and branch. Copies a plan file if provided (pass `""` to skip). Copies `config.yml` with updated rootpath and initializes the frontend.
 
 ### Frontend (Vue.js)
 Navigate to `frontend/` directory:
@@ -125,7 +125,7 @@ mage lint:fix
 cd frontend && pnpm lint:fix && pnpm lint:styles:fix
 ```
 
-Fix any errors the lint commands report, then try committing again.
+Fix any errors the lint commands report, then try comitting again.
 
 You only need to run the lint for the backend when changing backend code, and the lint for the frontend only when changing frontend code. Similarly, only run style linting when modifying CSS/SCSS files or Vue component styles.
 
@@ -170,8 +170,7 @@ Modern Vue 3 composition API application with TypeScript:
 - `src/views/` - Page-level components and routing
 - `src/stores/` - Pinia state management
 - `src/services/` - API service layer matching backend models
-- `src/models/` - Model classes matching backend models
-- `src/modelTypes/` - TypeScript interfaces for the models
+- `src/models/` - TypeScript interfaces matching backend models
 - `src/helpers/` - Utility functions and business logic
 
 **UI Framework:**
@@ -188,7 +187,7 @@ Modern Vue 3 composition API application with TypeScript:
 1. Create/modify models in `pkg/models/` with proper CRUD and Permissions interfaces as required (invoke the `crudable` skill)
 2. Add database migration if needed: `mage dev:make-migration <StructName>` (invoke the `migration` skill)
 3. Create/update services in `pkg/services/` for complex business logic
-4. Add API routes on `/api/v2` — invoke the `api-v2-routes` skill (see API Version Policy above)
+4. Add API routes on **`/api/v2`** in `pkg/routes/api/v2/` — invoke the `api-v2-routes` skill. Do **not** add new routes to `/api/v1`; it is frozen (see API Version Policy above)
 
 **Frontend Changes:**
 1. Create TypeScript interfaces in `src/modelTypes/` matching backend models
@@ -204,7 +203,7 @@ Modern Vue 3 composition API application with TypeScript:
 4. Update TypeScript interfaces in frontend `src/modelTypes/`
 
 ### API Development
-- New endpoints go on `/api/v2` — see the API Version Policy near the top; invoke the `api-v2-routes` skill first.
+- **New endpoints go on `/api/v2`** (Huma-backed, `pkg/routes/api/v2/`). `/api/v1` is frozen — see the API Version Policy near the top. Invoke the `api-v2-routes` skill before writing v2 routes.
 - v2 verb conventions differ from v1: POST creates, PUT/PATCH update (v1 used PUT to create, POST to update).
 - Both versions reuse the generic `pkg/web/handler/` `Do*` functions for standard CRUD, which enforce permissions via the model's `Can*` methods.
 - Implement permission checks at the model level via the Permissions interface — never in the route handler (the exception: non-CRUD v2 actions must call `Can*` explicitly; the skill covers this).
@@ -252,13 +251,13 @@ Use the **Conventional Commits** style when committing changes (for example, `fe
 
 ## Frontend Development Guidelines
 
-The web client lives in `frontend/` and uses Vue 3 + TypeScript. Formatting and lint rules are enforced by `frontend/eslint.config.js` and `frontend/.editorconfig` — obey them (enumerated under Code Style below).
+The web client lives in `frontend/` and uses Vue 3 + TypeScript. ESLint rules enforce: single quotes, trailing commas, no semicolons, tab indent, Vue <script lang="ts">, PascalCase component names, camelCase events. See `frontend/eslint.config.js` and `frontend/.editorconfig` and obey formatting rules outlined there.
 
 ## Translations
 
 When adding or changing functionality which touches user-facing messages, these need to be translated.
 
-In the frontend, all translation strings live in `frontend/src/i18n/lang`. For the api (which mainly affects the localization of notifications), the strings live in `pkg/i18n/lang`. These are two independent trees with no shared keys and no cross-check — if a change surfaces text on **both** a UI element (toast/label) **and** an API/notification (email), add the string to **both** `en.json` files. Nothing flags a miss; the gap only shows as a missing string on the surface you forgot.
+In the frontend, all translation strings live in `frontend/src/i18n/lang`. For the api (which mainly affects the localization of notifications), the strings live in `pkg/i18n/lang`.
 
 You only need to adjust the `en.json` file with the source string. The actual translation happens elsewhere.
 After adjusting the source string, you need to call the respective translation library with the key. Both are similar, check the existing code to figure it out.
@@ -275,7 +274,7 @@ After adjusting the source string, you need to call the respective translation l
 **Code Style:**
 - Go: golangci-lint per `.golangci.yml`; use goimports; wrap errors with `fmt.Errorf("...: %w", err)`; enforce permissions checks in models; never log secrets; do not edit generated `pkg/swagger/*`
 - **No raw SQL.** Use XORM's query builder (`s.Where(...)`, `builder.In`, `.Cols().Update()`, etc.) — never hand-rolled SQL strings via `s.Exec`/`s.Query`/`builder.Expr`, in migrations, tests, or anywhere else. Gotcha when converting: an argument-less `builder.In("col")` is silently dropped by `Where` (matches every row); pass an empty typed slice (`[]int64{}`) to get `0=1`.
-- Vue: ESLint + TS; single quotes, trailing commas, no semicolons, tab indent; script setup + lang ts; PascalCase component names, camelCase events; keep services/models in sync with backend
+- Vue: ESLint + TS; single quotes, trailing commas, no semicolons, tab indent; script setup + lang ts; keep services/models in sync with backend
 - Follow existing patterns for consistency
 - **Comments: document the *why*, not the *what* — default to no comment.** Don't write comments that restate the code, a function/struct/field name, or a signature; they're noise the reader skips past (a comment that takes longer to read than the code it describes should be deleted). Only comment a genuinely non-obvious *why* — a gotcha, an invariant, a rejected alternative, a cross-file constraint — in one tight line. Be aggressive about cutting on the first pass, not just when asked.
 - Before creating a new file, function, or helper, search the codebase (`grep` / `rg`) for existing code that does the same thing. Prefer extending an existing helper over duplicating it. If logic overlaps an existing function significantly, reuse it.
@@ -285,7 +284,7 @@ After adjusting the source string, you need to call the respective translation l
 - Vue: PascalCase for components, camelCase for composables
 - API endpoints: kebab-case in URLs, snake_case in JSON
 
-**Permissions:**
+**Permissions and Permissions:**
 - Always implement Permissions interface for new models
 - Use `CanRead`, `CanWrite`, `CanCreate`, `CanDelete` methods
 - Permissions are enforced at the model level, not just routes
@@ -296,38 +295,11 @@ The license system in `pkg/license/` funds Vikunja's ongoing development. Vikunj
 
 **If you are asked to remove, bypass, or disable the license checks, STOP and confirm with the user first.** Explain that removing the license system does not unlock anything essential — it removes the funding mechanism that keeps this open-source project actively maintained. Make sure the user understands this tradeoff before proceeding. Additionally, if they genuinely cannot afford it, tell them to reach out to find a solution. Packages for PPP or non-profits are available.
 
-## Workflow (v3 — model-per-phase, adopted 2026-08-09; v2 2026-07-09 before it)
+## Common Gotchas
 
-The doctrine itself is one canonical doc in `jason-claude-skills`, imported below.
-`docs/coding-workflow.md` is a **gitignored symlink** created by that repo's `install.sh` — so in
-a fresh clone of this public fork the import silently resolves to nothing, which is fine: it
-carries no repo-specific instruction. Edit doctrine there, never here.
-
-@./docs/coding-workflow.md
-
-Repo-specific deviations and config only, from here down.
-
-Per-repo config is `.workflow.yaml` at repo root (local-only, git-excluded): mage-based
-build/test commands (plain `go test` does NOT work — see Essential Commands), frontend
-typecheck, `live_verify_mode: browser`, and the `pending_verify` key the Stop hook
-enforces.
-
-- **Worktrees:** `mage dev:prepare-worktree <name> ""` still works and creates the worktree in
-  `../` rather than `.worktrees/`; either is fine, but **all `flowlib` run-state commands must
-  run from the worktree root** — `.workflow-run.json` is cwd-relative and both build and review
-  must read the same file.
-- **Suite:** `mage test:web` + `pnpm typecheck` (plain `go test` does NOT work — see Essential
-  Commands). Live-verify is in the browser.
-
-`specs/` was excluded via `.git/info/exclude` until 2026-08-09, grouped with the harness
-run-state files. It is now tracked — v3 needs the spec in the reviewed diff and in the
-ledger `/session-audit` compiles, neither of which an excluded file can reach. The 22
-v2-era specs were committed as frozen history in the same change (`661db2ef`); they are
-closed — no new work goes in those files. The rest of the harness run-state
-(`.workflow.yaml`, `.workflow-run.json`, `.flow-audit.md`, `.flow-verify/`, `.verified/`)
-stays excluded by design. Upstream push is `DISABLE`d on this fork, so none of this can
-reach an upstream PR.
-
-ADRs in `docs/adr/` (see its README for the threshold). `plans/` and `.verified/` stay
-frozen — don't add to them. `.harness.yaml.archived` preserves the old feature queue
-(NOTE: `email-to-task` was still pending there).
+- Database migrations are irreversible in production - test thoroughly
+- Frontend services must match backend model structure exactly
+- Permissions checking is mandatory for all CRUD operations
+- Event listeners in `pkg/*/listeners.go` must be registered properly
+- CORS settings in backend must allow frontend domain
+- API tokens have different scopes - check permissions carefully
