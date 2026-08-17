@@ -59,8 +59,41 @@ func (tp *TaskPosition) TableName() string {
 }
 
 func (tp *TaskPosition) CanUpdate(s *xorm.Session, a web.Auth) (bool, error) {
-	t := &Task{ID: tp.TaskID}
-	return t.CanUpdate(s, a)
+	t, err := GetTaskByIDSimple(s, tp.TaskID)
+	if err != nil {
+		return false, err
+	}
+
+	// Write on the task's project first, so a caller without it always gets the
+	// same 403 and cannot use the view check below as an existence oracle.
+	p := &Project{ID: t.ProjectID}
+	can, err := p.CanWrite(s, a)
+	if err != nil || !can {
+		return can, err
+	}
+
+	// ProjectViewID comes from the request body and names no project of its own,
+	// so without this it could point at any view instance-wide (#88).
+	view, err := GetProjectViewByID(s, tp.ProjectViewID)
+	if err != nil {
+		return false, err
+	}
+
+	if view.ProjectID == t.ProjectID {
+		return true, nil
+	}
+
+	filterID := GetSavedFilterIDFromProjectID(view.ProjectID)
+	if filterID == 0 {
+		// 404 rather than 403: whether a foreign view exists must not leak.
+		return false, &ErrProjectViewDoesNotExist{ProjectViewID: tp.ProjectViewID}
+	}
+
+	// Owning the filter is enough — re-running the filter query to prove the task
+	// is a member would cost a full search per drag, and an owner reordering their
+	// own filter's view is harmless.
+	sf := &SavedFilter{ID: filterID}
+	return sf.canDoFilter(s, a)
 }
 
 func (tp *TaskPosition) refresh(s *xorm.Session) (err error) {

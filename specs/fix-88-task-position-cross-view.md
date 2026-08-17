@@ -127,4 +127,44 @@ From the worktree root:
 
 ## Execution Log
 
-(build phase appends here)
+**2026-08-17, build phase.** Driver implemented directly, no dispatch, as routed.
+
+Deviations from the spec, in the order a reviewer should look at them:
+
+1. **Permission order reversed — look here first.** The Design block resolves the view
+   before checking write; the implementation checks `Project.CanWrite` on the task's
+   project **first**, then resolves the view. Two reasons. (a) The spec's order regressed
+   an existing test: `TestTaskPositionV2/read_but_no_write_on_the_task_is_forbidden`
+   drives task 32 (project 3) with `project_view_id: 1` (project 1) — itself a
+   cross-project pair — and expects 403; view-first turns that into 404. (b) View-first
+   creates an existence oracle the old code did not have: a caller with *no* access to
+   the task still reaches the view check, so 403-vs-404 tells them whether a given view
+   belongs to that task's project. Write-first collapses every no-write caller to the
+   same 403 and preserves all six specced outcomes. No existing test was edited.
+2. **Test 2 is a v1 webtest**, per the spec's own escape hatch — the model test proves
+   denial, so the webtest guards the permission→handler wiring instead. New file
+   `pkg/webtests/task_position_test.go`, using the existing `webHandlerTest` seam. It
+   asserts 404 + `ErrCodeProjectViewDoesNotExist` and that view 21 still holds exactly
+   its one fixture row (task 35, position 0), i.e. the recalc never ran.
+3. **Test 6 uses user 3 + task 13, not user 2 + task 1.** User 2 has no write on task 1
+   either, so the specced setup would pass for the wrong reason. User 3 owns project 2
+   and can write task 13, so the only thing denying is that the filter behind the view
+   belongs to user 1 — the branch the test exists to prove.
+4. **Saved-filter test seam** is `sf.Create(s, u)` as specced (no fixture added); the
+   List view of the filter's pseudo project is used rather than the Kanban one.
+
+Environment note, not part of the diff: the worktree had no `frontend/dist`, so
+`pkg/webtests` would not compile (`//go:embed all:dist` in `frontend/embed.go`). Copied
+the main checkout's built `dist` in. It is gitignored and absent from the diff.
+
+Verification run in the worktree:
+
+- `mage test:filter "TestTaskPositionCanUpdate|TestTaskPositionForeignViewDoesNotRecalculate"`
+  red before the fix (4 failing assertions across 3 subtests + the webtest), green after.
+  The two positive-regression subtests passed in the red run, as intended.
+- `mage test:web` — ok, 27.3s. `mage test:feature` — ok, `pkg/models` 63.8% coverage.
+  `mage lint` — 0 issues. `mage fmt` applied (touched only the new webtest file).
+- No frontend change, so `pnpm typecheck` was not run.
+
+Accepted gaps unchanged from the spec: filter-membership is not checked (ownership only),
+and pre-existing mis-scoped rows in `task_positions` are left in place.
