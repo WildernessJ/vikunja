@@ -28,8 +28,7 @@ Repo-specific deviations and config only, from here down.
 
 Per-repo config is `.workflow.yaml` at repo root (local-only, git-excluded): mage-based
 build/test commands (plain `go test` does NOT work — see Essential Commands), frontend
-typecheck, `live_verify_mode: browser`, and the `pending_verify` key the Stop hook
-enforces.
+typecheck, and `live_verify_mode: browser`.
 
 - **Worktrees:** `mage dev:prepare-worktree <name> ""` still works and creates the worktree in
   `../` rather than `.worktrees/`; either is fine, but **all `flowlib` run-state commands must
