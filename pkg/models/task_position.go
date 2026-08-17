@@ -83,9 +83,10 @@ func (tp *TaskPosition) CanUpdate(s *xorm.Session, a web.Auth) (bool, error) {
 		return true, nil
 	}
 
-	// Every denial below is the same 404 as a view of a foreign project, so a
-	// caller cannot tell an unreachable view from a saved-filter view someone
-	// else owns, and cannot enumerate either.
+	// Every denial below is the same 404 as a view of a foreign project — same
+	// status, same body — so a caller cannot tell an unreachable view from a
+	// saved-filter view someone else owns. Not timing-safe: the saved-filter
+	// path costs extra queries; accepted, the leak would only reveal view kind.
 	viewGone := &ErrProjectViewDoesNotExist{ProjectViewID: tp.ProjectViewID}
 
 	filterID := GetSavedFilterIDFromProjectID(view.ProjectID)
