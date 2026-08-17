@@ -8,9 +8,11 @@ Issue: #88. Found during the #86 security review; probe-verified.
 the task. `tp.ProjectViewID` comes solely from the body (`POST /tasks/:task/position` has no
 `:view` segment; the field has no `param` tag, so #86's URL re-force does not apply) and is
 never validated — not for existence, not against the task's project. Any authenticated user
-with write on any one task can write a position row into any view instance-wide, and with
-`position < MinPositionSpacing` trigger `RecalculateTaskPositions` over the foreign view,
-destroying its stored ordering. v2 (`pkg/routes/api/v2/task_position.go`) is affected
+with write on any one task can write a position row into any view instance-wide. With
+`position < MinPositionSpacing` and at least *read* access on the victim project,
+`RecalculateTaskPositions` runs over the foreign view and destroys its stored ordering
+(`RecalculateTaskPositions` reaches a `CanRead` check on the victim project; a zero-access
+attacker's recalc attempt errors and the transaction rolls back, upsert included). v2 (`pkg/routes/api/v2/task_position.go`) is affected
 identically because the hole is in the model.
 
 After the fix: the view must exist and belong to the task's project, or be a saved-filter
@@ -58,7 +60,7 @@ Notes settled at plan time:
   membership. The owner corrupting position rows in their own filter's view is
   harmless; a membership check would re-run the filter query per drag. Accepted gap —
   record in the issue close, not guarded.
-- **Favorites pseudo views (IDs -1…-4) are not in the DB**, so `GetProjectViewByID`
+- **Favorites pseudo views (IDs -1…-3) are not in the DB**, so `GetProjectViewByID`
   404s them. That is correct, not a regression: the frontend disables dragging for
   favorites (`ProjectList.vue` `canWrite` requires `id > 0`), and today such a write
   would store a mis-scoped row keyed to a pseudo view ID.
@@ -100,7 +102,9 @@ web tests only if a route-level assertion adds signal beyond the model test:
    permission→handler wiring.)
 3. **Nonexistent view denied:** `project_view_id: 9999` → false, `ErrProjectViewDoesNotExist`.
 4. **Same-project view still allowed:** user 1, task 1, a project-1 view → true (regression guard).
-5. **Saved-filter view, owner:** filter 1 (owner user 1) view → true.
+5. **Saved-filter view, owner:** a filter view created in-test via `sf.Create(s, u)`
+   (auto-creates the filter's views — the seam `saved_filter_positions_test.go` uses;
+   no fixture exists or is needed), owner user 1 → true.
 6. **Saved-filter view, non-owner:** same view, user 2 → denied.
 
 ## Verification
