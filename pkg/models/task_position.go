@@ -83,17 +83,31 @@ func (tp *TaskPosition) CanUpdate(s *xorm.Session, a web.Auth) (bool, error) {
 		return true, nil
 	}
 
+	// Every denial below is the same 404 as a view of a foreign project, so a
+	// caller cannot tell an unreachable view from a saved-filter view someone
+	// else owns, and cannot enumerate either.
+	viewGone := &ErrProjectViewDoesNotExist{ProjectViewID: tp.ProjectViewID}
+
 	filterID := GetSavedFilterIDFromProjectID(view.ProjectID)
 	if filterID == 0 {
-		// 404 rather than 403: whether a foreign view exists must not leak.
-		return false, &ErrProjectViewDoesNotExist{ProjectViewID: tp.ProjectViewID}
+		return false, viewGone
 	}
 
 	// Owning the filter is enough — re-running the filter query to prove the task
 	// is a member would cost a full search per drag, and an owner reordering their
 	// own filter's view is harmless.
 	sf := &SavedFilter{ID: filterID}
-	return sf.canDoFilter(s, a)
+	can, err = sf.canDoFilter(s, a)
+	// A link share is refused before the filter is even looked up, so surfacing
+	// that error would tell it which view ids are saved-filter views.
+	if err != nil && !IsErrSavedFilterNotAvailableForLinkShare(err) {
+		return false, err
+	}
+	if !can {
+		return false, viewGone
+	}
+
+	return true, nil
 }
 
 func (tp *TaskPosition) refresh(s *xorm.Session) (err error) {

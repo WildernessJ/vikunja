@@ -833,7 +833,26 @@ func TestTaskPositionCanUpdate(t *testing.T) {
 		// here is that the filter behind the view belongs to user 1.
 		tp := &TaskPosition{TaskID: 13, ProjectViewID: view.ID}
 		can, err := tp.CanUpdate(s, &user.User{ID: 3})
-		require.NoError(t, err)
 		assert.False(t, can)
+		require.Error(t, err)
+		// Same error as a view of a foreign project, so the two are indistinguishable.
+		assert.True(t, IsErrProjectViewDoesNotExist(err), "want ErrProjectViewDoesNotExist, got %v", err)
+	})
+
+	t.Run("saved filter view is denied for a link share", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		view := filterView(t, s, "canupdate-link-share")
+
+		// Link share 2 has write on project 2, so it can write task 13. It must
+		// not learn that this view id belongs to a saved filter either.
+		share := &LinkSharing{ID: 2, ProjectID: 2, Permission: PermissionWrite}
+		tp := &TaskPosition{TaskID: 13, ProjectViewID: view.ID}
+		can, err := tp.CanUpdate(s, share)
+		assert.False(t, can)
+		require.Error(t, err)
+		assert.True(t, IsErrProjectViewDoesNotExist(err), "want ErrProjectViewDoesNotExist, got %v", err)
 	})
 }

@@ -168,3 +168,34 @@ Verification run in the worktree:
 
 Accepted gaps unchanged from the spec: filter-membership is not checked (ownership only),
 and pre-existing mis-scoped rows in `task_positions` are left in place.
+
+### Amendment 1 — saved-filter denials also return 404
+
+`/code-review high` found the no-oracle property was only half delivered. The spec fixed
+the non-owner saved-filter case as "whatever `canDoFilter` returns today", which is
+`(false, nil)` → **403**, while a foreign project view returns **404**. Any authenticated
+user with write on one task could therefore walk view ids and learn which are
+saved-filter views instance-wide — the exact leak the `filterID == 0` branch claims to
+close. Deviating from the spec here, because the alternative was to keep the behavior and
+water the comment down to a claim about project views only.
+
+Every denial in the saved-filter branch now returns the same `ErrProjectViewDoesNotExist`
+as a foreign project view. That includes link shares: `canDoFilter` refuses them on its
+first line, before any lookup, so surfacing `ErrSavedFilterNotAvailableForLinkShare`
+(412) would itself identify saved-filter view ids. Genuine errors still propagate.
+
+- Test 6 now asserts the 404 rather than a bare `false` — under the pre-amendment code it
+  returned `(false, nil)`, so this is a real red-first delta, not a restatement.
+- New subtest, "saved filter view is denied for a link share": link share 2 has write on
+  project 2 and so can write task 13, which means it reaches the filter branch rather
+  than short-circuiting on `CanWrite`. It asserts the same 404. The test would fail with
+  `require.Error` if the write check denied first, so it is self-checking on that point.
+- Re-verified: `mage test:web` ok (27.2s), `mage test:feature` ok (`pkg/models` 63.9%),
+  `mage lint` 0 issues. `TestTaskPositionV2` still green — the amendment does not touch
+  the same-project path.
+
+The review agent's second note is **not** fixed and needs one line in the issue close: an
+owner can write a position row for a task not in their filter, and `addTaskToFilter`
+(`pkg/models/saved_filters.go:378`) only inserts when no row exists, so if that task later
+genuinely matches the filter the heal skips it and the arbitrary position wins
+permanently. Self-inflicted only — the actor must own the filter.
