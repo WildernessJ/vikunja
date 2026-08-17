@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"code.vikunja.io/api/pkg/db"
+	"code.vikunja.io/api/pkg/user"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -749,5 +750,128 @@ func TestBulkInsertTaskPositions(t *testing.T) {
 			builder.Eq{"project_view_id": 1},
 			builder.Gte{"task_id": 10000},
 		), 150)
+	})
+}
+
+func TestTaskPositionCanUpdate(t *testing.T) {
+	u1 := &user.User{ID: 1}
+
+	// Creates a saved filter owned by u1 and returns one of its auto-created views.
+	filterView := func(t *testing.T, s *xorm.Session, title string) *ProjectView {
+		sf := &SavedFilter{
+			Title:   title,
+			Filters: &TaskCollection{Filter: "done = false"},
+		}
+		require.NoError(t, sf.Create(s, u1))
+
+		view := &ProjectView{}
+		exists, err := s.
+			Where("project_id = ? AND view_kind = ?", getProjectIDFromSavedFilterID(sf.ID), ProjectViewKindList).
+			Get(view)
+		require.NoError(t, err)
+		require.True(t, exists)
+		return view
+	}
+
+	t.Run("view of another project is denied", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		// Task 1 is in project 1; view 21 belongs to project 6.
+		tp := &TaskPosition{TaskID: 1, ProjectViewID: 21}
+		can, err := tp.CanUpdate(s, u1)
+		assert.False(t, can)
+		require.Error(t, err)
+		assert.True(t, IsErrProjectViewDoesNotExist(err), "want ErrProjectViewDoesNotExist, got %v", err)
+	})
+
+	t.Run("nonexistent view is denied", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		tp := &TaskPosition{TaskID: 1, ProjectViewID: 9999}
+		can, err := tp.CanUpdate(s, u1)
+		assert.False(t, can)
+		require.Error(t, err)
+		assert.True(t, IsErrProjectViewDoesNotExist(err), "want ErrProjectViewDoesNotExist, got %v", err)
+	})
+
+	t.Run("view of the task's own project is allowed", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		tp := &TaskPosition{TaskID: 1, ProjectViewID: 1}
+		can, err := tp.CanUpdate(s, u1)
+		require.NoError(t, err)
+		assert.True(t, can)
+	})
+
+	t.Run("saved filter view is allowed for the filter owner", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		view := filterView(t, s, "canupdate-owner")
+
+		tp := &TaskPosition{TaskID: 1, ProjectViewID: view.ID}
+		can, err := tp.CanUpdate(s, u1)
+		require.NoError(t, err)
+		assert.True(t, can)
+	})
+
+	t.Run("saved filter view is denied for a non-owner", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		view := filterView(t, s, "canupdate-non-owner")
+
+		// User 3 owns project 2 and can write task 13 — the only thing denying
+		// here is that the filter behind the view belongs to user 1.
+		tp := &TaskPosition{TaskID: 13, ProjectViewID: view.ID}
+		can, err := tp.CanUpdate(s, &user.User{ID: 3})
+		assert.False(t, can)
+		require.Error(t, err)
+		// Same error as a view of a foreign project, so the two are indistinguishable.
+		assert.True(t, IsErrProjectViewDoesNotExist(err), "want ErrProjectViewDoesNotExist, got %v", err)
+	})
+
+	t.Run("orphaned saved filter view is denied with the same 404", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		view := filterView(t, s, "canupdate-orphaned")
+
+		// Deleting a filter leaves its project_views rows behind. The orphaned
+		// view must still be indistinguishable from one that never existed.
+		_, err := s.Where("id = ?", GetSavedFilterIDFromProjectID(view.ProjectID)).Delete(&SavedFilter{})
+		require.NoError(t, err)
+
+		tp := &TaskPosition{TaskID: 1, ProjectViewID: view.ID}
+		can, err := tp.CanUpdate(s, u1)
+		assert.False(t, can)
+		require.Error(t, err)
+		assert.True(t, IsErrProjectViewDoesNotExist(err), "want ErrProjectViewDoesNotExist, got %v", err)
+	})
+
+	t.Run("saved filter view is denied for a link share", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		view := filterView(t, s, "canupdate-link-share")
+
+		// Link share 2 has write on project 2, so it can write task 13. It must
+		// not learn that this view id belongs to a saved filter either.
+		share := &LinkSharing{ID: 2, ProjectID: 2, Permission: PermissionWrite}
+		tp := &TaskPosition{TaskID: 13, ProjectViewID: view.ID}
+		can, err := tp.CanUpdate(s, share)
+		assert.False(t, can)
+		require.Error(t, err)
+		assert.True(t, IsErrProjectViewDoesNotExist(err), "want ErrProjectViewDoesNotExist, got %v", err)
 	})
 }
