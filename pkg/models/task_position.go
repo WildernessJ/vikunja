@@ -98,9 +98,13 @@ func (tp *TaskPosition) CanUpdate(s *xorm.Session, a web.Auth) (bool, error) {
 	// own filter's view is harmless.
 	sf := &SavedFilter{ID: filterID}
 	can, err = sf.canDoFilter(s, a)
-	// A link share is refused before the filter is even looked up, so surfacing
-	// that error would tell it which view ids are saved-filter views.
-	if err != nil && !IsErrSavedFilterNotAvailableForLinkShare(err) {
+	// A link share is refused before the filter is even looked up, and deleting a
+	// filter leaves its views behind as orphans — surfacing either error would
+	// tell the caller which view ids are (or were) saved-filter views.
+	if err != nil {
+		if IsErrSavedFilterNotAvailableForLinkShare(err) || IsErrSavedFilterDoesNotExist(err) {
+			return false, viewGone
+		}
 		return false, err
 	}
 	if !can {

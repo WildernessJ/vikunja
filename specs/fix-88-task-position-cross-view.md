@@ -194,6 +194,22 @@ first line, before any lookup, so surfacing `ErrSavedFilterNotAvailableForLinkSh
   `mage lint` 0 issues. `TestTaskPositionV2` still green — the amendment does not touch
   the same-project path.
 
+### Amendment 2 — orphaned saved-filter views also return 404 (review phase)
+
+The review-phase verifier refuted Amendment 1's "every denial in the saved-filter branch
+returns the same 404" claim by execution: deleting a saved filter (or its owner) removes
+the `saved_filters` row but leaves its `project_views` rows behind, and for such an
+orphaned view `canDoFilter` returns `ErrSavedFilterDoesNotExist` (code 11001), which
+propagated verbatim. Both API versions serialize the error code into the 404 body, so a
+caller could still distinguish "never existed" (3014) from "was a saved-filter view".
+Information-only — no write was ever granted.
+
+Fix: `IsErrSavedFilterDoesNotExist` joins the link-share error in mapping to the uniform
+`ErrProjectViewDoesNotExist`; other errors still propagate. New red-first subtest
+"orphaned saved filter view is denied with the same 404" (red run leaked exactly the
+11001 error; green after). Re-verified: `mage lint` 0 issues, `mage test:web` ok (29.6s),
+`mage test:feature` ok.
+
 The review agent's second note is **not** fixed and needs one line in the issue close: an
 owner can write a position row for a task not in their filter, and `addTaskToFilter`
 (`pkg/models/saved_filters.go:378`) only inserts when no row exists, so if that task later

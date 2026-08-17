@@ -839,6 +839,25 @@ func TestTaskPositionCanUpdate(t *testing.T) {
 		assert.True(t, IsErrProjectViewDoesNotExist(err), "want ErrProjectViewDoesNotExist, got %v", err)
 	})
 
+	t.Run("orphaned saved filter view is denied with the same 404", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		view := filterView(t, s, "canupdate-orphaned")
+
+		// Deleting a filter leaves its project_views rows behind. The orphaned
+		// view must still be indistinguishable from one that never existed.
+		_, err := s.Where("id = ?", GetSavedFilterIDFromProjectID(view.ProjectID)).Delete(&SavedFilter{})
+		require.NoError(t, err)
+
+		tp := &TaskPosition{TaskID: 1, ProjectViewID: view.ID}
+		can, err := tp.CanUpdate(s, u1)
+		assert.False(t, can)
+		require.Error(t, err)
+		assert.True(t, IsErrProjectViewDoesNotExist(err), "want ErrProjectViewDoesNotExist, got %v", err)
+	})
+
 	t.Run("saved filter view is denied for a link share", func(t *testing.T) {
 		db.LoadAndAssertFixtures(t)
 		s := db.NewSession()
