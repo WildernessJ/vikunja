@@ -44,19 +44,19 @@
 				</span>
 				<span
 					v-if="task.dueDate && task.dueDate.getTime() > 0"
-					v-tooltip="formatDateLong(task.dueDate)"
+					v-tooltip="formatDateLong(task.dueDate, dateOnly)"
 					class="due-date"
 				>
 					<span class="icon">
 						<Icon :icon="['far', 'calendar-alt']" />
 					</span>
 					<time :datetime="formatISO(task.dueDate)">
-						{{ formatDisplayDate(task.dueDate) }}
+						{{ formatDisplayDate(task.dueDate, dateOnly) }}
 					</time>
 				</span>
 				<span
 					v-if="task.deadline !== null && task.deadline.getTime() > 0"
-					v-tooltip="formatDateLong(task.deadline)"
+					v-tooltip="formatDateLong(task.deadline, dateOnly)"
 					class="deadline"
 					:class="{'is-overdue': isDeadlineOverdue}"
 				>
@@ -64,7 +64,7 @@
 						<Icon icon="flag-checkered" />
 					</span>
 					<time :datetime="formatISO(task.deadline)">
-						{{ formatDisplayDate(task.deadline) }}
+						{{ formatDisplayDate(task.deadline, dateOnly) }}
 					</time>
 				</span>
 			</div>
@@ -169,6 +169,7 @@ import {SUPPORTED_IMAGE_SUFFIX} from '@/models/attachment'
 import AttachmentService, {PREVIEW_SIZE} from '@/services/attachment'
 
 import {formatDateLong, formatDisplayDate, formatISO} from '@/helpers/time/formatDate'
+import {useDateOnly} from '@/composables/useDateOnly'
 import {formatDuration} from '@/helpers/time/duration'
 import {colorIsDark} from '@/helpers/color/colorIsDark'
 import {useTaskStore} from '@/stores/tasks'
@@ -191,6 +192,7 @@ const emit = defineEmits<{
 }>()
 
 const router = useRouter()
+const {store: dateOnly} = useDateOnly()
 
 const loadingInternal = ref(false)
 

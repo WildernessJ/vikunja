@@ -30,6 +30,27 @@ vi.mock('@/stores/tasks', () => ({
 // computePosition so the anchoring test can assert on the virtual-element
 // contract (it must return the recorded cursor rect) without depending on
 // real layout math.
+// useDateOnly is a shared composable wrapping a computed, so the mocked setting has to be
+// genuinely reactive — a plain object would let the computed cache the first test's value.
+const dateOnlyMock = vi.hoisted((): {ref: {value: boolean}} => ({ref: {value: false}}))
+
+vi.mock('@/stores/auth', async () => {
+	const {ref} = await import('vue')
+	dateOnlyMock.ref = ref(false)
+
+	return {
+		useAuthStore: () => ({
+			settings: {
+				frontendSettings: {
+					get dateOnly() {
+						return dateOnlyMock.ref.value
+					},
+				},
+			},
+		}),
+	}
+})
+
 const computePositionMock = vi.hoisted(() => vi.fn().mockResolvedValue({x: 0, y: 0}))
 vi.mock('@floating-ui/dom', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('@floating-ui/dom')>()
@@ -170,6 +191,28 @@ describe('TaskContextMenu', () => {
 		expect(taskStoreUpdateMock).toHaveBeenCalledOnce()
 		expect(taskServiceUpdateMock).not.toHaveBeenCalled()
 
+		wrapper.unmount()
+	})
+
+	it('snaps a quick due date to end of day in date-only mode', async () => {
+		dateOnlyMock.ref.value = true
+		const task = makeTask()
+		taskStoreUpdateMock.mockResolvedValueOnce(task)
+
+		const wrapper = mountMenu(task)
+		await flushPromises()
+
+		const dueDateTrigger = wrapper.findAll('.dropdown-item').find(el => el.text().includes('Due date'))
+		await dueDateTrigger!.trigger('click')
+		const todayOption = wrapper.findAll('.flyout-option').find(el => el.text().trim() === 'Today')
+		await todayOption!.trigger('click')
+		await flushPromises()
+
+		const {dueDate} = taskStoreUpdateMock.mock.calls[0][0] as {dueDate: Date}
+		expect([dueDate.getHours(), dueDate.getMinutes(), dueDate.getSeconds(), dueDate.getMilliseconds()])
+			.toEqual([23, 59, 59, 999])
+
+		dateOnlyMock.ref.value = false
 		wrapper.unmount()
 	})
 

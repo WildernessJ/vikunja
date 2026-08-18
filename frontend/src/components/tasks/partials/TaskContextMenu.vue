@@ -222,6 +222,8 @@ import EditAssignees from '@/components/tasks/partials/EditAssignees.vue'
 import {PRIORITIES, type Priority} from '@/constants/priorities'
 import {calculateDayInterval} from '@/helpers/time/calculateDayInterval'
 import {calculateNearestHours} from '@/helpers/time/calculateNearestHours'
+import {roundToNaturalDayBoundary} from '@/helpers/time/roundToNaturalDayBoundary'
+import {useDateOnly} from '@/composables/useDateOnly'
 import {useTaskStore} from '@/stores/tasks'
 
 import type {ITask} from '@/modelTypes/ITask'
@@ -243,6 +245,7 @@ const emit = defineEmits<{
 }>()
 
 const taskStore = useTaskStore()
+const {store: dateOnly} = useDateOnly()
 
 type ContextMenuSection = 'priority' | 'dueDate' | 'project' | 'labels' | 'assignees' | null
 
@@ -349,6 +352,9 @@ function dueDateForInterval(intervalKey: string): Date {
 	const interval = calculateDayInterval(intervalKey)
 	const date = new Date()
 	date.setDate(date.getDate() + interval)
+	if (dateOnly.value) {
+		return roundToNaturalDayBoundary(date, false, true)
+	}
 	date.setHours(calculateNearestHours(date))
 	date.setMinutes(0)
 	date.setSeconds(0)

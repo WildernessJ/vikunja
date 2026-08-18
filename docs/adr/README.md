@@ -46,6 +46,7 @@ history lives in `../context/RUN_LOG.md`. Upstream's own decisions don't need AD
 | [ADR-0011](ADR-0011-route-meta-returnability.md) | "Can the user be sent back here?" declared on the route as one three-valued `meta.returnability` field | Enacted | 2026-08-05 | ADR-0001 |
 | [ADR-0012](ADR-0012-bucket-invariant-per-site.md) | The `default != done` bucket invariant is enforced per write-site (inductive), not by a DB constraint | Accepted | 2026-08-11 | ADR-0006 |
 | [ADR-0013](ADR-0013-v1-path-params-beat-body.md) | On `/api/v1`, URL path params beat the request body, enforced at the generic handler layer | Accepted | 2026-08-14 | — |
+| [ADR-0014](ADR-0014-date-only-canonical-timestamp.md) | Date-only mode stores a canonical timestamp (23:59 end-of-day), not a backend all-day flag | Accepted | 2026-08-18 | — |
 
 ## How to add a new ADR
 

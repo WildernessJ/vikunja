@@ -13,7 +13,7 @@ import type {ParsedTaskText} from './types'
  *
  * @param text
  */
-export const parseTaskText = (text: string, prefixesMode: PrefixMode = PrefixMode.Default, now: Date = new Date()): ParsedTaskText => {
+export const parseTaskText = (text: string, prefixesMode: PrefixMode = PrefixMode.Default, now: Date = new Date(), dateOnly = false): ParsedTaskText => {
 	const result: ParsedTaskText = {
 		text: text,
 		date: null,
@@ -67,11 +67,11 @@ export const parseTaskText = (text: string, prefixesMode: PrefixMode = PrefixMod
 
 	// Parse the braced deadline before the due date so the date grammar never
 	// sees (and consumes) the deadline's inner text as the due date.
-	const {newText: textWithoutDeadline, deadline} = parseDeadline(result.text, now)
+	const {newText: textWithoutDeadline, deadline} = parseDeadline(result.text, now, dateOnly)
 	result.text = textWithoutDeadline
 	result.deadline = deadline
 
-	const {newText, date} = parseDate(result.text, now)
+	const {newText, date} = parseDate(result.text, now, dateOnly)
 	result.text = newText
 	result.date = date
 

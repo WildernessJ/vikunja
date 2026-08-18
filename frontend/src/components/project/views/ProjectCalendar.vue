@@ -176,7 +176,9 @@ import {useTaskStore} from '@/stores/tasks'
 
 import TaskCollectionService, {type TaskFilterParams} from '@/services/taskCollection'
 import {buildDateWindowFilterQuery} from '@/helpers/time/dateWindowFilterQuery'
+import {calendarDueDateForDay} from '@/components/project/views/calendarDueDate'
 import {formatDate} from '@/helpers/time/formatDate'
+import {useDateOnly} from '@/composables/useDateOnly'
 import {PERMISSIONS} from '@/constants/permissions'
 import {error} from '@/message'
 
@@ -203,6 +205,7 @@ const router = useRouter()
 const baseStore = useBaseStore()
 const authStore = useAuthStore()
 const taskStore = useTaskStore()
+const {store: dateOnly} = useDateOnly()
 
 // Two decoupled services so each keeps its own totalPages for the truncation guard.
 const windowTaskService = shallowReactive(new TaskCollectionService())
@@ -539,8 +542,8 @@ async function rescheduleTask(task: ITask, targetDay: Date) {
 
 	if (anchorDate === null) {
 		// Dateless task dropped from the unscheduled panel: give it a due date on
-		// the target day. Noon keeps it clear of the midnight timezone boundary.
-		updated.dueDate = new Date(targetDay.getFullYear(), targetDay.getMonth(), targetDay.getDate(), 12, 0, 0)
+		// the target day.
+		updated.dueDate = calendarDueDateForDay(targetDay, dateOnly.value)
 	} else {
 		const delta = calendarDayDelta(anchorDate, targetDay)
 		if (delta === 0) {
@@ -600,7 +603,7 @@ function openQuickCreate(day: CalendarDay) {
 async function onQuickTaskAdded(day: CalendarDay, task: ITask) {
 	quickCreateKey.value = null
 	const updated = klona(task)
-	updated.dueDate = new Date(day.date.getFullYear(), day.date.getMonth(), day.date.getDate(), 12, 0, 0)
+	updated.dueDate = calendarDueDateForDay(day.date, dateOnly.value)
 	replaceTask(updated)
 	try {
 		const saved = await taskStore.update(updated)

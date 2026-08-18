@@ -41,6 +41,7 @@
 		>
 			<Datepicker
 				v-model="task.startDate"
+				boundary="start"
 				:choose-date-label="$t('task.detail.chooseStartDate')"
 				:disabled="!canWrite"
 				@closeOnChange="saveGeneric()"

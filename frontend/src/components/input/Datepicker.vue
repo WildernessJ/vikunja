@@ -8,7 +8,7 @@
 		>
 			<i v-if="date === null && emptyLabel !== ''">{{ emptyLabel }}</i>
 			<template v-else>
-				{{ date === null ? chooseDateLabel : formatDisplayDate(date) }}
+				{{ date === null ? chooseDateLabel : formatDisplayDate(date, dateOnly && !forceTime) }}
 			</template>
 		</SimpleButton>
 
@@ -25,6 +25,8 @@
 				<DatepickerInline
 					v-model="date"
 					:show-shortcuts="showShortcuts"
+					:boundary="boundary"
+					:force-time="forceTime"
 					@update:modelValue="updateData"
 				/>
 
@@ -49,6 +51,7 @@ import DatepickerInline from '@/components/input/DatepickerInline.vue'
 import SimpleButton from '@/components/input/SimpleButton.vue'
 
 import {formatDisplayDate} from '@/helpers/time/formatDate'
+import {useDateOnly} from '@/composables/useDateOnly'
 import {closeWhenClickedOutside} from '@/helpers/closeWhenClickedOutside'
 import {createDateFromString} from '@/helpers/time/createDateFromString'
 import {useI18n} from 'vue-i18n'
@@ -60,6 +63,8 @@ const props = withDefaults(defineProps<{
 	showShortcuts?: boolean,
 	// When the value is null, show this (italic) instead of chooseDateLabel.
 	emptyLabel?: string,
+	boundary?: 'start' | 'end',
+	forceTime?: boolean,
 }>(), {
 	chooseDateLabel: () => {
 		const {t} = useI18n({useScope: 'global'})
@@ -68,6 +73,8 @@ const props = withDefaults(defineProps<{
 	disabled: false,
 	showShortcuts: true,
 	emptyLabel: '',
+	boundary: 'end',
+	forceTime: false,
 })
 
 const emit = defineEmits<{
@@ -75,6 +82,8 @@ const emit = defineEmits<{
 	'close': [value: boolean],
 	'closeOnChange': [value: boolean],
 }>()
+
+const {store: dateOnly} = useDateOnly()
 
 const date = ref<Date | null>(null)
 const show = ref(false)

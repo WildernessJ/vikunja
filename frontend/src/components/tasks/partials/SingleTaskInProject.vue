@@ -108,7 +108,7 @@
 					>
 						<template #trigger="{toggle, isOpen}">
 							<BaseButton
-								v-tooltip="formatDateLong(task.dueDate)"
+								v-tooltip="formatDateLong(task.dueDate, dateOnly)"
 								class="dueDate"
 								:class="dueUrgency ? `urgency-${dueUrgency}` : undefined"
 								@click.prevent.stop="toggle()"
@@ -138,7 +138,7 @@
 
 					<BaseButton
 						v-if="task.deadline !== null && task.deadline.getTime() > 0"
-						v-tooltip="formatDateLong(task.deadline)"
+						v-tooltip="formatDateLong(task.deadline, dateOnly)"
 						class="deadline"
 						:class="{'is-overdue': isDeadlineOverdue}"
 						@click.prevent.stop="openTaskDetail"
@@ -254,6 +254,7 @@ import Popup from '@/components/misc/Popup.vue'
 import TaskService from '@/services/task'
 
 import {formatDisplayDate, formatISO, formatDateLong} from '@/helpers/time/formatDate'
+import {useDateOnly} from '@/composables/useDateOnly'
 import {getDueDateUrgency} from '@/helpers/time/dueDateUrgency'
 import {success} from '@/message'
 
@@ -298,6 +299,7 @@ function getTaskById(taskId: number): ITask | undefined {
 }
 
 const {t} = useI18n({useScope: 'global'})
+const {store: dateOnly} = useDateOnly()
 
 const taskService = shallowReactive(new TaskService())
 const task = ref<ITask>(new TaskModel())
@@ -366,7 +368,7 @@ function updateDueDate() {
 		return
 	}
 
-	dueDateFormatted.value = formatDisplayDate(task.value.dueDate)
+	dueDateFormatted.value = formatDisplayDate(task.value.dueDate, dateOnly.value)
 }
 
 const dueDateFormatted = ref('')
@@ -382,7 +384,7 @@ function updateDeadline() {
 		return
 	}
 
-	deadlineFormatted.value = formatDisplayDate(task.value.deadline)
+	deadlineFormatted.value = formatDisplayDate(task.value.deadline, dateOnly.value)
 }
 
 const deadlineFormatted = ref('')

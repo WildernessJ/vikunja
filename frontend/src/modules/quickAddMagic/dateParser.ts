@@ -1,4 +1,5 @@
 import {calculateDayInterval} from '@/helpers/time/calculateDayInterval'
+import {roundToNaturalDayBoundary} from '@/helpers/time/roundToNaturalDayBoundary'
 import {calculateNearestHours} from '@/helpers/time/calculateNearestHours'
 import {replaceAll} from '@/helpers/replaceAll'
 
@@ -44,9 +45,9 @@ function matchesDateExpr(text: string, dateExpr: string): boolean {
 	return text.match(new RegExp('(^| )' + dateExpr, 'gi')) !== null
 }
 
-export const parseDate = (text: string, now: Date = new Date()): dateParseResult => {
+export const parseDate = (text: string, now: Date = new Date(), dateOnly = false): dateParseResult => {
 	if (matchesDateExpr(text, 'today')) {
-		return addTimeToDate(text, getDateFromInterval(calculateDayInterval('today')), 'today')
+		return addTimeToDate(text, getDateFromInterval(calculateDayInterval('today')), 'today', dateOnly)
 	}
 	if (matchesDateExpr(text, 'tonight')) {
 		const taskDate = getDateFromInterval(calculateDayInterval('today'))
@@ -54,22 +55,22 @@ export const parseDate = (text: string, now: Date = new Date()): dateParseResult
 		return addTimeToDate(text, taskDate, 'tonight')
 	}
 	if (matchesDateExpr(text, 'tomorrow')) {
-		return addTimeToDate(text, getDateFromInterval(calculateDayInterval('tomorrow')), 'tomorrow')
+		return addTimeToDate(text, getDateFromInterval(calculateDayInterval('tomorrow')), 'tomorrow', dateOnly)
 	}
 	if (matchesDateExpr(text, 'next monday')) {
-		return addTimeToDate(text, getDateFromInterval(calculateDayInterval('nextMonday')), 'next monday')
+		return addTimeToDate(text, getDateFromInterval(calculateDayInterval('nextMonday')), 'next monday', dateOnly)
 	}
 	if (matchesDateExpr(text, 'this weekend')) {
-		return addTimeToDate(text, getDateFromInterval(calculateDayInterval('thisWeekend')), 'this weekend')
+		return addTimeToDate(text, getDateFromInterval(calculateDayInterval('thisWeekend')), 'this weekend', dateOnly)
 	}
 	if (matchesDateExpr(text, 'later this week')) {
-		return addTimeToDate(text, getDateFromInterval(calculateDayInterval('laterThisWeek')), 'later this week')
+		return addTimeToDate(text, getDateFromInterval(calculateDayInterval('laterThisWeek')), 'later this week', dateOnly)
 	}
 	if (matchesDateExpr(text, 'later next week')) {
-		return addTimeToDate(text, getDateFromInterval(calculateDayInterval('laterNextWeek')), 'later next week')
+		return addTimeToDate(text, getDateFromInterval(calculateDayInterval('laterNextWeek')), 'later next week', dateOnly)
 	}
 	if (matchesDateExpr(text, 'next week')) {
-		return addTimeToDate(text, getDateFromInterval(calculateDayInterval('nextWeek')), 'next week')
+		return addTimeToDate(text, getDateFromInterval(calculateDayInterval('nextWeek')), 'next week', dateOnly)
 	}
 	if (matchesDateExpr(text, 'next month')) {
 		const date: Date = new Date()
@@ -79,7 +80,7 @@ export const parseDate = (text: string, now: Date = new Date()): dateParseResult
 		date.setMinutes(0)
 		date.setSeconds(0)
 
-		return addTimeToDate(text, date, 'next month')
+		return addTimeToDate(text, date, 'next month', dateOnly)
 	}
 	if (matchesDateExpr(text, 'end of month')) {
 		const curDate: Date = new Date()
@@ -88,23 +89,25 @@ export const parseDate = (text: string, now: Date = new Date()): dateParseResult
 		date.setMinutes(0)
 		date.setSeconds(0)
 
-		return addTimeToDate(text, date, 'end of month')
+		return addTimeToDate(text, date, 'end of month', dateOnly)
 	}
 
 	let parsed = getDateFromWeekday(text, now)
 	if (parsed.date !== null) {
-		return addTimeToDate(text, parsed.date, parsed.foundText)
+		return addTimeToDate(text, parsed.date, parsed.foundText, dateOnly)
 	}
 
 	parsed = getDayFromText(text, now)
 	if (parsed.date !== null) {
 		const month = getMonthFromText(text, parsed.date)
-		return addTimeToDate(month.newText, month.date, parsed.foundText)
+		return addTimeToDate(month.newText, month.date, parsed.foundText, dateOnly)
 	}
 
-	parsed = getDateFromTextIn(text, now)
-	if (parsed.date !== null) {
-		return addTimeToDate(text, parsed.date, parsed.foundText)
+	const parsedIn = getDateFromTextIn(text, now)
+	if (parsedIn.date !== null) {
+		// "in 3 hours" is a point in time the user picked; only day-or-coarser units
+		// carry no time of their own and can take the canonical end of day.
+		return addTimeToDate(text, parsedIn.date, parsedIn.foundText, dateOnly && parsedIn.dayGranular)
 	}
 
 	parsed = getDateFromText(text, now)
@@ -122,10 +125,10 @@ export const parseDate = (text: string, now: Date = new Date()): dateParseResult
 		}
 	}
 
-	return addTimeToDate(text, parsed.date, parsed.foundText)
+	return addTimeToDate(text, parsed.date, parsed.foundText, dateOnly)
 }
 
-const addTimeToDate = (text: string, date: Date, previousMatch: string | null): dateParseResult => {
+const addTimeToDate = (text: string, date: Date, previousMatch: string | null, defaultToEndOfDay = false): dateParseResult => {
 	previousMatch = previousMatch?.trim() || ''
 	text = replaceAll(text, previousMatch, '')
 	if (previousMatch === null) {
@@ -133,6 +136,10 @@ const addTimeToDate = (text: string, date: Date, previousMatch: string | null): 
 			newText: text,
 			date: null,
 		}
+	}
+
+	if (defaultToEndOfDay) {
+		date = roundToNaturalDayBoundary(date, false, true)
 	}
 
 	const timeRegex = ' (at|@) ([0-9][0-9]?(:[0-9][0-9])?( ?(a|p)m)?)'
@@ -245,16 +252,19 @@ export const getDateFromTextIn = (text: string, now: Date = new Date()) => {
 		return {
 			foundText: '',
 			date: null,
+			dayGranular: false,
 		}
 	}
 
 	const foundText: string = results[0]
 	const date = new Date(now)
 	const parts = foundText.split(' ')
-	switch (parts[2]) {
+	let dayGranular = true
+	switch (parts[2].toLowerCase()) {
 		case 'hours':
 		case 'hour':
 			date.setHours(date.getHours() + parseInt(parts[1]))
+			dayGranular = false
 			break
 		case 'days':
 		case 'day':
@@ -273,6 +283,7 @@ export const getDateFromTextIn = (text: string, now: Date = new Date()) => {
 	return {
 		foundText,
 		date,
+		dayGranular,
 	}
 }
 

@@ -84,16 +84,25 @@ import {formatDate} from '@/helpers/time/formatDate'
 import {calculateDayInterval} from '@/helpers/time/calculateDayInterval'
 import {calculateNearestHours} from '@/helpers/time/calculateNearestHours'
 import {createDateFromString} from '@/helpers/time/createDateFromString'
+import {roundToNaturalDayBoundary} from '@/helpers/time/roundToNaturalDayBoundary'
 import {useI18n} from 'vue-i18n'
 import {useFlatpickrLanguage} from '@/helpers/useFlatpickrLanguage'
 import {useTimeFormat} from '@/composables/useTimeFormat'
+import {useDateOnly} from '@/composables/useDateOnly'
 import {TIME_FORMAT} from '@/constants/timeFormat'
 
 const props = withDefaults(defineProps<{
 	modelValue: Date | null | string
 	showShortcuts?: boolean
+	// Which end of the day a date-only value snaps to.
+	boundary?: 'start' | 'end'
+	// Opt out of date-only mode entirely — for inputs whose payload IS a time
+	// (reminders, time tracking, recurrence).
+	forceTime?: boolean
 }>(), {
 	showShortcuts: true,
+	boundary: 'end',
+	forceTime: false,
 })
 
 const emit = defineEmits<{
@@ -102,6 +111,12 @@ const emit = defineEmits<{
 
 const {t} = useI18n({useScope: 'global'})
 const {store: timeFormat} = useTimeFormat()
+const {store: dateOnlySetting} = useDateOnly()
+const dateOnly = computed(() => dateOnlySetting.value && !props.forceTime)
+
+function toDayBoundary(date: Date): Date {
+	return roundToNaturalDayBoundary(date, props.boundary === 'start', true)
+}
 
 const date = ref<Date | null>(null)
 const changed = ref(false)
@@ -115,10 +130,10 @@ watch(
 
 const flatPickrRef = ref<InstanceType<typeof flatPickr> | null>(null)
 const flatPickerConfig = computed(() => ({
-	altFormat: t('date.altFormatLong'),
+	altFormat: dateOnly.value ? t('date.altFormatShort') : t('date.altFormatLong'),
 	altInput: true,
-	dateFormat: 'Y-m-d H:i',
-	enableTime: true,
+	dateFormat: dateOnly.value ? 'Y-m-d' : 'Y-m-d H:i',
+	enableTime: !dateOnly.value,
 	time_24hr: timeFormat.value === TIME_FORMAT.HOURS_24,
 	inline: true,
 	locale: useFlatpickrLanguage().value,
@@ -128,6 +143,10 @@ function formatDateToFlatpickrString(date: Date): string {
 	const year = date.getFullYear()
 	const month = (date.getMonth() + 1).toString().padStart(2, '0')
 	const day = date.getDate().toString().padStart(2, '0')
+	if (dateOnly.value) {
+		return `${year}-${month}-${day}`
+	}
+
 	const hours = date.getHours().toString().padStart(2, '0')
 	const minutes = date.getMinutes().toString().padStart(2, '0')
 	
@@ -146,7 +165,8 @@ const flatPickrDate = computed({
 		if (date.value && formatDateToFlatpickrString(date.value) === newValue) {
 			return
 		}
-		date.value = createDateFromString(newValue)
+		const picked = createDateFromString(newValue)
+		date.value = dateOnly.value ? toDayBoundary(picked) : picked
 		updateData()
 	},
 	get() {
@@ -212,6 +232,11 @@ function setDate(dateString: string) {
 	const interval = calculateDayInterval(dateString)
 	const newDate = new Date()
 	newDate.setDate(newDate.getDate() + interval)
+	if (dateOnly.value) {
+		date.value = toDayBoundary(newDate)
+		updateData()
+		return
+	}
 	newDate.setHours(calculateNearestHours(newDate))
 	newDate.setMinutes(0)
 	newDate.setSeconds(0)

@@ -27,4 +27,14 @@ describe('roundToNaturalDayBoundary', () => {
 		)
 		expect(diff).toBe(1)
 	})
+
+	it('forces end-of-day for end dates, skipping the before-noon heuristic', () => {
+		const morning = new Date('2024-01-01T08:00:00')
+		expect(roundToNaturalDayBoundary(morning, false, true)).toEqual(new Date('2024-01-01T23:59:59.999'))
+	})
+
+	it('keeps start-of-day for start dates when forced', () => {
+		const afternoon = new Date('2024-01-01T13:00:00')
+		expect(roundToNaturalDayBoundary(afternoon, true, true)).toEqual(new Date('2024-01-01T00:00:00.000'))
+	})
 })

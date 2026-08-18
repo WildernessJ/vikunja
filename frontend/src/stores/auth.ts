@@ -183,6 +183,7 @@ export const useAuthStore = defineStore('auth', () => {
 				colorSchema: 'auto',
 				allowIconChanges: true,
 				dateDisplay: DATE_DISPLAY.RELATIVE,
+				dateOnly: false,
 				timeFormat: TIME_FORMAT.HOURS_24,
 				defaultTaskRelationType: RELATION_KIND.RELATED,
 				backgroundBrightness: 100,

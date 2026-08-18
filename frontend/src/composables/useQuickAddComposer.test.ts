@@ -1,5 +1,6 @@
-import {describe, expect, it} from 'vitest'
+import {beforeEach, describe, expect, it} from 'vitest'
 import {nextTick, ref} from 'vue'
+import {createPinia, setActivePinia} from 'pinia'
 
 import {useQuickAddComposer} from './useQuickAddComposer'
 import {PrefixMode} from '@/modules/quickAddMagic'
@@ -9,6 +10,9 @@ import LabelModel from '@/models/label'
 import TaskReminderModel from '@/models/taskReminder'
 
 describe('useQuickAddComposer', () => {
+	// The composer reads the date-only setting from the auth store.
+	beforeEach(() => setActivePinia(createPinia()))
+
 	it('reflects text-parsed values when no override is set', () => {
 		const title = ref('Buy milk !3 tomorrow')
 		const mode = ref(PrefixMode.Default)

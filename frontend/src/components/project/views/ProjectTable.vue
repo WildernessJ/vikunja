@@ -293,6 +293,7 @@
 									<DateTableCell
 										v-if="activeColumns.dueDate"
 										:date="t.dueDate ?? undefined"
+										:date-only="dateOnly"
 									/>
 									<td v-if="activeColumns.commentCount">
 										<CommentCount :task="t" />
@@ -300,10 +301,12 @@
 									<DateTableCell
 										v-if="activeColumns.startDate"
 										:date="t.startDate ?? undefined"
+										:date-only="dateOnly"
 									/>
 									<DateTableCell
 										v-if="activeColumns.endDate"
 										:date="t.endDate ?? undefined"
+										:date-only="dateOnly"
 									/>
 									<td v-if="activeColumns.percentDone">
 										{{ t.percentDone * 100 }}%
@@ -346,6 +349,7 @@
 import {computed, type Ref, watch} from 'vue'
 
 import {useStorage} from '@vueuse/core'
+import {useDateOnly} from '@/composables/useDateOnly'
 
 import ProjectWrapper from '@/components/project/ProjectWrapper.vue'
 import Done from '@/components/misc/Done.vue'
@@ -403,6 +407,7 @@ const SORT_BY_DEFAULT: SortBy = {
 	index: 'desc',
 }
 
+const {store: dateOnly} = useDateOnly()
 const activeColumns = useStorage('tableViewColumns', {...ACTIVE_COLUMNS_DEFAULT})
 const sortBy = useStorage<SortBy>('tableViewSortBy', {...SORT_BY_DEFAULT})
 
