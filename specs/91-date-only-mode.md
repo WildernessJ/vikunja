@@ -27,13 +27,19 @@ Frontend-only; backend, API, and stored data untouched.
   gains an optional flag (default `false`), and only the enumerated task-date call sites
   pass `useDateOnly()`. Activity timestamps keep clock times everywhere.
 - **Parser stays store-free.** `parseDate(text, now, dateOnly = false)`; the flag threads
-  through `parseTaskText` from **all four** of its callers — `useQuickAddComposer.ts`,
-  `QuickActions.vue`, and both `stores/tasks.ts` parse sites
-  (`buildTaskFromQuickAddTitle` line 506, `createNewTasksBulk` line 638). The store
-  parses are the ones that produce the API payload — the composer parse is only the UI
-  preview; missing either store site ships the old auto-filled time. Explicit-time
-  values are untouched: the `at/@` match, "tonight" (21:00), and hour-granular "in N
-  hours" keep their times.
+  through `parseTaskText` from its three callers — `useQuickAddComposer.ts`,
+  `QuickActions.vue`, and `stores/tasks.ts` `buildTaskFromQuickAddTitle` (line 506, the
+  sole store parse site, reached by both `createNewTask` and `createNewTasksBulk`). The
+  store parse produces the API payload — the composer parse is only the UI preview;
+  missing the store site ships the old auto-filled time. Explicit-time values are
+  untouched: the `at/@` match, "tonight" (21:00), and hour-granular "in N hours" keep
+  their times.
+- **`parseDate`'s two internal siblings split by kind.** `deadlineParser.ts:26`
+  (braced `{...}` deadline) parses a task-date → thread `dateOnly` through, same rule as
+  the due date. `reminderParser.ts:68` (`~date` reminder syntax) parses an **alarm** —
+  a reminder needs a sane fire time, and 23:59 is not one — so it stays on the existing
+  default: call `parseDate` with `dateOnly=false` explicitly, with a one-line why
+  comment. This is the same task-date-vs-point-in-time split as the picker exemptions.
 - **Canonicalization provenance lives at `addTimeToDate` call sites.** A blanket
   end-of-day rule inside `addTimeToDate` would clobber "tonight"'s 21:00. Instead
   `addTimeToDate(text, date, previousMatch, defaultToEndOfDay = false)`: when
@@ -43,7 +49,9 @@ Frontend-only; backend, API, and stored data untouched.
   month, end of month, `getDateFromWeekday`, `getDayFromText`, `getDateFromText` —
   these currently carry `calculateNearestHours` or `now`'s wall-clock time), `false`
   for intentional times ("tonight", the time-only fallback). `getDateFromTextIn`
-  ("in N hours/days"): day-or-coarser units → `true`, hour/minute units → `false`.
+  ("in N hours/days") is the one data-dependent site: extend its return value with the
+  matched unit (or a `dayGranular` boolean) and derive the flag from it — day-or-coarser
+  units → `true`, hour/minute units → `false`.
 - **Point-in-time inputs are exempt** (times are their payload): reminders
   (`ReminderDetail`), time tracking (`TimeEntryForm`), recurrence
   (`RecurrencePatternPicker`). `DeferTask` shifts an existing date's day and keeps its
@@ -94,13 +102,14 @@ Files (all under `frontend/` except none — backend untouched):
    month, end of month, `getDateFromWeekday`, `getDayFromText`, `getDateFromText`,
    day-or-coarser `getDateFromTextIn`), preserved times for `tonight`, hour-granular
    `getDateFromTextIn`, the time-only fallback, and any `at/@` match (which always wins,
-   applied after canonicalization). Check `deadlineParser.ts` during build: if it
-   defaults a time the same way, apply the same rule; if not, leave it (log either way).
+   applied after canonicalization). Siblings per Design: `deadlineParser.ts:26` threads
+   `dateOnly` through; `reminderParser.ts:68` passes `dateOnly=false` explicitly
+   (reminders are alarms) with a one-line why comment.
 10. **`src/modules/quickAddMagic/quickAddMagic.ts`** — thread `dateOnly` through
-    `parseTaskText`; all four callers pass it from settings: `useQuickAddComposer.ts`
+    `parseTaskText`; its three callers pass it from settings: `useQuickAddComposer.ts`
     (lines 32/34), `QuickActions.vue` (line 407), and `stores/tasks.ts`
-    `buildTaskFromQuickAddTitle` (line 506) + `createNewTasksBulk` (line 638) — the
-    store sites are the API-payload path (see Design).
+    `buildTaskFromQuickAddTitle` (line 506) — the API-payload path, reached by both
+    `createNewTask` and `createNewTasksBulk` (see Design).
 11. **`src/helpers/time/formatDate.ts`** —
     - `formatDisplayDateFormat(date, format, timeFormat?, dateOnly = false)`: empty
       `timeFormatString` (and trim the format string — no trailing space) and drop
@@ -118,8 +127,9 @@ Files (all under `frontend/` except none — backend untouched):
     command palette's task results), `KanbanCard.vue` (lines 54/67),
     `TaskGlanceTooltip.vue` (line 65 due only — line 74 `created` stays),
     `DateTableCell.vue` gains an optional `dateOnly` prop wired by the table view's
-    scheduled-date columns (due/start/end; created/updated columns stay).
-    Kanban `done` / created timestamps stay.
+    scheduled-date columns (due/start/end; created/updated/doneAt columns stay —
+    doneAt is activity, matching `CreatedUpdated.vue`). Kanban `done` / created
+    timestamps stay.
 
 Not touched: anything in `pkg/` (including `pkg/i18n`), Gantt (already day-rounded),
 `dueDateUrgency` (already calendar-day), `DeferTask`, filter inputs, stored data.
@@ -143,10 +153,14 @@ Seams pre-agreed here; write each red before its implementation step.
    end-of-day; "foo 24th" (ordinal path) → end-of-day; "foo in 3 days" → end-of-day;
    "foo in 3 hours" → now+3h (time preserved). With flag off: existing expectations
    byte-identical (no snapshot churn).
-3. `parseTaskText` threads the flag (one integration case through `quickAddMagic.ts`),
-   and the store path parses date-only: `stores/tasks.ts` `buildTaskFromQuickAddTitle`
-   with the toggle on yields an end-of-day `dueDate` (mock/pin the settings read — this
-   is the API-payload path the round-1 review caught).
+3. `parseTaskText` threads the flag (integration cases through `quickAddMagic.ts`):
+   due date end-of-day with the flag on; `{tomorrow}` deadline end-of-day;
+   `~tomorrow` reminder time UNchanged (alarm exemption). Store path:
+   `buildTaskFromQuickAddTitle` is not exposed on the store's returned object
+   (`stores/tasks.ts:723-748`) and `createNewTask` hits `TaskService` — so either
+   expose `buildTaskFromQuickAddTitle` on the store return (test seam) or `vi.mock`
+   `TaskService` and drive `createNewTask`; pick the smaller diff and log the choice
+   in the Execution Log. The assertion: toggle on → API-bound `dueDate` is end-of-day.
 4. `formatDate.test` (new or extend): `formatDisplayDateFormat` with `dateOnly=true`
    drops the time part for one slash-format and one `Intl` format; `formatDateSinceDay`:
    today → "Today", tomorrow → "Tomorrow", +3 days → "in 3 days", −1 day → yesterday
