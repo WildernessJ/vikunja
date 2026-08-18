@@ -18,7 +18,9 @@ Frontend-only; backend, API, and stored data untouched.
 
 - **Canonical times** come from `roundToNaturalDayBoundary` (already 00:00 / 23:59:59.999),
   extended with a `force` flag that skips its `hours < 12` heuristic. One helper, one
-  canonical pair; entry and Gantt agree.
+  canonical pair. *(Corrected in review: entry and Gantt agree on day granularity only —
+  Gantt calls the helper without `force` and can store 00:00 for a due date; deferred,
+  see the review-phase Execution Log.)*
 - **Setting plumbing** mirrors `dateDisplay`: field on `IFrontendSettings`, default in
   `auth.ts loadSettings`, shared composable `useDateOnly()` copying `useDateDisplay`.
 - **Per-call-site display opt-in, not blanket.** `formatDisplayDate` serves both task
@@ -305,6 +307,25 @@ threshold): red-first test in `TaskContextMenu.test.ts`, then route through
 `roundToNaturalDayBoundary(date, false, true)` when `dateOnly` is on. Everything else
 the verifier checked survived, including a repo-wide caller audit of the format/parse
 helpers and flag-off byte-identical behavior.
+
+The cold session audit (`.flow-audit.md`) then found two entry surfaces outside the
+spec's caller graph that never received date-only, and graded two of the record's
+claims as overclaimed. Jason's resolution:
+
+- **Calendar fixed in-review:** `ProjectCalendar.vue`'s two noon-hardcoded due-date
+  sites (unscheduled-panel drop, day-cell quick create) now route through the new
+  `calendarDueDateForDay(day, dateOnly)` (pure function, red-first tested) — noon off,
+  canonical end-of-day on.
+- **Gantt deferred to #92:** drag/resize calls `roundToNaturalDayBoundary` without
+  `force` and can store 00:00 for a due date. ADR-0014's residuals gained this gap
+  (its CalDAV/reminder assumptions don't hold for Gantt-dragged dates), and the
+  Design section's "entry and Gantt agree" claim was scoped down to day granularity.
+
+Live verify (browser, attended-delegated): full checklist green — canonical payloads
+confirmed in the dev DB (quick add 23:59:59 EDT; context-menu Due Today 23:59:59 EDT),
+picker time row absent from the a11y tree, day-granular relative strings, activity
+clocks kept, toggle-off byte-identical restore. Recurrence end date verified by
+mechanism + unit test (flyout clipped off-viewport in the automation window).
 
 Jason resolved the two open spec decisions, reversing both:
 
