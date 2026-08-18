@@ -253,3 +253,43 @@ Implemented from the spec with no design deviations. Suite green, no new typeche
   is only reachable from a different route, so returning to a list remounts the component.
 - `mage test:web` needs `frontend/dist` (the Go embed). A fresh worktree has none — run
   `pnpm build` in `frontend/` first or the suite fails at setup, not on a real failure.
+
+### Build phase — review fixes
+
+`/code-review high` (6 findings) run against the build commit. Four fixed here — each one
+line to a few, in files already in the diff, no design change. Two are spec decisions and
+were left for the review session (below).
+
+- **Finding 1 (the real one), `DatepickerInline.vue`:** `enableTime: false` hid the time
+  *row*, but `altFormat` stayed `date.altFormatLong` (`"j M Y, H:i"`), and flatpickr's
+  `altInput` is the field the user actually sees. Confirmed by mounting: the input read
+  `5 Jan 2026, 00:00` for a stored `23:59:59.999` — a clock in the mode that exists to hide
+  clocks, showing a time that contradicts what was saved. Now switches to the already-present
+  and previously unused `date.altFormatShort` (`"j M Y"`). Regression test asserts the alt
+  input carries no `H:i`.
+- **Finding 3, long-date tooltips:** `formatDateLong` gained the same `dateOnly` flag
+  (`'LL'` instead of `'LLLL'`), threaded at the six task-date tooltips —
+  `DateTableCell`, `KanbanCard` (due + deadline), `SingleTaskInProject` (due + deadline —
+  the review missed the deadline one), `SingleTaskInlineReadonly`. Hovering a due date no
+  longer reveals the synthetic 23:59:59.999. Every remaining `formatDateLong` call site is
+  activity (comments, attachments, created/updated/doneAt, notifications, export expiry,
+  migration) or the time-tracking display, and stays on the clock format by design.
+- **Finding 4, `General.vue`:** the two `formatDisplayDateFormat` preview labels in the
+  date-display dropdown now pass `dateOnly`, so the option previews match what tasks render.
+- **Finding 5, `getDateFromTextIn`:** the regex is `/…/ig` but the unit `switch` listed only
+  lowercase, so "in 3 Hours" fell through — leaving `dayGranular` at its `true` default and
+  snapping an explicitly hour-granular expression to end of day. Fixed at the root with
+  `parts[2].toLowerCase()`, which also repairs the pre-existing bug where such a match
+  produced `now` unchanged.
+
+**Not fixed — these are spec decisions, for the review session to confirm or reopen:**
+
+- **Finding 2:** spec step 5 says to hide the Time format selector when date-only is on, and
+  that is what was built. The consequence the review names is real: reminders, time tracking
+  and recurrence still render clocks, so a 12-hour user who enables date-only loses the only
+  control over their format until they turn it off again. Changing it means dropping
+  `&& !dateOnly` from that `v-if` — a spec amendment, not a build fix.
+- **Finding 6:** spec's Design lists recurrence under the point-in-time exemptions, so
+  `RecurrencePatternPicker`'s end date carries `force-time`. The review's counter-argument is
+  fair — that value feeds RRULE `UNTIL=`, a boundary date rather than an alarm — but
+  re-deciding an exemption the spec settled is a plan-phase call.
