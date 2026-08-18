@@ -43,9 +43,10 @@ Frontend-only; backend, API, and stored data untouched.
 - **Canonicalization provenance lives at `addTimeToDate` call sites.** A blanket
   end-of-day rule inside `addTimeToDate` would clobber "tonight"'s 21:00. Instead
   `addTimeToDate(text, date, previousMatch, defaultToEndOfDay = false)`: when
-  `dateOnly && defaultToEndOfDay`, canonicalize the incoming date to end-of-day
-  *before* the `at/@` matcher runs (an explicit time still overrides). Call sites pass
-  `true` for every day-granular default (the `getDateFromInterval` branches, next
+  `defaultToEndOfDay`, canonicalize the incoming date to end-of-day *before* the `at/@`
+  matcher runs (an explicit time still overrides). `addTimeToDate` is a module-level
+  sibling of `parseDate` with no scope access to `dateOnly` — so day-granular call
+  sites pass `dateOnly` itself (never literal `true`) as the argument (the `getDateFromInterval` branches, next
   month, end of month, `getDateFromWeekday`, `getDayFromText`, `getDateFromText` —
   these currently carry `calculateNearestHours` or `now`'s wall-clock time), `false`
   for intentional times ("tonight", the time-only fallback). `getDateFromTextIn`
