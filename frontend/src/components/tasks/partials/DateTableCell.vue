@@ -1,5 +1,5 @@
 <template>
-	<td v-tooltip="+date === 0 ? '' : formatDateLong(date)">
+	<td v-tooltip="+date === 0 ? '' : formatDateLong(date, dateOnly)">
 		<time :datetime="date ? formatISO(date) : undefined">
 			{{ +date === 0 ? '-' : formatDisplayDate(date, dateOnly) }}
 		</time>

@@ -78,6 +78,12 @@ describe('parseDate with dateOnly', () => {
 		expect(date).toEqual(new Date('2024-03-05T12:00:00'))
 	})
 
+	it('leaves "in 3 Hours" on its clock time regardless of case', () => {
+		const {date} = parseDate('foo in 3 Hours', new Date(NOW), true)
+
+		expect(date).toEqual(new Date('2024-03-05T12:00:00'))
+	})
+
 	it('gives "end of month" the canonical end of day', () => {
 		const {date} = parseDate('foo end of month', new Date(NOW), true)
 

@@ -53,7 +53,7 @@
 
 		<span
 			v-if="task.dueDate && +new Date(task.dueDate) > 0"
-			v-tooltip="formatDateLong(task.dueDate)"
+			v-tooltip="formatDateLong(task.dueDate, dateOnly)"
 			class="dueDate"
 		>
 			<time

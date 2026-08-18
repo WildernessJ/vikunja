@@ -260,7 +260,7 @@ export const getDateFromTextIn = (text: string, now: Date = new Date()) => {
 	const date = new Date(now)
 	const parts = foundText.split(' ')
 	let dayGranular = true
-	switch (parts[2]) {
+	switch (parts[2].toLowerCase()) {
 		case 'hours':
 		case 'hour':
 			date.setHours(date.getHours() + parseInt(parts[1]))

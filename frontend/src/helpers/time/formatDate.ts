@@ -34,8 +34,8 @@ export const formatDate = (date: Date | string | null, f: string) => {
 		: ''
 }
 
-export function formatDateLong(date: Date | string | null) {
-	return formatDate(date, 'LLLL')
+export function formatDateLong(date: Date | string | null, dateOnly = false) {
+	return formatDate(date, dateOnly ? 'LL' : 'LLLL')
 }
 
 export function formatDateShort(date: Date | string | null) {

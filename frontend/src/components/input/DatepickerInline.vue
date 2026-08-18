@@ -130,7 +130,7 @@ watch(
 
 const flatPickrRef = ref<InstanceType<typeof flatPickr> | null>(null)
 const flatPickerConfig = computed(() => ({
-	altFormat: t('date.altFormatLong'),
+	altFormat: dateOnly.value ? t('date.altFormatShort') : t('date.altFormatLong'),
 	altInput: true,
 	dateFormat: dateOnly.value ? 'Y-m-d' : 'Y-m-d H:i',
 	enableTime: !dateOnly.value,

@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest'
 
-import {formatDateSinceDay, formatDisplayDateFormat} from './formatDate'
+import {formatDateLong, formatDateSinceDay, formatDisplayDateFormat} from './formatDate'
 import {DATE_DISPLAY} from '@/constants/dateDisplay'
 import {TIME_FORMAT} from '@/constants/timeFormat'
 
@@ -28,6 +28,16 @@ describe('formatDisplayDateFormat with dateOnly', () => {
 	it('keeps the time when the flag is off', () => {
 		expect(formatDisplayDateFormat(DATE, DATE_DISPLAY.DD_SLASH_MM_YYYY, TIME_FORMAT.HOURS_24))
 			.toBe('05/03/2024 15:30')
+	})
+})
+
+describe('formatDateLong with dateOnly', () => {
+	it('drops the time', () => {
+		expect(formatDateLong(DATE, true)).not.toMatch(/\d{1,2}:\d{2}/)
+	})
+
+	it('keeps the time when the flag is off', () => {
+		expect(formatDateLong(DATE)).toMatch(/\d{1,2}:\d{2}/)
 	})
 })
 

@@ -24,7 +24,10 @@ vi.mock('@/stores/auth', async () => {
 })
 
 vi.mock('vue-i18n', () => ({
-	useI18n: () => ({t: (key: string) => key}),
+	useI18n: () => ({t: (key: string) => ({
+		'date.altFormatLong': 'j M Y, H:i',
+		'date.altFormatShort': 'j M Y',
+	}[key] ?? key)}),
 	createI18n: () => ({global: {t: (key: string) => key, locale: {value: 'en'}}}),
 }))
 
@@ -77,6 +80,15 @@ describe('DatepickerInline date-only mode', () => {
 		const wrapper = mountPicker({forceTime: true})
 
 		expect(wrapper.find('.flatpickr-time input.flatpickr-hour').exists()).toBe(true)
+	})
+
+	it('shows no time in the visible alt input when the setting is on', () => {
+		dateOnlyMock.ref.value = true
+		const wrapper = mountPicker({modelValue: new Date('2026-01-05T23:59:59.999')})
+
+		const alt = wrapper.findAll('input').find(i => i.attributes('class')?.includes('form-control'))
+		expect(alt).toBeDefined()
+		expect((alt!.element as HTMLInputElement).value).not.toMatch(/\d{1,2}:\d{2}/)
 	})
 
 	it('gives a quick-selected date the canonical end of day', async () => {

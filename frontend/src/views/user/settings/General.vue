@@ -472,8 +472,8 @@ const dateDisplayOptions = computed(() => [
 	{value: DATE_DISPLAY.MM_SLASH_DD_YYYY, label: t('user.settings.general.dateDisplayOptions.mm/dd/yyyy')},
 	{value: DATE_DISPLAY.DD_SLASH_MM_YYYY, label: t('user.settings.general.dateDisplayOptions.dd/mm/yyyy')},
 	{value: DATE_DISPLAY.YYYY_SLASH_MM_DD, label: t('user.settings.general.dateDisplayOptions.yyyy/mm/dd')},
-	{value: DATE_DISPLAY.DAY_MONTH_YEAR, label: formatDisplayDateFormat(new Date(), DATE_DISPLAY.DAY_MONTH_YEAR, settings.value?.frontendSettings?.timeFormat)},
-	{value: DATE_DISPLAY.WEEKDAY_DAY_MONTH_YEAR, label: formatDisplayDateFormat(new Date(), DATE_DISPLAY.WEEKDAY_DAY_MONTH_YEAR, settings.value?.frontendSettings?.timeFormat)},
+	{value: DATE_DISPLAY.DAY_MONTH_YEAR, label: formatDisplayDateFormat(new Date(), DATE_DISPLAY.DAY_MONTH_YEAR, settings.value?.frontendSettings?.timeFormat, settings.value?.frontendSettings?.dateOnly)},
+	{value: DATE_DISPLAY.WEEKDAY_DAY_MONTH_YEAR, label: formatDisplayDateFormat(new Date(), DATE_DISPLAY.WEEKDAY_DAY_MONTH_YEAR, settings.value?.frontendSettings?.timeFormat, settings.value?.frontendSettings?.dateOnly)},
 ])
 
 const timeFormatOptions = computed(() => [

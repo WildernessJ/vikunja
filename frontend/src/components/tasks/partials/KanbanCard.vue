@@ -44,7 +44,7 @@
 				</span>
 				<span
 					v-if="task.dueDate && task.dueDate.getTime() > 0"
-					v-tooltip="formatDateLong(task.dueDate)"
+					v-tooltip="formatDateLong(task.dueDate, dateOnly)"
 					class="due-date"
 				>
 					<span class="icon">
@@ -56,7 +56,7 @@
 				</span>
 				<span
 					v-if="task.deadline !== null && task.deadline.getTime() > 0"
-					v-tooltip="formatDateLong(task.deadline)"
+					v-tooltip="formatDateLong(task.deadline, dateOnly)"
 					class="deadline"
 					:class="{'is-overdue': isDeadlineOverdue}"
 				>
