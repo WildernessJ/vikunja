@@ -305,3 +305,13 @@ threshold): red-first test in `TaskContextMenu.test.ts`, then route through
 `roundToNaturalDayBoundary(date, false, true)` when `dateOnly` is on. Everything else
 the verifier checked survived, including a repo-wide caller audit of the format/parse
 helpers and flag-off byte-identical behavior.
+
+Jason resolved the two open spec decisions, reversing both:
+
+- **Finding 2:** the Time format selector shows again with date-only on (dropped
+  `&& !dateOnly` from the `v-if`). The format still governs reminders, time tracking,
+  recurrence, and activity timestamps — hiding it stranded 12-hour users.
+- **Finding 6:** `RecurrencePatternPicker`'s end date dropped `:force-time="true"`.
+  The "point-in-time" exemption protected nothing: `formatUntil` serializes only the
+  calendar date (hardcoded `T000000Z`), so the time the exempt picker collected never
+  reached the stored rule — it only showed a pointless time row and a fake clock label.

@@ -196,7 +196,7 @@
 				{{ $t('user.settings.general.dateOnlyHint') }}
 			</p>
 			<FormField
-				v-if="settings.frontendSettings.dateDisplay !== 'relative' && !settings.frontendSettings.dateOnly"
+				v-if="settings.frontendSettings.dateDisplay !== 'relative'"
 				:label="$t('user.settings.general.timeFormat')"
 				layout="two-col"
 			>
