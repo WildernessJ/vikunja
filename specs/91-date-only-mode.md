@@ -293,3 +293,15 @@ were left for the review session (below).
   `RecurrencePatternPicker`'s end date carries `force-time`. The review's counter-argument is
   fair — that value feeds RRULE `UNTIL=`, a boundary date rather than an alarm — but
   re-deciding an exemption the spec settled is a plan-phase call.
+
+### Review phase — 2026-08-18
+
+The verifier CONFIRMED a missed entry path the spec's caller graph never listed:
+`TaskContextMenu.vue`'s `dueDateForInterval` (the "Due Today" / "Due Tomorrow" /
+"Due Next Week" flyout buttons) reimplements quick-select with `calculateNearestHours`,
+independent of the embedded `DatepickerInline` the spec did cover. With date-only on it
+stored a wall-clock time. Fixed in-review (Jason approved crossing the files-in-diff
+threshold): red-first test in `TaskContextMenu.test.ts`, then route through
+`roundToNaturalDayBoundary(date, false, true)` when `dateOnly` is on. Everything else
+the verifier checked survived, including a repo-wide caller audit of the format/parse
+helpers and flag-off byte-identical behavior.
