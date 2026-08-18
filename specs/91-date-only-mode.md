@@ -205,3 +205,51 @@ Execution Log appended.
 ## Execution Log
 
 (build phase appends here)
+
+### Build phase — 2026-08-18
+
+Implemented from the spec with no design deviations. Suite green, no new typecheck errors.
+
+**Choices the spec left open**
+
+- **Test 3 store seam:** used the existing `src/stores/tasks.createNewTask.test.ts`, which
+  already mocks `TaskService` and the auth store. Added a hoisted `dateOnly` holder to that
+  mock and drove `createNewTask` — no production test seam, `buildTaskFromQuickAddTitle`
+  stays unexported. Smaller diff than exposing it on the store return.
+- **Test 5 harness:** flatpickr mounts fine under happy-dom, so the component test is real
+  (`src/components/input/DatepickerInline.test.ts`) — no fallback to unit-testing computeds
+  needed. It asserts on the rendered `input.flatpickr-hour`, not on the config object.
+- **New test files** rather than extending `quickAddMagic.test.ts` (1031 lines):
+  `dateParser.dateOnly.test.ts`, `quickAddMagic.dateOnly.test.ts`, `formatDate.test.ts`.
+
+**Deviations and additions**
+
+- `src/models/userSettings.ts` also needed `dateOnly: false`. The spec named only
+  `stores/auth.ts loadSettings`, but `IFrontendSettings` is a required-field interface and
+  `UserSettingsModel`'s literal must satisfy it — typecheck catches it.
+- **`useQuickAddComposer.test.ts` needed `setActivePinia`.** Adding `useDateOnly()` to the
+  composable gave it its first store dependency; the test had no pinia at all.
+- **`DatepickerInline.test.ts` mocks the auth store with a real `ref`, not a plain object.**
+  `useDateOnly` is a `createSharedComposable` wrapping a `computed`; a non-reactive mock lets
+  the computed cache the first test's value and every later test reads it.
+- **`formatDateSinceDay` calls `translate()` from `@/message`, not `i18n.global.t`.** The
+  typed `t` raised TS2589 (excessively deep) on the literal keys; `@/message` already exports
+  the loosely-typed wrapper for exactly this, with the reason in a comment there.
+- **Settings hint is a `<p class="help">` sibling, not a `hint` prop.** `FormCheckbox` has no
+  `hint` prop, and the help paragraph is the pattern already used elsewhere in `General.vue`.
+- `handleFlatpickrInput` needed **no** new guard: it already dispatches on the target's
+  class, so absent hour/minute inputs simply never fire.
+
+**For the reviewer**
+
+- `getDateFromTextIn`'s return type gained `dayGranular`. Additive; its only callers are
+  `parseDate` and its own tests.
+- `addTimeToDate` reassigns `date` when canonicalizing (`roundToNaturalDayBoundary` returns a
+  new Date) instead of mutating in place — the `at/@` matcher below it still mutates and so
+  still wins.
+- **Known soft edge:** `SingleTaskInProject`'s `dueDateFormatted` / `deadlineFormatted`
+  recompute on a 60s interval and on date change, not on the setting change. Toggling
+  date-only leaves an already-mounted list stale for up to a minute. Left alone: the setting
+  is only reachable from a different route, so returning to a list remounts the component.
+- `mage test:web` needs `frontend/dist` (the Go embed). A fresh worktree has none — run
+  `pnpm build` in `frontend/` first or the suite fails at setup, not on a real failure.

@@ -2,6 +2,7 @@ import {createDateFromString} from '@/helpers/time/createDateFromString'
 import dayjs from 'dayjs'
 
 import {i18n} from '@/i18n'
+import {translate} from '@/message'
 import {createSharedComposable} from '@vueuse/core'
 import {computed, toValue, type MaybeRefOrGetter} from 'vue'
 import {useDateDisplay} from '@/composables/useDateDisplay'
@@ -78,14 +79,45 @@ export function useWeekDayFromDate() {
 	return computed(() => (date: Date) => dateTimeFormatter.value.format(date))
 }
 
-export function formatDisplayDate(date: Date | string | null) {
+/**
+ * Day-granular counterpart to formatDateSince: "Today" / "Tomorrow" / "in 3 days",
+ * never "in 3 hours". Only task dates use it — activity timestamps keep their clocks.
+ */
+export const formatDateSinceDay = (date: Date | string | null) => {
+	if (typeof date === 'string') {
+		date = createDateFromString(date)
+	}
+
+	if (!dateIsValid(date)) {
+		return ''
+	}
+
+	const locale = DAYJS_LOCALE_MAPPING[i18n.global.locale.value.toLowerCase() as keyof typeof DAYJS_LOCALE_MAPPING] ?? 'en'
+
+	const {now} = useGlobalNow()
+	const day = dayjs(date).startOf('day')
+	const today = dayjs(now.value).startOf('day')
+
+	switch (day.diff(today, 'day')) {
+		case 0:
+			return translate('input.datepicker.today')
+		case 1:
+			return translate('input.datepicker.tomorrow')
+		case -1:
+			return translate('input.datepicker.yesterday')
+		default:
+			return day.locale(locale).from(today)
+	}
+}
+
+export function formatDisplayDate(date: Date | string | null, dateOnly = false) {
 	const {store: dateDisplay} = useDateDisplay()
 	const {store: timeFormat} = useTimeFormat()
 
-	return formatDisplayDateFormat(date, dateDisplay.value, timeFormat.value)	
+	return formatDisplayDateFormat(date, dateDisplay.value, timeFormat.value, dateOnly)	
 }
 
-export function formatDisplayDateFormat(date: Date | string | null, format: DateDisplay, timeFormat?: TimeFormat) {
+export function formatDisplayDateFormat(date: Date | string | null, format: DateDisplay, timeFormat?: TimeFormat, dateOnly = false) {
 	if (typeof date === 'string') {
 		date = createDateFromString(date)
 	}
@@ -98,30 +130,34 @@ export function formatDisplayDateFormat(date: Date | string | null, format: Date
 	// For 24-hour: HH:mm (24-hour format)
 	// For 12-hour: hh:mm A (explicit 12-hour format with AM/PM, ignoring locale default)
 	const timeFormatString = timeFormat === TIME_FORMAT.HOURS_24 ? 'HH:mm' : 'hh:mm A'
+	// The separating space belongs to the time part, so it goes when the time goes.
+	const withTime = (dateFormat: string) => formatDate(date, dateOnly ? dateFormat : `${dateFormat} ${timeFormatString}`)
 
 	switch (format) {
 		case DATE_DISPLAY.MM_DD_YYYY:
-			return formatDate(date, `MM-DD-YYYY ${timeFormatString}`)
+			return withTime('MM-DD-YYYY')
 		case DATE_DISPLAY.DD_MM_YYYY:
-			return formatDate(date, `DD-MM-YYYY ${timeFormatString}`)
+			return withTime('DD-MM-YYYY')
 		case DATE_DISPLAY.YYYY_MM_DD:
-			return formatDate(date, `YYYY-MM-DD ${timeFormatString}`)
+			return withTime('YYYY-MM-DD')
 		case DATE_DISPLAY.MM_SLASH_DD_YYYY:
-			return formatDate(date, `MM/DD/YYYY ${timeFormatString}`)
+			return withTime('MM/DD/YYYY')
 		case DATE_DISPLAY.DD_SLASH_MM_YYYY:
-			return formatDate(date, `DD/MM/YYYY ${timeFormatString}`)
+			return withTime('DD/MM/YYYY')
 		case DATE_DISPLAY.YYYY_SLASH_MM_DD:
-			return formatDate(date, `YYYY/MM/DD ${timeFormatString}`)
+			return withTime('YYYY/MM/DD')
 		case DATE_DISPLAY.DAY_MONTH_YEAR: {
 			const hour12 = timeFormat !== TIME_FORMAT.HOURS_24
-			return new Intl.DateTimeFormat(i18n.global.locale.value, {day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: 'numeric', hour12}).format(date)
+			const time = dateOnly ? {} : {hour: 'numeric', minute: 'numeric', hour12} as const
+			return new Intl.DateTimeFormat(i18n.global.locale.value, {day: 'numeric', month: 'long', year: 'numeric', ...time}).format(date)
 		}
 		case DATE_DISPLAY.WEEKDAY_DAY_MONTH_YEAR: {
 			const hour12 = timeFormat !== TIME_FORMAT.HOURS_24
-			return new Intl.DateTimeFormat(i18n.global.locale.value, {weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: 'numeric', hour12}).format(date)
+			const time = dateOnly ? {} : {hour: 'numeric', minute: 'numeric', hour12} as const
+			return new Intl.DateTimeFormat(i18n.global.locale.value, {weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', ...time}).format(date)
 		}
 		case DATE_DISPLAY.RELATIVE:
 		default:
-			return formatDateSince(date)
+			return dateOnly ? formatDateSinceDay(date) : formatDateSince(date)
 	}
 }

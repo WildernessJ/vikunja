@@ -503,7 +503,8 @@ export const useTaskStore = defineStore('task', () => {
 	overrides?: CreateNewTaskOverrides,
 	): Promise<{task: TaskModel, parsedLabels: string[]}> {
 		const quickAddMagicMode = authStore.settings.frontendSettings.quickAddMagicMode
-		const parsedTask = parseTaskText(title, quickAddMagicMode)
+		// This parse produces the API payload; the composer's is only the UI preview.
+		const parsedTask = parseTaskText(title, quickAddMagicMode, new Date(), authStore.settings.frontendSettings.dateOnly)
 
 		if(parsedTask.text === '' && !(overrides !== undefined && Object.keys(overrides).length > 0)) {
 			return {

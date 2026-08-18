@@ -8,6 +8,9 @@ import type {ITaskReminder} from '@/modelTypes/ITaskReminder'
 // Mutable so tests can toggle quick-add default reminders without re-mocking the module.
 const quickAddDefaultRemindersMock = vi.hoisted((): {value: ITaskReminder[]} => ({value: []}))
 
+// Same shape, so a test can flip date-only mode without re-mocking the auth store.
+const dateOnlyMock = vi.hoisted((): {value: boolean} => ({value: false}))
+
 const taskCreateMock = vi.fn()
 vi.mock('@/services/task', () => ({
 	default: class {
@@ -57,6 +60,9 @@ vi.mock('@/stores/auth', () => ({
 				get quickAddDefaultReminders() {
 					return quickAddDefaultRemindersMock.value
 				},
+				get dateOnly() {
+					return dateOnlyMock.value
+				},
 			},
 		},
 	}),
@@ -73,6 +79,27 @@ describe('tasks store createNewTask', () => {
 		createLabelMock.mockReset()
 		errorMock.mockReset()
 		quickAddDefaultRemindersMock.value = []
+		dateOnlyMock.value = false
+	})
+
+	describe('date-only mode', () => {
+		it('gives the API-bound due date the canonical end of day when the setting is on', async () => {
+			dateOnlyMock.value = true
+			const store = useTaskStore()
+
+			const created = await store.createNewTask({title: 'buy milk tomorrow', projectId: 1})
+
+			expect(created.dueDate?.getHours()).toBe(23)
+			expect(created.dueDate?.getMinutes()).toBe(59)
+		})
+
+		it('leaves the due date on its default time when the setting is off', async () => {
+			const store = useTaskStore()
+
+			const created = await store.createNewTask({title: 'buy milk tomorrow', projectId: 1})
+
+			expect(created.dueDate?.getHours()).not.toBe(23)
+		})
 	})
 
 	describe('finding #1: empty-title fast path', () => {

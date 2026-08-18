@@ -65,7 +65,8 @@ export const getReminders = (text: string, now: Date = new Date()): reminderPars
 
 		// Absolute form: parseDate must consume the ENTIRE tail (no leftover text),
 		// otherwise this `~` is prose, not a trailing reminder.
-		const {newText, date} = parseDate(afterTilde, now)
+		// Never date-only: a reminder is an alarm, and 23:59 is not a time to be alerted at.
+		const {newText, date} = parseDate(afterTilde, now, false)
 		if (date !== null && newText.trim() === '') {
 			reminders.unshift(new TaskReminderModel({
 				reminder: date,

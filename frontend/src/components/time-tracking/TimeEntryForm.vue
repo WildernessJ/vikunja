@@ -48,6 +48,7 @@
 				<Datepicker
 					v-model="from"
 					:show-shortcuts="false"
+					:force-time="true"
 				/>
 			</div>
 			<div class="control is-expanded">
@@ -55,6 +56,7 @@
 				<Datepicker
 					v-model="to"
 					:show-shortcuts="false"
+					:force-time="true"
 					:empty-label="$t('misc.notSet')"
 				/>
 			</div>

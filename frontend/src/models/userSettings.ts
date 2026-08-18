@@ -32,6 +32,7 @@ export default class UserSettingsModel extends AbstractModel<IUserSettings> impl
 		defaultView: DEFAULT_PROJECT_VIEW_SETTINGS.FIRST,
 		minimumPriority: PRIORITIES.MEDIUM,
 		dateDisplay: DATE_DISPLAY.RELATIVE,
+		dateOnly: false,
 		timeFormat: TIME_FORMAT.HOURS_24,
 		defaultTaskRelationType: RELATION_KIND.RELATED,
 		backgroundBrightness: null,

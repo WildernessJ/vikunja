@@ -404,7 +404,7 @@ const availableCmds = computed(() => {
 	]
 })
 
-const parsedQuery = computed(() => parseTaskText(query.value, authStore.settings.frontendSettings.quickAddMagicMode))
+const parsedQuery = computed(() => parseTaskText(query.value, authStore.settings.frontendSettings.quickAddMagicMode, new Date(), authStore.settings.frontendSettings.dateOnly))
 
 const searchMode = computed(() => {
 	if (query.value === '') {

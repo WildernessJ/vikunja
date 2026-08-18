@@ -52,7 +52,10 @@
 					/>
 
 					<template v-else-if="activeForm === 'absolute'">
-						<DatepickerInline v-model="reminderDate" />
+						<DatepickerInline
+							v-model="reminderDate"
+							:force-time="true"
+						/>
 						<div class="reminder-repeat">
 							<label class="reminder-repeat__label">
 								{{ $t('task.reminder.repeat') }}

@@ -14,7 +14,7 @@ const DEADLINE_REGEX = /\{([^{}]*)\}/
  * (dateParser), so the deadline understands exactly the same expressions as the
  * due date without duplicating any of that logic.
  */
-export const parseDeadline = (text: string, now: Date = new Date()): deadlineParseResult => {
+export const parseDeadline = (text: string, now: Date = new Date(), dateOnly = false): deadlineParseResult => {
 	const match = text.match(DEADLINE_REGEX)
 	if (match === null) {
 		return {
@@ -23,7 +23,7 @@ export const parseDeadline = (text: string, now: Date = new Date()): deadlinePar
 		}
 	}
 
-	const {date} = parseDate(match[1], now)
+	const {date} = parseDate(match[1], now, dateOnly)
 
 	// Strip the whole braced block even when the inner text did not parse, so a
 	// stray `{…}` never leaks into the task title.

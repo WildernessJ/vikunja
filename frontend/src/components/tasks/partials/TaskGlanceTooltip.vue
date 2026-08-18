@@ -62,7 +62,7 @@
 						class="task-glance-due"
 					>
 						<Icon icon="calendar" />
-						<span>{{ $t('task.detail.due', {at: formatDisplayDate(task.dueDate)}) }}</span>
+						<span>{{ $t('task.detail.due', {at: formatDisplayDate(task.dueDate, dateOnly)}) }}</span>
 					</div>
 
 					<div class="task-glance-meta">
@@ -90,6 +90,7 @@ import {useMediaQuery} from '@vueuse/core'
 import type {ITask} from '@/modelTypes/ITask'
 import {getTaskIdentifier} from '@/models/task'
 import {formatDisplayDate} from '@/helpers/time/formatDate'
+import {useDateOnly} from '@/composables/useDateOnly'
 import {getDisplayName} from '@/models/user'
 import {isEditorContentEmpty} from '@/helpers/editorContentEmpty'
 
@@ -101,6 +102,8 @@ import CustomTransition from '@/components/misc/CustomTransition.vue'
 const props = defineProps<{
 	task: ITask
 }>()
+
+const {store: dateOnly} = useDateOnly()
 
 const HOVER_DELAY = 1000 // 1 second
 const MAX_DESCRIPTION_LENGTH = 150

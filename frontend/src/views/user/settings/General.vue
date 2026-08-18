@@ -188,8 +188,15 @@
 					:options="dateDisplayOptions"
 				/>
 			</FormField>
+			<FormCheckbox
+				v-model="settings.frontendSettings.dateOnly"
+				:label="$t('user.settings.general.dateOnly')"
+			/>
+			<p class="help">
+				{{ $t('user.settings.general.dateOnlyHint') }}
+			</p>
 			<FormField
-				v-if="settings.frontendSettings.dateDisplay !== 'relative'"
+				v-if="settings.frontendSettings.dateDisplay !== 'relative' && !settings.frontendSettings.dateOnly"
 				:label="$t('user.settings.general.timeFormat')"
 				layout="two-col"
 			>

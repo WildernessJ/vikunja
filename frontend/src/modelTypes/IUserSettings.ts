@@ -22,6 +22,7 @@ export interface IFrontendSettings {
 	defaultView?: DefaultProjectViewKind
 	minimumPriority?: Priority
 	dateDisplay: DateDisplay
+	dateOnly: boolean
 	timeFormat: TimeFormat
 	defaultTaskRelationType: IRelationKind
 	backgroundBrightness: number | null

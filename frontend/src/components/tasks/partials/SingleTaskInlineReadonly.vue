@@ -60,7 +60,7 @@
 				:datetime="formatISO(task.dueDate)"
 				class="is-italic"
 			>
-				– {{ $t('task.detail.due', {at: formatDisplayDate(task.dueDate)}) }}
+				– {{ $t('task.detail.due', {at: formatDisplayDate(task.dueDate, dateOnly)}) }}
 			</time>
 		</span>
 
@@ -113,6 +113,7 @@ import ChecklistSummary from '@/components/tasks/partials/ChecklistSummary.vue'
 import ColorBubble from '@/components/misc/ColorBubble.vue'
 
 import {formatDisplayDate, formatISO, formatDateLong} from '@/helpers/time/formatDate'
+import {useDateOnly} from '@/composables/useDateOnly'
 
 import {useProjectStore} from '@/stores/projects'
 import AssigneeList from '@/components/tasks/partials/AssigneeList.vue'
@@ -125,6 +126,7 @@ const props = withDefaults(defineProps<{
 })
 
 const projectStore = useProjectStore()
+const {store: dateOnly} = useDateOnly()
 
 const project = computed(() => projectStore.projects[props.task.projectId])
 </script>

@@ -1,6 +1,7 @@
 import {computed, reactive, type Ref} from 'vue'
 
 import {parseTaskText, PrefixMode} from '@/modules/quickAddMagic'
+import {useDateOnly} from '@/composables/useDateOnly'
 import {parseSubtasksViaIndention} from '@/helpers/parseSubtasksViaIndention'
 import {resolveOverride} from '@/helpers/resolveOverride'
 import type {ILabel} from '@/modelTypes/ILabel'
@@ -23,6 +24,8 @@ const EMPTY_LABEL_LIST: ILabel[] = []
 const EMPTY_REMINDER_LIST: ITaskReminder[] = []
 
 export function useQuickAddComposer(title: Ref<string>, mode: Ref<PrefixMode>) {
+	const {store: dateOnly} = useDateOnly()
+
 	const overrides = reactive<ComposerOverrides>({})
 
 	const isMultiline = computed(() => parseSubtasksViaIndention(title.value, mode.value).length > 1)
@@ -31,7 +34,7 @@ export function useQuickAddComposer(title: Ref<string>, mode: Ref<PrefixMode>) {
 		if (mode.value === PrefixMode.Disabled || isMultiline.value) {
 			return parseTaskText('', PrefixMode.Disabled)
 		}
-		return parseTaskText(title.value, mode.value)
+		return parseTaskText(title.value, mode.value, new Date(), dateOnly.value)
 	})
 
 	const effectiveDate = computed<Date | null>(

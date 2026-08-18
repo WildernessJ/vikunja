@@ -172,6 +172,7 @@
 			<Datepicker
 				:id="`${idPrefix}-end`"
 				v-model="endDate"
+				:force-time="true"
 				:disabled="disabled"
 				:empty-label="$t('task.repeat.noEndDate')"
 				@update:modelValue="emitPattern"

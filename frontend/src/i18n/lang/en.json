@@ -205,6 +205,8 @@
           "yyyy\/mm\/dd": "YYYY\/MM\/DD"
         },
         "timeFormat": "Time format",
+        "dateOnly": "Date-only mode",
+        "dateOnlyHint": "Hide times on task dates. New dates without an explicit time are set to the end of the day.",
         "timeTrackingDefaultStart": "Time tracking smart-fill start time",
         "timeFormatOptions": {
           "12h": "12-hour (AM/PM)",
@@ -923,6 +925,7 @@
     "datepicker": {
       "today": "Today",
       "tomorrow": "Tomorrow",
+      "yesterday": "Yesterday",
       "nextMonday": "Next Monday",
       "thisWeekend": "This Weekend",
       "laterThisWeek": "Later This Week",
