@@ -27,8 +27,23 @@ Frontend-only; backend, API, and stored data untouched.
   gains an optional flag (default `false`), and only the enumerated task-date call sites
   pass `useDateOnly()`. Activity timestamps keep clock times everywhere.
 - **Parser stays store-free.** `parseDate(text, now, dateOnly = false)`; the flag threads
-  through `parseTaskText` from its callers. Explicit-time branches are untouched;
-  "tonight" (21:00) and "evening" count as explicit.
+  through `parseTaskText` from **all four** of its callers — `useQuickAddComposer.ts`,
+  `QuickActions.vue`, and both `stores/tasks.ts` parse sites
+  (`buildTaskFromQuickAddTitle` line 506, `createNewTasksBulk` line 638). The store
+  parses are the ones that produce the API payload — the composer parse is only the UI
+  preview; missing either store site ships the old auto-filled time. Explicit-time
+  values are untouched: the `at/@` match, "tonight" (21:00), and hour-granular "in N
+  hours" keep their times.
+- **Canonicalization provenance lives at `addTimeToDate` call sites.** A blanket
+  end-of-day rule inside `addTimeToDate` would clobber "tonight"'s 21:00. Instead
+  `addTimeToDate(text, date, previousMatch, defaultToEndOfDay = false)`: when
+  `dateOnly && defaultToEndOfDay`, canonicalize the incoming date to end-of-day
+  *before* the `at/@` matcher runs (an explicit time still overrides). Call sites pass
+  `true` for every day-granular default (the `getDateFromInterval` branches, next
+  month, end of month, `getDateFromWeekday`, `getDayFromText`, `getDateFromText` —
+  these currently carry `calculateNearestHours` or `now`'s wall-clock time), `false`
+  for intentional times ("tonight", the time-only fallback). `getDateFromTextIn`
+  ("in N hours/days"): day-or-coarser units → `true`, hour/minute units → `false`.
 - **Point-in-time inputs are exempt** (times are their payload): reminders
   (`ReminderDetail`), time tracking (`TimeEntryForm`), recurrence
   (`RecurrencePatternPicker`). `DeferTask` shifts an existing date's day and keeps its
@@ -61,27 +76,36 @@ Files (all under `frontend/` except none — backend untouched):
    - New prop `boundary: 'start' | 'end'` (default `'end'`); new prop
      `forceTime = false` — when true the component ignores `dateOnly` (for the exempt
      point-in-time consumers).
-   - `formatDateToFlatpickrString` / `handleFlatpickrInput` (line 182): guard for the
-     absent hour/minute inputs when `enableTime` is false.
+   - `formatDateToFlatpickrString` (line 127) must format per the active `dateFormat`
+     (drop ` H:i` when date-only) — the `flatPickrDate` getter's string is what
+     vue-flatpickr-component's v-model diffs against `$el.value`; a mismatched format
+     makes `setDate` fire on every reactive pass. `handleFlatpickrInput` (line 182):
+     guard for the absent hour/minute inputs when `enableTime` is false.
 7. **`src/components/input/Datepicker.vue`** — pass through `boundary` / `forceTime`;
    its trigger label (line 11) uses `formatDisplayDate(date, dateOnly && !forceTime)`.
-8. **Datepicker call sites** — `TaskPropertyChips.vue` (due/end → `'end'`, start →
-   `'start'`), `TaskContextMenu.vue` (due → `'end'`), `AddTask.vue` (due → `'end'`);
-   `ReminderDetail.vue`, `TimeEntryForm.vue`, `RecurrencePatternPicker.vue` →
-   `:force-time="true"`.
-9. **`src/modules/quickAddMagic/dateParser.ts`** — `parseDate(text, now, dateOnly)`;
-   when on, the no-explicit-time default paths (`getDateFromInterval`, the two
-   `calculateNearestHours` month branches, `getDateFromText`-shaped results without an
-   `at`-match in `addTimeToDate`) canonicalize to end-of-day via the helper. The `at/@`
-   matcher result and `tonight` stay as-is. Check `deadlineParser.ts` during build: if it
+8. **Picker call sites.** Via the `Datepicker.vue` wrapper: `TaskPropertyChips.vue`
+   (due/end → `'end'`, start → `'start'`), `AddTask.vue` (due → `'end'`),
+   `TimeEntryForm.vue` and `RecurrencePatternPicker.vue` → `:force-time="true"`.
+   Embedding `DatepickerInline` directly (no wrapper): `TaskContextMenu.vue` (lines
+   111–112, due → `'end'`) and `ReminderDetail.vue` (line 55, `:force-time="true"`).
+9. **`src/modules/quickAddMagic/dateParser.ts`** — `parseDate(text, now, dateOnly)` plus
+   the `addTimeToDate` `defaultToEndOfDay` provenance param per the Design section:
+   end-of-day for the day-granular default paths (`getDateFromInterval` branches, next
+   month, end of month, `getDateFromWeekday`, `getDayFromText`, `getDateFromText`,
+   day-or-coarser `getDateFromTextIn`), preserved times for `tonight`, hour-granular
+   `getDateFromTextIn`, the time-only fallback, and any `at/@` match (which always wins,
+   applied after canonicalization). Check `deadlineParser.ts` during build: if it
    defaults a time the same way, apply the same rule; if not, leave it (log either way).
 10. **`src/modules/quickAddMagic/quickAddMagic.ts`** — thread `dateOnly` through
-    `parseTaskText`; callers `useQuickAddComposer.ts` (line 32/34) and
-    `QuickActions.vue` (line 407) pass it from settings.
+    `parseTaskText`; all four callers pass it from settings: `useQuickAddComposer.ts`
+    (lines 32/34), `QuickActions.vue` (line 407), and `stores/tasks.ts`
+    `buildTaskFromQuickAddTitle` (line 506) + `createNewTasksBulk` (line 638) — the
+    store sites are the API-payload path (see Design).
 11. **`src/helpers/time/formatDate.ts`** —
     - `formatDisplayDateFormat(date, format, timeFormat?, dateOnly = false)`: empty
-      `timeFormatString` and drop hour/minute from the two `Intl.DateTimeFormat`
-      branches when on; RELATIVE branch → day-granularity relative (below).
+      `timeFormatString` (and trim the format string — no trailing space) and drop
+      hour/minute from the two `Intl.DateTimeFormat` branches when on; RELATIVE branch
+      → day-granularity relative (below).
     - `formatDisplayDate(date, dateOnly = false)` passes it through.
     - New `formatDateSinceDay(date)` (same file): compare `startOf('day')` against the
       shared `useGlobalNow` tick; same-day → `t('input.datepicker.today')`, +1 →
@@ -90,9 +114,11 @@ Files (all under `frontend/` except none — backend untouched):
       (activity timestamps depend on it).
 12. **Task-date display call sites** — pass `useDateOnly()`:
     `SingleTaskInProject.vue` (lines 369/385: dueDate, deadline),
-    `KanbanCard.vue` (lines 54/67), `TaskGlanceTooltip.vue` (line 65 due only — line 74
-    `created` stays), `DateTableCell.vue` gains an optional `dateOnly` prop wired by the
-    table view's scheduled-date columns (due/start/end; created/updated columns stay).
+    `SingleTaskInlineReadonly.vue` (line 63: dueDate — surfaces in the QuickActions
+    command palette's task results), `KanbanCard.vue` (lines 54/67),
+    `TaskGlanceTooltip.vue` (line 65 due only — line 74 `created` stays),
+    `DateTableCell.vue` gains an optional `dateOnly` prop wired by the table view's
+    scheduled-date columns (due/start/end; created/updated columns stay).
     Kanban `done` / created timestamps stay.
 
 Not touched: anything in `pkg/` (including `pkg/i18n`), Gantt (already day-rounded),
@@ -113,9 +139,14 @@ Seams pre-agreed here; write each red before its implementation step.
    no-`force` behavior unchanged.
 2. `dateParser` (extend `quickAddMagic.test.ts` or sibling): with `dateOnly=true` —
    "foo tomorrow" → tomorrow 23:59:59.999 local; "foo tomorrow at 3pm" → 15:00;
-   "foo tonight" → 21:00; "foo next week" → end-of-day. With flag off: existing
-   expectations byte-identical (no snapshot churn).
-3. `parseTaskText` threads the flag (one integration case through `quickAddMagic.ts`).
+   "foo tonight" → 21:00; "foo next week" → end-of-day; "foo monday" (weekday path) →
+   end-of-day; "foo 24th" (ordinal path) → end-of-day; "foo in 3 days" → end-of-day;
+   "foo in 3 hours" → now+3h (time preserved). With flag off: existing expectations
+   byte-identical (no snapshot churn).
+3. `parseTaskText` threads the flag (one integration case through `quickAddMagic.ts`),
+   and the store path parses date-only: `stores/tasks.ts` `buildTaskFromQuickAddTitle`
+   with the toggle on yields an end-of-day `dueDate` (mock/pin the settings read — this
+   is the API-payload path the round-1 review caught).
 4. `formatDate.test` (new or extend): `formatDisplayDateFormat` with `dateOnly=true`
    drops the time part for one slash-format and one `Intl` format; `formatDateSinceDay`:
    today → "Today", tomorrow → "Tomorrow", +3 days → "in 3 days", −1 day → yesterday
