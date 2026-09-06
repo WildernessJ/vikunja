@@ -29,8 +29,8 @@ import (
 // through the real v2 query parser and reaches models.TaskCollection — the
 // model-level test sets the struct field directly and can't catch a binding gap.
 //
-// Fixtures (pkg/db/fixtures): projects 41 -> 42 -> 44 are a hierarchy owned by
-// user6 with tasks 49 (proj 41), 50 (proj 42), 54 (proj 44). Project 46 is an
+// Fixtures (pkg/db/fixtures): projects 41 -> 42 -> 45 are a hierarchy owned by
+// user6 with tasks 49 (proj 41), 50 (proj 42), 54 (proj 45). Project 46 is an
 // archived child of 41 with task 55. See task_collection_test.go.
 func TestHumaTaskList_IncludeChildProjects(t *testing.T) {
 	e, err := setupTestEnv()

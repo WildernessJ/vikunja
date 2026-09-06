@@ -59,7 +59,7 @@
 						:to="{ name: 'project.index', params: { projectId: p.id }, hash: route.hash }"
 					>
 						<a
-							v-shortcut="p.id === project?.id ? 'KeyU' : ''"
+							v-shortcut="p.id === project?.id ? SHORTCUTS.taskDetail.openProject : ''"
 							:href="href"
 							@click="onBreadcrumbClick($event, p.id, navigate)"
 						>
@@ -107,55 +107,55 @@
 				aria-hidden="true"
 			>
 				<button
-					v-shortcut="'KeyL'"
+					v-shortcut="SHORTCUTS.taskDetail.labels"
 					type="button"
 					tabindex="-1"
 					@click="propertyChips?.openChip('labels')"
 				/>
 				<button
-					v-shortcut="'KeyP'"
+					v-shortcut="SHORTCUTS.taskDetail.priority"
 					type="button"
 					tabindex="-1"
 					@click="propertyChips?.openChip('priority')"
 				/>
 				<button
-					v-shortcut="'KeyC'"
+					v-shortcut="SHORTCUTS.taskDetail.color"
 					type="button"
 					tabindex="-1"
 					@click="propertyChips?.openChip('color')"
 				/>
 				<button
-					v-shortcut="'KeyA'"
+					v-shortcut="SHORTCUTS.taskDetail.assignees"
 					type="button"
 					tabindex="-1"
 					@click="propertyChips?.openChip('assignees')"
 				/>
 				<button
-					v-shortcut="'KeyM'"
+					v-shortcut="SHORTCUTS.taskDetail.moveProject"
 					type="button"
 					tabindex="-1"
 					@click="propertyChips?.openChip('project')"
 				/>
 				<button
-					v-shortcut="'KeyD'"
+					v-shortcut="SHORTCUTS.taskDetail.dueDate"
 					type="button"
 					tabindex="-1"
 					@click="propertyChips?.openChip('dueDate')"
 				/>
 				<button
-					v-shortcut="reminderShortcut"
+					v-shortcut="SHORTCUTS.taskDetail.reminder"
 					type="button"
 					tabindex="-1"
 					@click="propertyChips?.openChip('reminders')"
 				/>
 				<button
-					v-shortcut="'KeyF'"
+					v-shortcut="SHORTCUTS.taskDetail.attachments"
 					type="button"
 					tabindex="-1"
 					@click="focusAttachments"
 				/>
 				<button
-					v-shortcut="'KeyR'"
+					v-shortcut="SHORTCUTS.taskDetail.relatedTasks"
 					type="button"
 					tabindex="-1"
 					@click="focusRelatedTasks"
@@ -245,7 +245,7 @@
 				>
 					<template v-if="canWrite">
 						<XButton
-							v-shortcut="'KeyT'"
+							v-shortcut="SHORTCUTS.taskDetail.done"
 							:class="{'is-pending': !task.done}"
 							class="button--mark-done"
 							icon="check-double"
@@ -257,7 +257,7 @@
 
 						<Dropdown :trigger-label="$t('task.detail.actions.moreActions')">
 							<DropdownItem
-								v-shortcut="'KeyS'"
+								v-shortcut="SHORTCUTS.taskDetail.favorite"
 								:icon="task.isFavorite ? 'star' : ['far', 'star']"
 								@click="toggleFavorite"
 							>
@@ -280,7 +280,7 @@
 							</DropdownItem>
 							<hr class="dropdown-divider">
 							<DropdownItem
-								v-shortcut="deleteShortcut"
+								v-shortcut="SHORTCUTS.taskDetail.delete"
 								icon="trash-alt"
 								class="has-text-danger"
 								@click="showDeleteModal = true"
@@ -347,6 +347,7 @@ import type {IRepeatAfter} from '@/types/IRepeatAfter'
 import {type Priority} from '@/constants/priorities'
 import {PERMISSIONS} from '@/constants/permissions'
 import {PRO_FEATURE} from '@/constants/proFeatures'
+import {SHORTCUTS} from '@/constants/shortcuts'
 
 import BaseButton from '@/components/base/BaseButton.vue'
 
@@ -369,7 +370,6 @@ import DropdownItem from '@/components/misc/DropdownItem.vue'
 
 import {uploadFile} from '@/helpers/attachments'
 import {getProjectTitle} from '@/helpers/getProjectTitle'
-import {isAppleDevice} from '@/helpers/isAppleDevice'
 import {canReturnTo} from '@/helpers/returnability'
 import {scrollIntoView} from '@/helpers/scrollIntoView'
 import {TASK_REPEAT_MODES} from '@/types/IRepeatMode'
@@ -517,10 +517,6 @@ function onBreadcrumbClick(event: MouseEvent, projectId: IProject['id'], navigat
 
 	navigate(event)
 }
-
-// Match native OS conventions for "delete the selected item"
-const deleteShortcut = isAppleDevice() ? 'Backspace' : 'Delete'
-const reminderShortcut = computed(() => isAppleDevice() ? 'Shift+KeyR' : 'Alt+KeyR')
 
 onBeforeRouteLeave(async (to) => {
 	if (taskNotFound.value) {

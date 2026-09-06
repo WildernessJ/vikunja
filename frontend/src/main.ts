@@ -1,10 +1,13 @@
 import {createApp} from 'vue'
 import type {Component} from 'vue'
+import {VueQueryPlugin} from '@tanstack/vue-query'
 
 import pinia from './pinia'
 import router from './router'
 import App from './App.vue'
 import {error, success} from './message'
+import {configureApiClient} from './client/http'
+import {queryClient} from './client/queryClient'
 
 // Notifications
 import Notifications from '@kyvg/vue3-notification'
@@ -35,6 +38,8 @@ if (apiUrlFromStorage !== null) {
 if (window.API_URL.endsWith('/')) {
 	window.API_URL = window.API_URL.slice(0, -1)
 }
+
+configureApiClient()
 
 // directives
 import focus from '@/directives/focus'
@@ -68,6 +73,7 @@ setLanguage(browserLanguage).then(() => {
 	}
 
 	app.use(Notifications)
+	app.use(VueQueryPlugin, {queryClient})
 
 	app.directive('focus', focus)
 	app.directive('tooltip', tooltip)

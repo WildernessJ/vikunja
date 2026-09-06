@@ -82,9 +82,10 @@ import BaseButton from '@/components/base/BaseButton.vue'
 
 import {formatDate} from '@/helpers/time/formatDate'
 import {calculateDayInterval} from '@/helpers/time/calculateDayInterval'
-import {calculateNearestHours} from '@/helpers/time/calculateNearestHours'
 import {createDateFromString} from '@/helpers/time/createDateFromString'
 import {roundToNaturalDayBoundary} from '@/helpers/time/roundToNaturalDayBoundary'
+import {getDateWithTime, parseUserDefaultTime} from '@/helpers/time/getDateWithTime'
+import {useAuthStore} from '@/stores/auth'
 import {useI18n} from 'vue-i18n'
 import {useFlatpickrLanguage} from '@/helpers/useFlatpickrLanguage'
 import {useTimeFormat} from '@/composables/useTimeFormat'
@@ -129,15 +130,23 @@ watch(
 )
 
 const flatPickrRef = ref<InstanceType<typeof flatPickr> | null>(null)
-const flatPickerConfig = computed(() => ({
-	altFormat: dateOnly.value ? t('date.altFormatShort') : t('date.altFormatLong'),
-	altInput: true,
-	dateFormat: dateOnly.value ? 'Y-m-d' : 'Y-m-d H:i',
-	enableTime: !dateOnly.value,
-	time_24hr: timeFormat.value === TIME_FORMAT.HOURS_24,
-	inline: true,
-	locale: useFlatpickrLanguage().value,
-}))
+const flatPickerConfig = computed(() => {
+	const configuredDueTime = parseUserDefaultTime(useAuthStore().settings.frontendSettings.defaultDueTime)
+
+	return {
+		altFormat: dateOnly.value ? t('date.altFormatShort') : t('date.altFormatLong'),
+		altInput: true,
+		dateFormat: dateOnly.value ? 'Y-m-d' : 'Y-m-d H:i',
+		...(configuredDueTime === null || dateOnly.value ? {} : {
+			defaultHour: configuredDueTime.hours,
+			defaultMinute: configuredDueTime.minutes,
+		}),
+		enableTime: !dateOnly.value,
+		time_24hr: timeFormat.value === TIME_FORMAT.HOURS_24,
+		inline: true,
+		locale: useFlatpickrLanguage().value,
+	}
+})
 
 function formatDateToFlatpickrString(date: Date): string {
 	const year = date.getFullYear()
@@ -232,15 +241,9 @@ function setDate(dateString: string) {
 	const interval = calculateDayInterval(dateString)
 	const newDate = new Date()
 	newDate.setDate(newDate.getDate() + interval)
-	if (dateOnly.value) {
-		date.value = toDayBoundary(newDate)
-		updateData()
-		return
-	}
-	newDate.setHours(calculateNearestHours(newDate))
-	newDate.setMinutes(0)
-	newDate.setSeconds(0)
-	date.value = newDate
+	// toDayBoundary, not getDateWithTime's date-only branch: this picker also serves
+	// start dates, which snap to the start of the day.
+	date.value = dateOnly.value ? toDayBoundary(newDate) : getDateWithTime(newDate, false)
 	updateData()
 }
 

@@ -278,10 +278,6 @@ const canToggleFavorite = computed(() => {
 	opacity: 0;
 }
 
-.is-touch .color-bubble {
-	opacity: 1 !important;
-}
-
 .color-bubble-wrapper {
 	position: relative;
 	inline-size: 1rem;
@@ -329,6 +325,10 @@ const canToggleFavorite = computed(() => {
 @media (pointer: coarse) {
 	.drag-handle {
 		display: none !important;
+	}
+
+	.color-bubble {
+		opacity: 1 !important;
 	}
 }
 

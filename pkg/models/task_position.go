@@ -29,6 +29,7 @@ import (
 	"code.vikunja.io/api/pkg/db"
 	"code.vikunja.io/api/pkg/events"
 	"code.vikunja.io/api/pkg/log"
+	"code.vikunja.io/api/pkg/user"
 	"code.vikunja.io/api/pkg/web"
 )
 
@@ -59,17 +60,13 @@ func (tp *TaskPosition) TableName() string {
 }
 
 func (tp *TaskPosition) CanUpdate(s *xorm.Session, a web.Auth) (bool, error) {
-	t, err := GetTaskByIDSimple(s, tp.TaskID)
+	t := &Task{ID: tp.TaskID}
+	can, err := t.CanUpdate(s, a)
 	if err != nil {
 		return false, err
 	}
-
-	// Write on the task's project first, so a caller without it always gets the
-	// same 403 and cannot use the view check below as an existence oracle.
-	p := &Project{ID: t.ProjectID}
-	can, err := p.CanWrite(s, a)
-	if err != nil || !can {
-		return can, err
+	if !can {
+		return false, nil
 	}
 
 	// ProjectViewID comes from the request body and names no project of its own,
@@ -79,40 +76,83 @@ func (tp *TaskPosition) CanUpdate(s *xorm.Session, a web.Auth) (bool, error) {
 		return false, err
 	}
 
-	if view.ProjectID == t.ProjectID {
-		return true, nil
-	}
-
 	// Every denial below is the same 404 as a view of a foreign project — same
 	// status, same body — so a caller cannot tell an unreachable view from a
 	// saved-filter view someone else owns. Not timing-safe: the saved-filter
 	// path costs extra queries; accepted, the leak would only reveal view kind.
 	viewGone := &ErrProjectViewDoesNotExist{ProjectViewID: tp.ProjectViewID}
 
-	filterID := GetSavedFilterIDFromProjectID(view.ProjectID)
-	if filterID == 0 {
-		return false, viewGone
-	}
-
-	// Owning the filter is enough — re-running the filter query to prove the task
-	// is a member would cost a full search per drag, and an owner reordering their
-	// own filter's view is harmless.
-	sf := &SavedFilter{ID: filterID}
-	can, err = sf.canDoFilter(s, a)
-	// A link share is refused before the filter is even looked up, and deleting a
-	// filter leaves its views behind as orphans — surfacing either error would
-	// tell the caller which view ids are (or were) saved-filter views.
-	if err != nil {
-		if IsErrSavedFilterNotAvailableForLinkShare(err) || IsErrSavedFilterDoesNotExist(err) {
+	// Saved-filter views also require the task to match the filter.
+	if filterID := GetSavedFilterIDFromProjectID(view.ProjectID); filterID > 0 {
+		can, err := tp.canPositionTaskInSavedFilterView(s, a, view, filterID)
+		// A link share is refused before the filter is even looked up, and deleting a
+		// filter leaves its views behind as orphans — surfacing either error would
+		// tell the caller which view ids are (or were) saved-filter views.
+		if err != nil {
+			if IsErrSavedFilterNotAvailableForLinkShare(err) || IsErrSavedFilterDoesNotExist(err) {
+				return false, viewGone
+			}
+			return false, err
+		}
+		if !can {
 			return false, viewGone
 		}
-		return false, err
-	}
-	if !can {
-		return false, viewGone
+		return true, nil
 	}
 
+	task, err := GetTaskByIDSimple(s, tp.TaskID)
+	if err != nil {
+		return false, err
+	}
+	if view.ProjectID != task.ProjectID {
+		return false, viewGone
+	}
+	canRead, _, err := view.CanRead(s, a)
+	if err != nil {
+		return false, err
+	}
+	if !canRead {
+		return false, viewGone
+	}
 	return true, nil
+}
+
+// Reuse fetch matching so relative dates use the saved filter owner's timezone.
+func (tp *TaskPosition) canPositionTaskInSavedFilterView(s *xorm.Session, a web.Auth, view *ProjectView, filterID int64) (bool, error) {
+	sf := &SavedFilter{ID: filterID}
+	canRead, _, err := sf.CanRead(s, a)
+	if err != nil {
+		return false, err
+	}
+	if !canRead {
+		return false, nil
+	}
+
+	filter, err := GetSavedFilterSimpleByID(s, filterID)
+	if err != nil {
+		return false, err
+	}
+	task, err := GetTaskByIDSimple(s, tp.TaskID)
+	if err != nil {
+		return false, err
+	}
+
+	accessByProject, _, err := getProjectAccessForTasks(s, []*Task{&task})
+	if err != nil {
+		return false, err
+	}
+
+	owner, err := user.GetUserByID(s, filter.OwnerID)
+	if err != nil {
+		return false, err
+	}
+
+	matched, err := matchTasksToViewsOfFilter(s, []*Task{&task}, filter, []*ProjectView{view}, accessByProject, owner.Timezone)
+	if err != nil {
+		return false, err
+	}
+	_, matches := matched[task.ID]
+	return matches, nil
 }
 
 func (tp *TaskPosition) refresh(s *xorm.Session) (err error) {
@@ -680,15 +720,7 @@ func ensureTaskPositionsForSavedFilterView(s *xorm.Session, a web.Auth, projects
 	// Parse a fresh copy of the filters because convertFiltersToDBFilterCond mutates the
 	// field names in place — reusing opts.parsedFilters would double-prefix them for the
 	// subsequent fetch query.
-	parsedFilters, err := getTaskFiltersFromFilterString(opts.filter, opts.filterTimezone)
-	if err != nil {
-		return err
-	}
-
-	// Check before converting: the conversion renames the field to task_buckets.bucket_id in place.
-	joinTaskBuckets := hasBucketIDInParsedFilter(parsedFilters)
-
-	filterCond, err := convertFiltersToDBFilterCond(parsedFilters, opts.filterIncludeNulls)
+	filterCond, joinTaskBuckets, err := parseFilterCond(opts.filter, opts.filterTimezone, opts.filterIncludeNulls)
 	if err != nil {
 		return err
 	}

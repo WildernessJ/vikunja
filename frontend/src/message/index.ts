@@ -32,7 +32,7 @@ interface ErrorLike {
 
 export function getErrorText(r: unknown): string {
 	const err = r as ErrorLike
-	const data = err?.reason?.response?.data || err?.response?.data
+	const data = err?.reason?.response?.data || err?.response?.data || (r as ErrorResponseData)
 
 	if (data?.code) {
 		const path = `error.${data.code}`

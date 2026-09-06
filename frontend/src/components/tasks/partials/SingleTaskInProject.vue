@@ -685,6 +685,13 @@ defineExpose({
 		}
 	}
 
+	.tasktext :deep(.color-bubble),
+	.tasktext :deep(.avatar-wrapper),
+	.tasktext :deep(.labels .tag) {
+		vertical-align: middle;
+		transform: translateY(-2px);
+	}
+
 	.avatar {
 		border-radius: 50%;
 		vertical-align: bottom;

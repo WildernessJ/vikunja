@@ -84,6 +84,7 @@ async function mountTaskList(
 
 describe('useTaskList sort handling for relevance ranking', () => {
 	beforeEach(() => {
+		localStorage.clear()
 		setActivePinia(createPinia())
 		// loadTasks refuses to fetch for a logged-out session (issue #44 follow-up)
 		useAuthStore().setAuthenticated(true)
@@ -160,6 +161,7 @@ describe('sortByToDefaultArrays', () => {
 
 describe('useTaskList sortByDefault precedence (persisted default vs URL sort)', () => {
 	beforeEach(() => {
+		localStorage.clear()
 		setActivePinia(createPinia())
 		useAuthStore().setAuthenticated(true)
 		getAll.mockClear()
@@ -219,5 +221,32 @@ describe('useTaskList sortByDefault precedence (persisted default vs URL sort)',
 		const params = lastRequestParams()
 		expect(params.sort_by).toEqual(['priority'])
 		expect(params.order_by).toEqual(['desc'])
+	})
+})
+
+describe('useTaskList restoring stored query into the url', () => {
+	beforeEach(() => {
+		localStorage.clear()
+		setActivePinia(createPinia())
+		useAuthStore().setAuthenticated(true)
+		getAll.mockClear()
+	})
+
+	it('writes the persisted sort into the url when the url has none', async () => {
+		localStorage.setItem('viewFilters', JSON.stringify({1: {sort: 'due_date:asc'}}))
+
+		const router = await mountTaskList({})
+		await flushPromises()
+
+		expect(router.currentRoute.value.query.sort).toBe('due_date:asc')
+		expect(lastRequestParams().sort_by).toEqual(['due_date'])
+	})
+
+	it('keeps an explicit url sort over the persisted one', async () => {
+		localStorage.setItem('viewFilters', JSON.stringify({1: {sort: 'due_date:asc'}}))
+
+		const router = await mountTaskList({sort: 'title:desc'})
+
+		expect(router.currentRoute.value.query.sort).toBe('title:desc')
 	})
 })

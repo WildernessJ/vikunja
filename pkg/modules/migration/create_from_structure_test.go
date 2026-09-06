@@ -17,8 +17,16 @@
 package migration
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
+	"io"
+	"io/fs"
 	"testing"
+	"time"
 
 	"code.vikunja.io/api/pkg/db"
 	"code.vikunja.io/api/pkg/files"
@@ -27,7 +35,43 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"xorm.io/xorm/schemas"
 )
+
+type testFileProvider struct {
+	background io.ReadSeekCloser
+	err        error
+}
+
+func (p *testFileProvider) OpenAttachment(_ *models.TaskAttachment) (io.ReadSeekCloser, int64, error) {
+	return nil, 0, p.err
+}
+
+func (p *testFileProvider) OpenBackground(_ *models.ProjectWithTasksAndBuckets) (io.ReadSeekCloser, int64, error) {
+	if p.err != nil && p.background == nil {
+		return nil, 0, p.err
+	}
+	return p.background, 73, nil
+}
+
+type trackedReadSeekCloser struct {
+	*bytes.Reader
+	closed bool
+}
+
+func (r *trackedReadSeekCloser) Close() error {
+	r.closed = true
+	return nil
+}
+
+func testBackground(t *testing.T) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	img := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	img.Set(0, 0, color.RGBA{R: 1, G: 2, B: 3, A: 255})
+	require.NoError(t, png.Encode(&buf, img))
+	return buf.Bytes()
+}
 
 func TestInsertFromStructure(t *testing.T) {
 	u := &user.User{
@@ -156,6 +200,46 @@ func TestInsertFromStructure(t *testing.T) {
 		assert.NotEqual(t, 0, testStructure[1].Tasks[0].BucketID) // Should get the default bucket
 		assert.NotEqual(t, 0, testStructure[1].Tasks[6].BucketID) // Should get the default bucket
 	})
+	t.Run("done tasks stay done when placed in an imported bucket", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+
+		doneAt := time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)
+		structure := []*models.ProjectWithTasksAndBuckets{
+			{
+				Project: models.Project{Title: "Done bucket import"},
+				Buckets: []*models.Bucket{
+					{ID: 1, Title: "Archive"},
+				},
+				Tasks: []*models.TaskWithComments{
+					{Task: models.Task{Title: "Archived task", Done: true, BucketID: 1}},
+					{Task: models.Task{Title: "Open task", Done: false, BucketID: 1}},
+					{Task: models.Task{Title: "Task done earlier", Done: true, DoneAt: doneAt, BucketID: 1}},
+				},
+			},
+		}
+		require.NoError(t, InsertFromStructure(structure, u))
+
+		db.AssertExists(t, "tasks", map[string]interface{}{
+			"title": "Archived task",
+			"done":  true,
+		}, false)
+		db.AssertExists(t, "tasks", map[string]interface{}{
+			"title": "Open task",
+			"done":  false,
+		}, false)
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":   structure[0].Tasks[0].ID,
+			"bucket_id": structure[0].Buckets[0].ID,
+		}, false)
+
+		s := db.NewSession()
+		defer s.Close()
+		task := &models.Task{}
+		found, err := s.ID(structure[0].Tasks[2].ID).Get(task)
+		require.NoError(t, err)
+		require.True(t, found)
+		assert.WithinDuration(t, doneAt, task.DoneAt, time.Second, "an explicit done_at is kept")
+	})
 	t.Run("reuses existing labels across imports", func(t *testing.T) {
 		db.LoadAndAssertFixtures(t)
 
@@ -252,6 +336,66 @@ func TestInsertFromStructure(t *testing.T) {
 			}
 		}
 	})
+	t.Run("archives children of an archived project", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+
+		// Old exports only flag the parent as archived.
+		require.NoError(t, InsertFromStructure([]*models.ProjectWithTasksAndBuckets{
+			{
+				Project: models.Project{
+					ID:         1,
+					Title:      "Archived parent",
+					IsArchived: true,
+				},
+			},
+			{
+				Project: models.Project{
+					ID:              2,
+					Title:           "Unflagged child",
+					ParentProjectID: models.Ptr(int64(1)),
+				},
+			},
+			{
+				Project: models.Project{
+					ID:              3,
+					Title:           "Unflagged grandchild",
+					ParentProjectID: models.Ptr(int64(2)),
+				},
+			},
+			{
+				Project: models.Project{
+					ID:    4,
+					Title: "Unarchived sibling root",
+				},
+			},
+			{
+				Project: models.Project{
+					ID:              5,
+					Title:           "Unarchived sibling's child",
+					ParentProjectID: models.Ptr(int64(4)),
+				},
+			},
+		}, u))
+
+		s := db.NewSession()
+		defer s.Close()
+
+		for _, title := range []string{"Archived parent", "Unflagged child", "Unflagged grandchild"} {
+			project := &models.Project{}
+			exists, err := s.Where("title = ?", title).Get(project)
+			require.NoError(t, err)
+			require.True(t, exists)
+			assert.True(t, project.IsArchived)
+		}
+
+		for _, title := range []string{"Unarchived sibling root", "Unarchived sibling's child"} {
+			project := &models.Project{}
+			exists, err := s.Where("title = ?", title).Get(project)
+			require.NoError(t, err)
+			require.True(t, exists)
+			assert.False(t, project.IsArchived)
+		}
+	})
 	t.Run("keeps positions the export provides", func(t *testing.T) {
 		db.LoadAndAssertFixtures(t)
 
@@ -276,5 +420,95 @@ func TestInsertFromStructure(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, int64(4), count, "task %q must keep position %v in all views", title, position)
 		}
+	})
+	t.Run("assignees from a foreign instance", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+
+		foreignID := int64(999)
+		require.NoError(t, InsertFromStructure([]*models.ProjectWithTasksAndBuckets{{
+			Project: models.Project{Title: "Import project"},
+			Tasks: []*models.TaskWithComments{
+				{Task: models.Task{Title: "email match", Assignees: []*user.User{{ID: foreignID, Username: "someone-else", Email: "USER1@example.com"}}}},
+				{Task: models.Task{Title: "username match", Assignees: []*user.User{{ID: foreignID, Username: "user1"}}}},
+				{Task: models.Task{Title: "no match", Assignees: []*user.User{{ID: 2, Username: "other", Email: "other@example.com"}}}},
+				{Task: models.Task{
+					Title: "related",
+					RelatedTasks: map[models.RelationKind][]*models.Task{
+						models.RelationKindSubtask: {{Title: "related match", Assignees: []*user.User{{ID: foreignID, Username: "user1"}}}},
+					},
+				}},
+			},
+		}}, u))
+
+		s := db.NewSession()
+		defer s.Close()
+
+		for title, wantAssignee := range map[string]bool{"email match": true, "username match": true, "related match": true, "no match": false} {
+			task := &models.Task{}
+			exists, err := s.Where("title = ?", title).Get(task)
+			require.NoError(t, err)
+			require.True(t, exists, title)
+
+			assignees := []*models.TaskAssginee{}
+			require.NoError(t, s.Where("task_id = ?", task.ID).Find(&assignees))
+			if wantAssignee {
+				require.Len(t, assignees, 1, title)
+				assert.Equal(t, u.ID, assignees[0].UserID, title)
+			} else {
+				assert.Empty(t, assignees, title)
+			}
+		}
+	})
+}
+
+func TestInsertFromStructureFileProvider(t *testing.T) {
+	u := &user.User{ID: 1}
+
+	t.Run("propagates background provider errors", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		budgetErr := errors.New("storage budget exceeded")
+		provider := &testFileProvider{err: budgetErr}
+		structure := []*models.ProjectWithTasksAndBuckets{{Project: models.Project{Title: "provider error"}}}
+
+		err := InsertFromStructureWithFileProvider(structure, u, provider)
+		require.ErrorIs(t, err, budgetErr)
+		db.AssertMissing(t, "projects", map[string]interface{}{"title": "provider error"})
+	})
+
+	t.Run("rollback preserves colliding blobs and removes the new background", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+
+		unrelated, err := files.Create(bytes.NewReader([]byte("unrelated")), "unrelated", 9, u)
+		require.NoError(t, err)
+		newBackgroundID := unrelated.ID + 1
+		background := &trackedReadSeekCloser{Reader: bytes.NewReader(testBackground(t))}
+		providerErr := errors.New("stop after background")
+		provider := &testFileProvider{background: background, err: providerErr}
+		structure := []*models.ProjectWithTasksAndBuckets{{
+			Project: models.Project{Title: "background rollback", BackgroundFileID: unrelated.ID},
+			Tasks: []*models.TaskWithComments{{Task: models.Task{
+				Title:       "task",
+				Attachments: []*models.TaskAttachment{{File: &files.File{Name: "stop"}}},
+			}}},
+		}}
+
+		err = InsertFromStructureWithFileProvider(structure, u, provider)
+		require.ErrorIs(t, err, providerErr)
+		assert.True(t, background.closed, "the background reader must be closed")
+		assert.Equal(t, newBackgroundID, structure[0].Project.BackgroundFileID)
+
+		_, err = files.FileStat(unrelated)
+		require.NoError(t, err, "rollback must preserve an unrelated colliding blob")
+		_, err = files.FileStat(&files.File{ID: newBackgroundID})
+		require.Error(t, err, "rollback must remove the newly created background blob")
+		require.ErrorIs(t, err, fs.ErrNotExist)
+
+		replacement, err := files.Create(bytes.NewReader([]byte("replacement")), "replacement", 11, u)
+		require.NoError(t, err)
+		if db.Type() == schemas.SQLITE {
+			assert.Equal(t, newBackgroundID, replacement.ID, "SQLite reuses the rolled-back id")
+		}
+		_, err = files.FileStat(replacement)
+		require.NoError(t, err, "replacement blob must remain after cleanup")
 	})
 }

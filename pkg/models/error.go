@@ -18,6 +18,7 @@ package models
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -606,7 +607,7 @@ func (err *ErrProjectViewDefaultBucketEqualsDoneBucket) Error() string {
 }
 
 // ErrCodeProjectViewDefaultBucketEqualsDoneBucket holds the unique world-error code of this error
-const ErrCodeProjectViewDefaultBucketEqualsDoneBucket = 3016
+const ErrCodeProjectViewDefaultBucketEqualsDoneBucket = 3018
 
 // HTTPError holds the http error description
 func (err *ErrProjectViewDefaultBucketEqualsDoneBucket) HTTPError() web.HTTPError {
@@ -615,6 +616,30 @@ func (err *ErrProjectViewDefaultBucketEqualsDoneBucket) HTTPError() web.HTTPErro
 		Code:     ErrCodeProjectViewDefaultBucketEqualsDoneBucket,
 		Message:  "The default bucket and the done bucket of a view cannot be the same bucket.",
 	}
+}
+
+// ErrParentProjectIsArchived represents an error, where a project's parent is archived
+type ErrParentProjectIsArchived struct {
+	ProjectID       int64
+	ParentProjectID int64
+}
+
+// IsErrParentProjectIsArchived checks if an error is a parent project is archived error.
+func IsErrParentProjectIsArchived(err error) bool {
+	_, ok := err.(ErrParentProjectIsArchived)
+	return ok
+}
+
+func (err ErrParentProjectIsArchived) Error() string {
+	return fmt.Sprintf("Parent project is archived [ProjectID: %d, ParentProjectID: %d]", err.ProjectID, err.ParentProjectID)
+}
+
+// ErrCodeParentProjectIsArchived holds the unique world-error code of this error
+const ErrCodeParentProjectIsArchived = 3016
+
+// HTTPError holds the http error description
+func (err ErrParentProjectIsArchived) HTTPError() web.HTTPError {
+	return web.HTTPError{HTTPCode: http.StatusPreconditionFailed, Code: ErrCodeParentProjectIsArchived, Message: "The parent project is archived. Un-archive the parent project first."}
 }
 
 // ==============
@@ -1451,10 +1476,10 @@ type ErrInvalidFilterExpression struct {
 	ExpressionError error
 }
 
-// IsErrInvalidFilterExpression checks if an error is ErrInvalidFilterExpression.
+// Parse paths return pointer errors.
 func IsErrInvalidFilterExpression(err error) bool {
-	_, ok := err.(ErrInvalidFilterExpression)
-	return ok
+	var e *ErrInvalidFilterExpression
+	return errors.As(err, &e)
 }
 
 func (err ErrInvalidFilterExpression) Error() string {
@@ -1470,6 +1495,33 @@ func (err ErrInvalidFilterExpression) HTTPError() web.HTTPError {
 		HTTPCode: http.StatusBadRequest,
 		Code:     ErrCodeInvalidFilterExpression,
 		Message:  fmt.Sprintf("The filter expression '%s' is invalid: %v", err.Expression, err.ExpressionError),
+	}
+}
+
+// ErrFilterTooComplex omits the attacker-controlled expression (GHSA-xxc3-xpmc-vmvr).
+type ErrFilterTooComplex struct {
+	Reason string
+}
+
+// IsErrFilterTooComplex checks if an error is a ErrFilterTooComplex.
+func IsErrFilterTooComplex(err error) bool {
+	var e *ErrFilterTooComplex
+	return errors.As(err, &e)
+}
+
+func (err *ErrFilterTooComplex) Error() string {
+	return "The filter expression is too complex: " + err.Reason
+}
+
+// ErrCodeFilterTooComplex holds the unique world-error code of this error
+const ErrCodeFilterTooComplex = 4033
+
+// HTTPError holds the http error description
+func (err *ErrFilterTooComplex) HTTPError() web.HTTPError {
+	return web.HTTPError{
+		HTTPCode: http.StatusBadRequest,
+		Code:     ErrCodeFilterTooComplex,
+		Message:  "The filter expression is too complex: " + err.Reason,
 	}
 }
 
@@ -2480,6 +2532,84 @@ func (err *ErrSessionNotFound) HTTPError() web.HTTPError {
 		HTTPCode: http.StatusNotFound,
 		Code:     ErrCodeSessionNotFound,
 		Message:  "The session does not exist.",
+	}
+}
+
+// ErrInvalidRefreshToken represents an error where a refresh token does not
+// match any session.
+type ErrInvalidRefreshToken struct{}
+
+// IsErrInvalidRefreshToken checks if an error is ErrInvalidRefreshToken.
+func IsErrInvalidRefreshToken(err error) bool {
+	_, ok := err.(*ErrInvalidRefreshToken)
+	return ok
+}
+
+func (err *ErrInvalidRefreshToken) Error() string {
+	return "Invalid refresh token"
+}
+
+// ErrCodeInvalidRefreshToken holds the unique world-error code of this error
+const ErrCodeInvalidRefreshToken = 16002
+
+// HTTPError holds the http error description
+func (err *ErrInvalidRefreshToken) HTTPError() web.HTTPError {
+	return web.HTTPError{
+		HTTPCode: http.StatusUnauthorized,
+		Code:     ErrCodeInvalidRefreshToken,
+		Message:  "Invalid or expired refresh token.",
+	}
+}
+
+// ErrSessionExpired represents an error where a session was not used within its
+// maximum lifetime and has been removed.
+type ErrSessionExpired struct{}
+
+// IsErrSessionExpired checks if an error is ErrSessionExpired.
+func IsErrSessionExpired(err error) bool {
+	_, ok := err.(*ErrSessionExpired)
+	return ok
+}
+
+func (err *ErrSessionExpired) Error() string {
+	return "Session expired"
+}
+
+// ErrCodeSessionExpired holds the unique world-error code of this error
+const ErrCodeSessionExpired = 16003
+
+// HTTPError holds the http error description
+func (err *ErrSessionExpired) HTTPError() web.HTTPError {
+	return web.HTTPError{
+		HTTPCode: http.StatusUnauthorized,
+		Code:     ErrCodeSessionExpired,
+		Message:  "Session expired.",
+	}
+}
+
+// ErrRefreshTokenAlreadyUsed represents an error where a refresh token was
+// already rotated away, either by a replay or by a concurrent refresh.
+type ErrRefreshTokenAlreadyUsed struct{}
+
+// IsErrRefreshTokenAlreadyUsed checks if an error is ErrRefreshTokenAlreadyUsed.
+func IsErrRefreshTokenAlreadyUsed(err error) bool {
+	_, ok := err.(*ErrRefreshTokenAlreadyUsed)
+	return ok
+}
+
+func (err *ErrRefreshTokenAlreadyUsed) Error() string {
+	return "Refresh token already used"
+}
+
+// ErrCodeRefreshTokenAlreadyUsed holds the unique world-error code of this error
+const ErrCodeRefreshTokenAlreadyUsed = 16004
+
+// HTTPError holds the http error description
+func (err *ErrRefreshTokenAlreadyUsed) HTTPError() web.HTTPError {
+	return web.HTTPError{
+		HTTPCode: http.StatusUnauthorized,
+		Code:     ErrCodeRefreshTokenAlreadyUsed,
+		Message:  "Refresh token already used.",
 	}
 }
 

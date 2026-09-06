@@ -41,6 +41,8 @@ import (
 	"syscall"
 	"time"
 
+	apiv2 "code.vikunja.io/api/pkg/routes/api/v2"
+
 	"github.com/iancoleman/strcase"
 	"github.com/magefile/mage/mg"
 )
@@ -61,23 +63,25 @@ var (
 
 	// Aliases are mage aliases of targets
 	Aliases = map[string]any{
-		"build":                  Build.Build,
-		"check:got-swag":         Check.GotSwag,
-		"dev:make-migration":     Dev.MakeMigration,
-		"dev:make-event":         Dev.MakeEvent,
-		"dev:make-listener":      Dev.MakeListener,
-		"dev:make-notification":  Dev.MakeNotification,
-		"dev:prepare-worktree":   Dev.PrepareWorktree,
-		"dev:tag-release":        Dev.TagRelease,
-		"test:e2e":               Test.E2E,
-		"test:e2e-api":           Test.E2EApi,
-		"plugins:build":          Plugins.Build,
-		"lint":                   Check.Golangci,
-		"lint:fix":               Check.GolangciFix,
-		"generate:config-yaml":   Generate.ConfigYAML,
-		"generate:swagger-docs":  Generate.SwaggerDocs,
-		"generate:yaegi-symbols": Generate.YaegiSymbols,
-		"check:yaegi-symbols":    Check.YaegiSymbols,
+		"build":                    Build.Build,
+		"check:frontend-client":    Check.FrontendClient,
+		"check:got-swag":           Check.GotSwag,
+		"dev:make-migration":       Dev.MakeMigration,
+		"dev:make-event":           Dev.MakeEvent,
+		"dev:make-listener":        Dev.MakeListener,
+		"dev:make-notification":    Dev.MakeNotification,
+		"dev:prepare-worktree":     Dev.PrepareWorktree,
+		"dev:tag-release":          Dev.TagRelease,
+		"test:e2e":                 Test.E2E,
+		"test:e2e-api":             Test.E2EApi,
+		"plugins:build":            Plugins.Build,
+		"lint":                     Check.Golangci,
+		"lint:fix":                 Check.GolangciFix,
+		"generate:config-yaml":     Generate.ConfigYAML,
+		"generate:frontend-client": Generate.FrontendClient,
+		"generate:swagger-docs":    Generate.SwaggerDocs,
+		"generate:yaegi-symbols":   Generate.YaegiSymbols,
+		"check:yaegi-symbols":      Check.YaegiSymbols,
 	}
 )
 
@@ -603,6 +607,63 @@ func (Test) E2E(ctx context.Context, args string) error {
 
 type Check mg.Namespace
 
+func (Check) FrontendClient(ctx context.Context) error {
+	if err := (Generate{}).FrontendClient(ctx); err != nil {
+		return err
+	}
+	firstHash, err := frontendClientDirectoryHash()
+	if err != nil {
+		return err
+	}
+
+	if err := (Generate{}).FrontendClient(ctx); err != nil {
+		return err
+	}
+	secondHash, err := frontendClientDirectoryHash()
+	if err != nil {
+		return err
+	}
+	if firstHash != secondHash {
+		return errors.New("frontend API client generation is not idempotent")
+	}
+
+	status, err := runGitCommandWithOutput(ctx, "status", "--porcelain", "--", "frontend/src/client/generated")
+	if err != nil {
+		return err
+	}
+	if len(bytes.TrimSpace(status)) > 0 {
+		return errors.New("frontend API client is not up to date: run 'mage generate:frontend-client' and commit the result")
+	}
+	return nil
+}
+
+func frontendClientDirectoryHash() (string, error) {
+	const root = "frontend/src/client/generated"
+	hash := sha256.New()
+	err := filepath.Walk(root, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if info.IsDir() {
+			return nil
+		}
+		fileHash, err := calculateSha256FileHash(path)
+		if err != nil {
+			return err
+		}
+		relativePath, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintf(hash, "%s\x00%o\x00%s\n", relativePath, info.Mode().Perm(), fileHash)
+		return err
+	})
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", hash.Sum(nil)), nil
+}
+
 // GotSwag checks if the swagger docs need to be re-generated from the code annotations
 func (Check) GotSwag(ctx context.Context) error {
 	mg.Deps(initVars)
@@ -1108,7 +1169,7 @@ func extractFrontendTranslationKeysFromFile(filePath string) ([]TranslationKey, 
 func checkGolangCiLintInstalled(ctx context.Context) error {
 	mg.Deps(initVars, ensureFrontendDistExists)
 	if err := exec.CommandContext(ctx, "golangci-lint").Run(); err != nil && strings.Contains(err.Error(), "executable file not found") {
-		return fmt.Errorf("golangci-lint executable failed to run, please manually install golangci-lint by running the command: curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.4.0")
+		return fmt.Errorf("golangci-lint executable failed to run, please manually install golangci-lint by running the command: curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.13.0")
 	}
 	return nil
 }
@@ -1421,6 +1482,39 @@ type Generate mg.Namespace
 
 const DefaultConfigYAMLSamplePath = "config.yml.sample"
 
+func (Generate) FrontendClient(ctx context.Context) error {
+	api, err := apiv2.NewCanonicalAPI()
+	if err != nil {
+		return err
+	}
+
+	spec, err := os.CreateTemp("", "vikunja-openapi-*.json")
+	if err != nil {
+		return fmt.Errorf("create temporary OpenAPI document: %w", err)
+	}
+	specPath := spec.Name()
+	defer func() { _ = os.Remove(specPath) }()
+
+	if err := json.NewEncoder(spec).Encode(api.OpenAPI()); err != nil {
+		_ = spec.Close()
+		return fmt.Errorf("write temporary OpenAPI document: %w", err)
+	}
+	if err := spec.Close(); err != nil {
+		return fmt.Errorf("close temporary OpenAPI document: %w", err)
+	}
+
+	cmd := exec.CommandContext(ctx, "pnpm", "run", "generate:api-client")
+	cmd.Dir = "frontend"
+	cmd.Env = append(os.Environ(), "VIKUNJA_OPENAPI_INPUT="+specPath)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("generate frontend API client: %w", err)
+	}
+
+	return nil
+}
+
 // SwaggerDocs generates the swagger docs from the code annotations
 func (Generate) SwaggerDocs(ctx context.Context) error {
 	mg.Deps(initVars)
@@ -1438,6 +1532,7 @@ var yaegiSymbolPackages = []struct {
 	importPath string
 	outFile    string
 }{
+	{"code.vikunja.io/api/pkg/config", "vikunja_config.go"},
 	{"code.vikunja.io/api/pkg/db", "vikunja_db.go"},
 	{"code.vikunja.io/api/pkg/events", "vikunja_events.go"},
 	{"code.vikunja.io/api/pkg/log", "vikunja_log.go"},
@@ -1446,6 +1541,9 @@ var yaegiSymbolPackages = []struct {
 	{"code.vikunja.io/api/pkg/user", "vikunja_user.go"},
 	{"github.com/labstack/echo/v5", "echo.go"},
 	{"github.com/ThreeDotsLabs/watermill/message", "watermill.go"},
+	{"github.com/spf13/viper", "viper.go"},
+	{"src.techknowlogick.com/xormigrate", "xormigrate.go"},
+	{"xorm.io/xorm", "xorm.go"},
 }
 
 // YaegiSymbols regenerates the yaegi symbol tables in pkg/yaegi_symbols so

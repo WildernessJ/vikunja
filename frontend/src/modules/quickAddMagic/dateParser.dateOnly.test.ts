@@ -1,4 +1,5 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
+import {setActivePinia, createPinia} from 'pinia'
 
 import {parseDate} from './dateParser'
 
@@ -15,6 +16,7 @@ function endOfDayOf(date: Date): Date {
 
 describe('parseDate with dateOnly', () => {
 	beforeEach(() => {
+		setActivePinia(createPinia())
 		vi.useFakeTimers()
 		vi.setSystemTime(NOW)
 	})

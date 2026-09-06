@@ -7,14 +7,52 @@ import {calculateDayInterval} from '@/helpers/time/calculateDayInterval'
 import {PRIORITIES} from '@/constants/priorities'
 import {MILLISECONDS_A_DAY} from '@/constants/date'
 import type {IRepeatAfter} from '@/types/IRepeatAfter'
+import {setActivePinia, createPinia} from 'pinia'
+import {useAuthStore} from '@/stores/auth'
+import type {IFrontendSettings} from '@/modelTypes/IUserSettings'
+
+function setDefaultDueTime(defaultDueTime?: string) {
+	const authStore = useAuthStore()
+	authStore.setUserSettings({
+		...authStore.settings,
+		frontendSettings: {
+			// the store exposes settings as DeepReadonly, so the spread needs widening back
+			...(authStore.settings.frontendSettings as IFrontendSettings),
+			defaultDueTime,
+		},
+	})
+}
 
 describe('Parse Task Text', () => {
 	beforeEach(() => {
 		vi.useFakeTimers()
+		setActivePinia(createPinia())
+		useAuthStore()
 	})
 
 	afterEach(() => {
 		vi.useRealTimers()
+	})
+
+	it('uses the configured default due time for date-only parsing', () => {
+		setDefaultDueTime('14:30')
+		vi.setSystemTime(new Date(2026, 7, 4, 9, 15))
+
+		const result = parseDate('plan this tomorrow')
+
+		expect(result.date).not.toBeNull()
+		expect(result.date?.getHours()).toBe(14)
+		expect(result.date?.getMinutes()).toBe(30)
+	})
+
+	it('falls back to the existing default due time when no user value is configured', () => {
+		vi.setSystemTime(new Date(2026, 7, 4, 10, 15))
+
+		const result = parseDate('plan this tomorrow')
+
+		expect(result.date).not.toBeNull()
+		expect(result.date?.getHours()).toBe(12)
+		expect(result.date?.getMinutes()).toBe(0)
 	})
 
 	it('should return text with no intents as is', () => {

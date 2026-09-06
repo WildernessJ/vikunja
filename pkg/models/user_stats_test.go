@@ -297,7 +297,7 @@ func TestUserStats(t *testing.T) {
 		s := db.NewSession()
 		defer s.Close()
 
-		freshUser := &user.User{ID: 21} // fixture user with no owned/shared projects and no team membership (17/18 are disabled/locked, not just empty)
+		freshUser := &user.User{ID: 22} // fixture user with no owned/shared projects and no team membership (21 owns project 44; 17/18 are disabled/locked, not just empty)
 
 		stats, err := GetUserStats(s, freshUser, 12)
 		require.NoError(t, err)
