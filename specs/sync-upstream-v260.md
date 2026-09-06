@@ -250,3 +250,21 @@ holding untracked `checkpoint/`, `dev/` and `pb`, and git cannot replace it with
 sit there; move them to `.agents/skills/` first. Note the branch already edited `.git/info/exclude`,
 which lives in the shared git common dir, so the main checkout now reports
 `?? .claude/skills/dev/SKILL.md` — harmless, and it clears when `dev` moves.
+
+### Review fixes (2026-09-06, `/flow review`)
+
+The verifier found the date-only resolution rule applied in both wrong directions, neither logged.
+Fixed in-review, red-first, within the fix threshold (Jason's call):
+
+- `dateParser.ts`: `getDateFromInterval` and the two month sites called `getDateWithTime` without
+  the caller's `dateOnly`, so the store setting overrode the `false` that `reminderParser.ts`
+  passes on purpose — quick-add reminders landed at 23:59:59.999 with date-only on. The parameter
+  is now threaded through. Test: `dateParser.dateOnly.test.ts` "keeps a real time of day when the
+  caller opts out".
+- `TaskContextMenu.vue`: `dueDateForInterval` is a due-date site and still hand-rolled
+  `calculateNearestHours`, so the context menu's quick due dates ignored `defaultDueTime`. It now
+  calls `getDateWithTime`, which already carries the date-only branch. Test:
+  `TaskContextMenu.test.ts` "gives a quick due date the user's default due time".
+
+The verifier's `.gitignore` finding for `.agents/skills/dev` was refuted: `.git/info/exclude`
+line 15 already covers it and `git check-ignore` confirms from both checkouts.

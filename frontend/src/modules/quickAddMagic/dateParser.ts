@@ -47,43 +47,43 @@ function matchesDateExpr(text: string, dateExpr: string): boolean {
 
 export const parseDate = (text: string, now: Date = new Date(), dateOnly = false): dateParseResult => {
 	if (matchesDateExpr(text, 'today')) {
-		return addTimeToDate(text, getDateFromInterval(calculateDayInterval('today')), 'today', dateOnly)
+		return addTimeToDate(text, getDateFromInterval(calculateDayInterval('today'), dateOnly), 'today', dateOnly)
 	}
 	if (matchesDateExpr(text, 'tonight')) {
-		const taskDate = getDateFromInterval(calculateDayInterval('today'))
+		const taskDate = getDateFromInterval(calculateDayInterval('today'), dateOnly)
 		taskDate.setHours(21, 0, 0, 0)
 		return addTimeToDate(text, taskDate, 'tonight')
 	}
 	if (matchesDateExpr(text, 'tomorrow')) {
-		return addTimeToDate(text, getDateFromInterval(calculateDayInterval('tomorrow')), 'tomorrow', dateOnly)
+		return addTimeToDate(text, getDateFromInterval(calculateDayInterval('tomorrow'), dateOnly), 'tomorrow', dateOnly)
 	}
 	if (matchesDateExpr(text, 'next monday')) {
-		return addTimeToDate(text, getDateFromInterval(calculateDayInterval('nextMonday')), 'next monday', dateOnly)
+		return addTimeToDate(text, getDateFromInterval(calculateDayInterval('nextMonday'), dateOnly), 'next monday', dateOnly)
 	}
 	if (matchesDateExpr(text, 'this weekend')) {
-		return addTimeToDate(text, getDateFromInterval(calculateDayInterval('thisWeekend')), 'this weekend', dateOnly)
+		return addTimeToDate(text, getDateFromInterval(calculateDayInterval('thisWeekend'), dateOnly), 'this weekend', dateOnly)
 	}
 	if (matchesDateExpr(text, 'later this week')) {
-		return addTimeToDate(text, getDateFromInterval(calculateDayInterval('laterThisWeek')), 'later this week', dateOnly)
+		return addTimeToDate(text, getDateFromInterval(calculateDayInterval('laterThisWeek'), dateOnly), 'later this week', dateOnly)
 	}
 	if (matchesDateExpr(text, 'later next week')) {
-		return addTimeToDate(text, getDateFromInterval(calculateDayInterval('laterNextWeek')), 'later next week', dateOnly)
+		return addTimeToDate(text, getDateFromInterval(calculateDayInterval('laterNextWeek'), dateOnly), 'later next week', dateOnly)
 	}
 	if (matchesDateExpr(text, 'next week')) {
-		return addTimeToDate(text, getDateFromInterval(calculateDayInterval('nextWeek')), 'next week', dateOnly)
+		return addTimeToDate(text, getDateFromInterval(calculateDayInterval('nextWeek'), dateOnly), 'next week', dateOnly)
 	}
 	if (matchesDateExpr(text, 'next month')) {
 		const date: Date = new Date()
 		date.setDate(1)
 		date.setMonth(date.getMonth() + 1)
 
-		return addTimeToDate(text, getDateWithTime(date), 'next month', dateOnly)
+		return addTimeToDate(text, getDateWithTime(date, dateOnly), 'next month', dateOnly)
 	}
 	if (matchesDateExpr(text, 'end of month')) {
 		const curDate: Date = new Date()
 		const date: Date = new Date(curDate.getFullYear(), curDate.getMonth() + 1, 0)
 
-		return addTimeToDate(text, getDateWithTime(date), 'end of month', dateOnly)
+		return addTimeToDate(text, getDateWithTime(date, dateOnly), 'end of month', dateOnly)
 	}
 
 	let parsed = getDateFromWeekday(text, now)
@@ -399,9 +399,9 @@ const getMonthFromText = (text: string, date: Date) => {
 	}
 }
 
-const getDateFromInterval = (interval: number): Date => {
+const getDateFromInterval = (interval: number, dateOnly: boolean): Date => {
 	const newDate = new Date()
 	newDate.setDate(newDate.getDate() + interval)
 
-	return getDateWithTime(newDate)
+	return getDateWithTime(newDate, dateOnly)
 }

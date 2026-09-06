@@ -33,10 +33,12 @@ vi.mock('@/stores/tasks', () => ({
 // useDateOnly is a shared composable wrapping a computed, so the mocked setting has to be
 // genuinely reactive — a plain object would let the computed cache the first test's value.
 const dateOnlyMock = vi.hoisted((): {ref: {value: boolean}} => ({ref: {value: false}}))
+const defaultDueTimeMock = vi.hoisted((): {ref: {value: string | undefined}} => ({ref: {value: undefined}}))
 
 vi.mock('@/stores/auth', async () => {
 	const {ref} = await import('vue')
 	dateOnlyMock.ref = ref(false)
+	defaultDueTimeMock.ref = ref(undefined)
 
 	return {
 		useAuthStore: () => ({
@@ -44,6 +46,9 @@ vi.mock('@/stores/auth', async () => {
 				frontendSettings: {
 					get dateOnly() {
 						return dateOnlyMock.ref.value
+					},
+					get defaultDueTime() {
+						return defaultDueTimeMock.ref.value
 					},
 				},
 			},
@@ -213,6 +218,27 @@ describe('TaskContextMenu', () => {
 			.toEqual([23, 59, 59, 999])
 
 		dateOnlyMock.ref.value = false
+		wrapper.unmount()
+	})
+
+	it('gives a quick due date the user\'s default due time', async () => {
+		defaultDueTimeMock.ref.value = '09:30'
+		const task = makeTask()
+		taskStoreUpdateMock.mockResolvedValueOnce(task)
+
+		const wrapper = mountMenu(task)
+		await flushPromises()
+
+		const dueDateTrigger = wrapper.findAll('.dropdown-item').find(el => el.text().includes('Due date'))
+		await dueDateTrigger!.trigger('click')
+		const todayOption = wrapper.findAll('.flyout-option').find(el => el.text().trim() === 'Today')
+		await todayOption!.trigger('click')
+		await flushPromises()
+
+		const {dueDate} = taskStoreUpdateMock.mock.calls[0][0] as {dueDate: Date}
+		expect([dueDate.getHours(), dueDate.getMinutes(), dueDate.getSeconds()]).toEqual([9, 30, 0])
+
+		defaultDueTimeMock.ref.value = undefined
 		wrapper.unmount()
 	})
 

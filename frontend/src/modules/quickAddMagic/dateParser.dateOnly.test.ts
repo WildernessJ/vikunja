@@ -2,6 +2,8 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 import {setActivePinia, createPinia} from 'pinia'
 
 import {parseDate} from './dateParser'
+import {useAuthStore} from '@/stores/auth'
+import type {IFrontendSettings} from '@/modelTypes/IUserSettings'
 
 // 09:00 exactly: calculateNearestHours returns 9, so every default-time path lands
 // before noon — where roundToNaturalDayBoundary's heuristic alone would give 00:00.
@@ -23,6 +25,21 @@ describe('parseDate with dateOnly', () => {
 
 	afterEach(() => {
 		vi.useRealTimers()
+	})
+
+	it('keeps a real time of day when the caller opts out, even with the setting on', () => {
+		// The reminder parser passes dateOnly=false: an alarm at 23:59 is not an alarm.
+		const authStore = useAuthStore()
+		authStore.setUserSettings({
+			...authStore.settings,
+			frontendSettings: {...(authStore.settings.frontendSettings as IFrontendSettings), dateOnly: true},
+		})
+
+		const {date} = parseDate('foo tomorrow', new Date(NOW), false)
+
+		expect(date?.getDate()).toBe(6)
+		expect(date?.getHours()).toBe(9)
+		expect(date?.getMilliseconds()).toBe(0)
 	})
 
 	it('gives a bare "tomorrow" the canonical end of day', () => {
