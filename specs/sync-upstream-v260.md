@@ -176,4 +176,77 @@ Required green, in order, after **each** phase (save output to files; never re-r
 
 ## Execution Log
 
-_(empty — the build phase appends)_
+Built 2026-09-06 across two executor-max dispatches with a verifier round after each.
+`ee4c49050` Phase A merge → `cbaabbcf9` Phase A review fixes → `88e94b7ce` Phase B merge → closeout.
+
+### Deviations from this spec — read these first
+
+1. **Task detail (`TaskDetailView.vue`) — the Resolution rule was not executable.** The rule says take
+   upstream's grouped-actions layout. Upstream's action column calls 15 functions (`setFieldActive`
+   ×13, `openAttachments`, `setRelatedTasksActive`) that the merged script does not define, because
+   the fork replaced that column with `TaskPropertyChips` (7 `defineExpose` targets). Adopting the
+   layout requires implementing 8 field editors — design work, past this spec's own "~150 lines of
+   hand-written reconciliation" stop criterion. Resolved minimally and reversibly in one file: the
+   fork's layout and dropdown stay, upstream's `SHORTCUTS.taskDetail.*` constants adopted throughout.
+   The fork's local `deleteShortcut`/`reminderShortcut` and its `isAppleDevice` import were deleted as
+   redundant — verified, not assumed: `constants/shortcuts.ts:28-29` reproduces the Apple-aware
+   bindings exactly, and the 13 `v-shortcut` sites map 1:1 to the fork's pre-merge lines.
+2. **`isFilteredView` dropped, against the rule "the fork's `isFiltered` argument stays."** The rule
+   rested on a misattribution. `git log --format='%an'` on `useTaskListFiltering.ts` shows both
+   commits that touched the parameter (`d895053d2`, `d59b2e1f7`) are `kolaente` — upstream code
+   inherited by a prior sync, not a fork feature — and upstream deliberately reversed itself in
+   `d59b2e1f7`. The function is 2-param now, so keeping the argument would not compile. Fork-visible
+   effect: subtasks render nested only in saved-filter list views, not also as top-level rows.
+3. **`magefile.go` `test:filter` taken from upstream, with a known residual.** Upstream runs `-short`
+   for everything except `pkg/webtests`, but `pkg/caldavtests` and `pkg/e2etests` carry the same
+   `testing.Short()` TestMain guard, so a filter aimed at either **prints `ok` having executed
+   nothing** — and without the `[no tests to run]` suffix that marks a genuinely filtered package.
+   Not patched: that would be a fork delta in an upstream-owned file to suppress an upstream defect,
+   conflicting on every future sync. This spec's own gates were checked and genuinely execute
+   (`TaskPosition` 36 subtests; `TestErrorCodesAreUnique` in `pkg/web`). Belongs in PITFALLS.
+4. **Typecheck gate settled at 8, not the spec's 5** (Jason's call, this session). All three extra
+   errors are in files byte-identical to `upstream/main` — `client/queries/labels.ts` TS2589, and
+   `FilterAutocomplete.ts` TS2345 + `highlighter.ts` TS2322 from upstream's lockfile resolving two
+   copies of `prosemirror-view`. The per-file ratchet (`typecheck-baseline.json`) was regenerated;
+   this also retires the carried `services/task.test.ts` 0→4 regression by budgeting it, which had
+   been failing CI (`.github/workflows/test.yml:415`). Every error the merge itself introduced —
+   7 of them — was fixed, not budgeted. Rejected alternatives: `pnpm dedupe` (rewrites an
+   upstream-owned lockfile, silently bumps prosemirror-view for three tiptap plugins) and patching
+   the three files (fork deltas on brand-new upstream code).
+
+### Regression found in review and fixed before merge
+
+Upstream's project-access memo `getProjectAccessForUser` has no template filter, where the fork's
+replaced `getUserProjectsStatement(..., includeTemplates=false)` did. Phase A re-applied it at
+`project.go:604-607` and `task_search.go:624-631` but not on the memo path, so template projects
+leaked into user stats, time entries, label visibility and notification scoping — breaking the
+`GetUserStats`/`GetProjectTaskCounts` mirror invariant that `user_stats.go:69-72` asserts outright.
+The verifier proved it by running a probe, not by reading. Fixed once at the seam
+(`accessibleProjectIDsCond`, `builder.NotIn` on both branches) rather than at the five call sites,
+red-first (`TestUserStatsExcludesTemplateProjects`). All 12 callers were enumerated; two judgment
+calls in that fix are recorded in FORK-CHANGES (`checkPermissionsForProjects` deliberately unfiltered;
+`fetchAccessibleSubtasks` filtered despite having no pre-merge baseline).
+
+### Assumptions the reviewer should test
+
+- **`EditLabels.vue` diverges from upstream deliberately**: the fork's `hasPersistedTask` branch is
+  kept, so `createAndAddLabel` with `taskId === 0` creates a server-side label where upstream now
+  returns early. Verifier checked for double-create and orphaning and found neither; orphan-on-cancel
+  is the fork's pre-existing #57 behavior.
+- **`services/task.ts` `processModel`** was the largest hand-written reconciliation (~45 lines) — the
+  fork's object-building shape with upstream's semantics folded in. Verified field-by-field against
+  both parents. The fork's `LabelService().processModel(l)` preprocessing is gone by the Labels rule.
+- **`pkg/webtests/task_collection_test.go`**, 15 hunks of JSON blobs, was resolved by a mechanical
+  rule and verified programmatically both times: stripping the four fork-only fields yields upstream's
+  blob byte-for-byte on all 15.
+- **`ILabel` was replaced, not aliased**, in 12 files. An alias would have been a one-file diff but
+  keeps a fork-only parallel type upstream deleted.
+
+### Not done in the build phase
+
+Live-verify (browser) has not run — it is the review phase's step. The `.claude/skills` symlink
+**blocks the merge to `main`**: the main checkout's `.claude/skills/` is a real directory still
+holding untracked `checkpoint/`, `dev/` and `pb`, and git cannot replace it with a symlink while they
+sit there; move them to `.agents/skills/` first. Note the branch already edited `.git/info/exclude`,
+which lives in the shared git common dir, so the main checkout now reports
+`?? .claude/skills/dev/SKILL.md` — harmless, and it clears when `dev` moves.
