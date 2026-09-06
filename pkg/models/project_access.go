@@ -132,10 +132,16 @@ func (pa *projectAccess) condViaSubquery(column string) builder.Cond {
 	return builder.In(column, builder.Expr(projectAccessIDsQuery, pa.userID, pa.userID, pa.userID))
 }
 
-// Includes projects inherited through a shared parent.
+// Includes projects inherited through a shared parent. Templates are hidden
+// from every normal listing; the memo has no template filter of its own, so
+// this seam applies it for all of its callers (mirrors getAllProjectsForUser's
+// includeTemplates default).
 func accessibleProjectIDsCond(s *xorm.Session, a web.Auth, column string) (builder.Cond, error) {
+	notATemplate := builder.NotIn(column,
+		builder.Select("id").From("projects").Where(builder.Eq{"is_template": true}))
+
 	if share, ok := a.(*LinkSharing); ok {
-		return builder.Eq{column: share.ProjectID}, nil
+		return builder.And(builder.Eq{column: share.ProjectID}, notATemplate), nil
 	}
 
 	u, err := user.GetFromAuth(a)
@@ -147,7 +153,7 @@ func accessibleProjectIDsCond(s *xorm.Session, a web.Auth, column string) (build
 	if err != nil {
 		return nil, err
 	}
-	return access.cond(column), nil
+	return builder.And(access.cond(column), notATemplate), nil
 }
 
 // GetAllParentProjects returns the project itself and every ancestor, keyed by id.

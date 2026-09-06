@@ -627,14 +627,12 @@ export const useAuthStore = defineStore('auth', () => {
 		removeToken()
 		const loggedInVia = getLoggedInVia()
 		lastUserInfoRefresh.value = null
+		// Must precede the settings reset below: that reset re-fires settings watchers
+		// (e.g. useTaskList's), and this flag is what keeps them from firing a doomed
+		// request during teardown (issue #44 follow-up).
 		setAuthenticated(false)
 		setUser(null)
 		window.localStorage.clear() // Clear all settings and history we might have saved in local storage.
-
-		// Mark unauthenticated before touching settings below: that reset re-fires
-		// settings watchers (e.g. useTaskList's), and this flag is what keeps them
-		// from firing a doomed request during teardown (issue #44 follow-up).
-		setAuthenticated(false)
 
 		// Reset to model defaults so the settings-driven composables (useColorScheme,
 		// useAppearance) re-fire and strip the logged-out user's styling from <html>

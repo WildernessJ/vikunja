@@ -20,7 +20,7 @@ describe('Popup', () => {
 	})
 
 	it('leaves the trigger outside the content wrapper', () => {
-		const wrapper = mount(Popup, {slots})
+		const wrapper = mount(Popup, {props: {open: true}, slots})
 		expect(wrapper.find('.popup .trigger').exists()).toBe(false)
 		expect(wrapper.find('.trigger').exists()).toBe(true)
 	})
