@@ -51,6 +51,15 @@ vi.mock('@/stores/auth', () => ({
 	}),
 }))
 
+vi.mock('@/composables/useLabels', () => ({
+	useLabels: () => ({
+		labels: {value: []},
+		isPending: {value: false},
+		filterLabelsByQuery: () => [],
+		getLabelsByExactTitles: () => [],
+	}),
+}))
+
 vi.mock('@/stores/projects', () => ({
 	useProjectStore: () => ({
 		projects: {},

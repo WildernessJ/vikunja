@@ -239,6 +239,11 @@ func (sf *SavedFilter) Update(s *xorm.Session, _ web.Auth) error {
 		return err
 	}
 
+	err = lockViewsForPositionUpdate(s, kanbanFilterViews)
+	if err != nil {
+		return err
+	}
+
 	for _, view := range kanbanFilterViews {
 		taskIDs, err := filteredTasksWithoutBucketInView(s, view.ID, sf)
 		if err != nil {
@@ -668,6 +673,8 @@ func RegisterAddTaskToFilterViewCron() {
 			view    *ProjectView
 			ownerID int64
 		}{}
+		staleTaskIDsByView := map[int64][]int64{}
+		staleViews := []*ProjectView{}
 		for _, view := range kanbanFilterViews {
 			filterID := GetSavedFilterIDFromProjectID(view.ProjectID)
 			filter := filters[filterID]
@@ -740,7 +747,26 @@ func RegisterAddTaskToFilterViewCron() {
 			}
 
 			// Remove tasks that should not be there
-			deleteStaleFilterTasks(s, logPrefix, savedTaskBucketMap, tasks, view.ID)
+			if staleIDs := staleFilterTaskIDs(savedTaskBucketMap, tasks); len(staleIDs) > 0 {
+				staleTaskIDsByView[view.ID] = staleIDs
+				staleViews = append(staleViews, view)
+			}
+		}
+
+		// The loop above reads for seconds; only lock the views actually written, right before writing them.
+		viewsToLock := staleViews
+		for _, data := range viewsToRecalc {
+			viewsToLock = append(viewsToLock, data.view)
+		}
+		if len(viewsToLock) > 0 {
+			if err := lockViewsForPositionUpdate(s, viewsToLock); err != nil {
+				log.Errorf("%sError locking kanban filter views: %s", logPrefix, err)
+				return
+			}
+		}
+
+		for viewID, staleIDs := range staleTaskIDsByView {
+			deleteStaleFilterTasks(s, logPrefix, viewID, staleIDs)
 		}
 
 		upsertRelatedTaskProperties(s, logPrefix, newTaskBuckets, newTaskPositions)
@@ -776,8 +802,7 @@ func upsertRelatedTaskProperties(s *xorm.Session, logPrefix string, newTaskBucke
 	}
 }
 
-func deleteStaleFilterTasks(s *xorm.Session, logPrefix string, savedTaskBucketMap map[int64]*TaskBucket, tasks []*Task, viewID int64) {
-	var taskIDsToDelete []int64
+func staleFilterTaskIDs(savedTaskBucketMap map[int64]*TaskBucket, tasks []*Task) (taskIDs []int64) {
 	for taskID := range savedTaskBucketMap {
 		found := false
 		for _, task := range tasks {
@@ -787,21 +812,27 @@ func deleteStaleFilterTasks(s *xorm.Session, logPrefix string, savedTaskBucketMa
 			}
 		}
 		if !found {
-			taskIDsToDelete = append(taskIDsToDelete, taskID)
+			taskIDs = append(taskIDs, taskID)
 		}
 	}
-	if len(taskIDsToDelete) > 0 {
-		_, err := s.Where(builder.Eq{"project_view_id": viewID}).
-			And(builder.In("task_id", taskIDsToDelete)).
-			Delete(&TaskBucket{})
-		if err != nil {
-			log.Errorf("%sError deleting task buckets: %s", logPrefix, err)
-		}
-		_, err = s.Where(builder.Eq{"project_view_id": viewID}).
-			And(builder.In("task_id", taskIDsToDelete)).
-			Delete(&TaskPosition{})
-		if err != nil {
-			log.Errorf("%sError deleting task positions: %s", logPrefix, err)
-		}
+	return taskIDs
+}
+
+func deleteStaleFilterTasks(s *xorm.Session, logPrefix string, viewID int64, taskIDs []int64) {
+	if len(taskIDs) == 0 {
+		return
+	}
+
+	_, err := s.Where(builder.Eq{"project_view_id": viewID}).
+		And(builder.In("task_id", taskIDs)).
+		Delete(&TaskBucket{})
+	if err != nil {
+		log.Errorf("%sError deleting task buckets: %s", logPrefix, err)
+	}
+	_, err = s.Where(builder.Eq{"project_view_id": viewID}).
+		And(builder.In("task_id", taskIDs)).
+		Delete(&TaskPosition{})
+	if err != nil {
+		log.Errorf("%sError deleting task positions: %s", logPrefix, err)
 	}
 }

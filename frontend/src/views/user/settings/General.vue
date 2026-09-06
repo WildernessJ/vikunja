@@ -698,7 +698,7 @@ const {
 type UserWithAuthProvider = IUser & {authProvider?: string}
 const externalAuthProvider = computed(() => (authStore.info as UserWithAuthProvider | null)?.authProvider)
 
-const isExternalUser = computed(() => !authStore.info?.isLocalUser)
+const isExternalUser = computed(() => authStore.info?.isLocalUser === false)
 
 watch(
 	() => authStore.settings,

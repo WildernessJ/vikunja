@@ -25,7 +25,7 @@
 				v-else
 				show-api-config
 			>
-				<RouterView />
+				<RouterView v-if="showNoAuthRoute" />
 			</NoAuthWrapper>
 		</template>
 
@@ -95,6 +95,12 @@ if (isQuickAddMode) {
 const route = useRoute()
 
 const showAuthLayout = computed(() => authStore.authUser && typeof route.name === 'string' && !AUTH_ROUTE_NAMES.has(route.name))
+
+// The router guard bounces every other route to /login while logged out, so anything
+// else reaching the logged-out shell means the auth state was cleared mid-navigation
+// (logout, expired session) while the old route is still current. Mounting it there
+// would run app components against a null `authStore.info`.
+const showNoAuthRoute = computed(() => typeof route.name === 'string' && AUTH_ROUTE_NAMES.has(route.name))
 
 useBodyClass('is-touch', isTouchDevice())
 useAppBadge()

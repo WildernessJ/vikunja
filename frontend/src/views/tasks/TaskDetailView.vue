@@ -340,7 +340,7 @@ import TaskModel from '@/models/task'
 import type {ITask} from '@/modelTypes/ITask'
 import type {IAttachment} from '@/modelTypes/IAttachment'
 import type {IProject} from '@/modelTypes/IProject'
-import type {ILabel} from '@/modelTypes/ILabel'
+import type {Label} from '@/client/generated'
 import type {IUser} from '@/modelTypes/IUser'
 import type {IRepeatAfter} from '@/types/IRepeatAfter'
 
@@ -900,7 +900,7 @@ async function saveTitleLiteral(title: string) {
 // Accepting a *label token in the title only ever offers already-existing
 // labels (useQuickAddAutocomplete's dropdown doesn't surface unmatched names),
 // so this mirrors EditLabels' addLabel - the same taskStore action, not a fork.
-async function acceptLabel(label: ILabel) {
+async function acceptLabel(label: Label) {
 	if (task.value.labels.some(l => l.id === label.id)) {
 		return
 	}

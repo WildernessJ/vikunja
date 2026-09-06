@@ -42,7 +42,7 @@ import {onClickOutside} from '@vueuse/core'
 import {autoUpdate, computePosition, flip, offset, shift} from '@floating-ui/dom'
 
 import type {IProject} from '@/modelTypes/IProject'
-import type {ILabel} from '@/modelTypes/ILabel'
+import type {Label} from '@/client/generated'
 import type {IUser} from '@/modelTypes/IUser'
 import type {PrefixMode} from '@/modules/quickAddMagic'
 
@@ -51,7 +51,7 @@ import {useAutoHeightTextarea} from '@/composables/useAutoHeightTextarea'
 import {useTaskTitleAutocomplete} from '@/composables/useTaskTitleAutocomplete'
 import type {TitleAutocompleteItem} from '@/composables/useQuickAddAutocomplete'
 import {useProjectStore} from '@/stores/projects'
-import {useLabelStore} from '@/stores/labels'
+import {useLabels} from '@/composables/useLabels'
 import {useI18n} from 'vue-i18n'
 import {error} from '@/message'
 
@@ -68,7 +68,7 @@ const props = defineProps<{
 	// stripped title lets them persist it in that same PATCH instead of a
 	// separate trailing literal-save (which would double-save and double-toast).
 	onAcceptProject: (project: IProject, title: string) => Promise<void>,
-	onAcceptLabel: (label: ILabel) => Promise<void>,
+	onAcceptLabel: (label: Label) => Promise<void>,
 	onAcceptAssignee: (user: IUser) => Promise<void>,
 	onAcceptPriority: (priority: number, title: string) => Promise<void>,
 }>()
@@ -79,7 +79,7 @@ const emit = defineEmits<{
 
 const {t} = useI18n({useScope: 'global'})
 const projectStore = useProjectStore()
-const labelStore = useLabelStore()
+const {getLabelById} = useLabels()
 
 const localTitle = ref('')
 watch(() => props.modelValue, (value) => {
@@ -183,7 +183,7 @@ async function onSelect(item: TitleAutocompleteItem) {
 	// can't be found (a store miss), abort the whole accept so the token isn't
 	// silently consumed with the property lost.
 	let project: IProject | undefined
-	let label: ILabel | undefined
+	let label: Label | undefined
 
 	if (item.kind === 'project') {
 		project = projectStore.projects[item.id as IProject['id']]
@@ -192,7 +192,7 @@ async function onSelect(item: TitleAutocompleteItem) {
 			return
 		}
 	} else if (item.kind === 'label') {
-		label = labelStore.labels[item.id as ILabel['id']]
+		label = getLabelById(item.id as number)
 		if (!label) {
 			selectingItem.value = false
 			return

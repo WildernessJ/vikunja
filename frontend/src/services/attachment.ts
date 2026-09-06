@@ -5,6 +5,7 @@ import type {Method} from 'axios'
 import type { IAttachment } from '@/modelTypes/IAttachment'
 
 import {downloadBlob} from '@/helpers/downloadBlob'
+import {toISOStringOrNull} from '@/helpers/time/toISOStringOrNull'
 
 export enum PREVIEW_SIZE {
 	SM = 'sm',
@@ -32,7 +33,7 @@ export default class AttachmentService extends AbstractService<IAttachment> {
 	processModel(model: IAttachment) {
 		return {
 			...model,
-			created: new Date(model.created).toISOString(),
+			created: toISOStringOrNull(model.created),
 		}
 	}
 
@@ -52,7 +53,7 @@ export default class AttachmentService extends AbstractService<IAttachment> {
 		return {...data, success} as unknown as AttachmentUploadResponse
 	}
 
-	getBlobUrl(model: IAttachment | string, size?: PREVIEW_SIZE | Method, data?: Record<string, unknown>) {
+	getBlobUrl(model: Pick<IAttachment, 'id' | 'taskId'> | string, size?: PREVIEW_SIZE | Method, data?: Record<string, unknown>): Promise<string> {
 		if (typeof model === 'string') {
 			// When model is a url string, size stands in for the base method's `method` param
 			// (no caller ever passes a PREVIEW_SIZE alongside a string model).

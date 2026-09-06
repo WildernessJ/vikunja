@@ -52,9 +52,9 @@ devenv.local.nix
 # AI Tools
 /.claude/settings.local.json
 # Personal memory-spine mechanics — local-only, kept out of the public fork.
-# (Project dev skills under .claude/skills/ stay tracked; these two are private tooling.)
+# (Project dev skills under .agents/skills/ stay tracked; these two are private tooling.)
 /.claude/hooks/
-/.claude/skills/checkpoint/
+/.agents/skills/checkpoint/
 PLAN.md
 plans/
 docs/context/
@@ -67,4 +67,4 @@ docs/context/
 
 # Local-only symlink into jason-claude-skills on the external SSD — would
 # dangle on clone and publish a local path in this public repo.
-.claude/skills/pb
+.agents/skills/pb

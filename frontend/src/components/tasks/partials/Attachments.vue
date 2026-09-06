@@ -162,8 +162,8 @@
 			</template>
 
 			<template #text>
-				<p>
-					{{ $t('task.attachment.deleteText1', {filename: attachmentToDelete?.file.name ?? ''}) }}<br>
+				<p v-if="attachmentToDelete">
+					{{ $t('task.attachment.deleteText1', {filename: attachmentToDelete.file.name}) }}<br>
 					<strong class="has-text-white">{{ $t('misc.cannotBeUndone') }}</strong>
 				</p>
 			</template>

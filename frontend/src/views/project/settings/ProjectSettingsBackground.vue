@@ -161,7 +161,7 @@ const configStore = useConfigStore()
 const unsplashBackgroundEnabled = computed(() => configStore.enabledBackgroundProviders.includes('unsplash'))
 const uploadBackgroundEnabled = computed(() => configStore.enabledBackgroundProviders.includes('upload'))
 const currentProject = computed(() => baseStore.currentProject)
-const hasBackground = computed(() => !!currentProject.value?.backgroundInformation)
+const hasBackground = computed(() => Boolean(currentProject.value?.backgroundInformation))
 
 // Show the default collection of backgrounds
 newBackgroundSearch()
@@ -186,6 +186,7 @@ async function searchBackgrounds(page = 1) {
 				if (b === null) {
 					return
 				}
+
 				backgroundBlurHashes.value[background.id] = window.URL.createObjectURL(b)
 			})
 

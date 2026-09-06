@@ -1,6 +1,7 @@
 import AbstractService from '@/services/abstractService'
 import NotificationModel from '@/models/notification'
 import type {INotification} from '@/modelTypes/INotification'
+import {toISOStringOrNull} from '@/helpers/time/toISOStringOrNull'
 
 export default class NotificationService extends AbstractService<INotification> {
 	constructor() {
@@ -24,8 +25,8 @@ export default class NotificationService extends AbstractService<INotification> 
 		// created/readAt are typed as Date locally — cast to stay a compatible override.
 		return {
 			...model,
-			created: new Date(model.created).toISOString(),
-			readAt: model.readAt ? new Date(model.readAt).toISOString() : null,
+			created: toISOStringOrNull(model.created),
+			readAt: toISOStringOrNull(model.readAt),
 		} as unknown as INotification
 	}
 	

@@ -227,7 +227,7 @@ import {useDateOnly} from '@/composables/useDateOnly'
 import {useTaskStore} from '@/stores/tasks'
 
 import type {ITask} from '@/modelTypes/ITask'
-import type {ILabel} from '@/modelTypes/ILabel'
+import type {Label} from '@/client/generated'
 import type {IUser} from '@/modelTypes/IUser'
 import type {IProject} from '@/modelTypes/IProject'
 
@@ -388,7 +388,7 @@ async function selectProject(project: IProject | null) {
 	close()
 }
 
-function onLabelsUpdated(labels: ILabel[]) {
+function onLabelsUpdated(labels: Label[]) {
 	emit('taskUpdated', {...props.task, labels})
 }
 

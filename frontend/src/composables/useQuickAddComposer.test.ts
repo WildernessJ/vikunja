@@ -6,7 +6,6 @@ import {useQuickAddComposer} from './useQuickAddComposer'
 import {PrefixMode} from '@/modules/quickAddMagic'
 import {PRIORITIES} from '@/constants/priorities'
 import ProjectModel from '@/models/project'
-import LabelModel from '@/models/label'
 import TaskReminderModel from '@/models/taskReminder'
 
 describe('useQuickAddComposer', () => {
@@ -49,7 +48,7 @@ describe('useQuickAddComposer', () => {
 		const {effectivePriority, effectiveLabels, setOverride, clearAll} = useQuickAddComposer(title, mode)
 
 		setOverride('priority', PRIORITIES.LOW)
-		setOverride('labels', [new LabelModel({id: 1, title: 'urgent'})])
+		setOverride('labels', [{id: 1, title: 'urgent'}])
 		clearAll()
 
 		expect(effectivePriority.value).toBe(PRIORITIES.HIGH)
@@ -88,14 +87,14 @@ describe('useQuickAddComposer', () => {
 		expect(isMultiline.value).toBe(false)
 	})
 
-	it('effectiveLabels merges text-parsed label names with override ILabel objects', () => {
+	it('effectiveLabels merges text-parsed label names with override Label objects', () => {
 		const title = ref('Errand *chores')
 		const mode = ref(PrefixMode.Default)
 		const {effectiveLabels, setOverride} = useQuickAddComposer(title, mode)
 
 		expect(effectiveLabels.value.map(l => l.title)).toEqual(['chores'])
 
-		const overrideLabel = new LabelModel({id: 5, title: 'urgent'})
+		const overrideLabel = {id: 5, title: 'urgent'}
 		setOverride('labels', [overrideLabel])
 		expect(effectiveLabels.value).toEqual([overrideLabel])
 	})

@@ -88,7 +88,7 @@
 							@keyup.prevent.esc="searchInput?.focus()"
 						>
 							<template v-if="r.type === ACTION_TYPE.LABELS">
-								<XLabel :label="(i as ILabel)" />
+								<XLabel :label="(i as Label)" />
 							</template>
 							<template v-else-if="r.type === ACTION_TYPE.TASK">
 								<SingleTaskInlineReadonly
@@ -138,9 +138,9 @@ import SingleTaskInlineReadonly from '@/components/tasks/partials/SingleTaskInli
 
 import {useBaseStore} from '@/stores/base'
 import {useProjectStore} from '@/stores/projects'
-import {useLabelStore} from '@/stores/labels'
 import {useTaskStore} from '@/stores/tasks'
 import {useAuthStore} from '@/stores/auth'
+import {useLabels} from '@/composables/useLabels'
 
 import {getHistory} from '@/modules/projectHistory'
 import {parseTaskText, PREFIXES, PrefixMode} from '@/modules/quickAddMagic'
@@ -149,7 +149,7 @@ import {success} from '@/message'
 import type {ITeam} from '@/modelTypes/ITeam'
 import type {ITask} from '@/modelTypes/ITask'
 import type {IProject} from '@/modelTypes/IProject'
-import type {ILabel} from '@/modelTypes/ILabel'
+import type {Label} from '@/client/generated'
 import {isSavedFilter} from '@/services/savedFilter'
 import type {TaskFilterParams} from '@/services/taskCollection'
 
@@ -158,7 +158,7 @@ const router = useRouter()
 
 const baseStore = useBaseStore()
 const projectStore = useProjectStore()
-const labelStore = useLabelStore()
+const {filterLabelsByQuery, getLabelsByExactTitles} = useLabels()
 const taskStore = useTaskStore()
 const authStore = useAuthStore()
 
@@ -279,10 +279,10 @@ const foundLabels = computed(() => {
 	}
 
 	if (labels.length > 0) {
-		return labelStore.filterLabelsByQuery([], labels[0])
+		return filterLabelsByQuery([], labels[0])
 	}
 
-	return labelStore.filterLabelsByQuery([], text)
+	return filterLabelsByQuery([], text)
 })
 
 // FIXME: use fuzzysearch
@@ -290,7 +290,7 @@ const foundCommands = computed(() => availableCmds.value.filter((a) =>
 	a.title.toLowerCase().includes(query.value.toLowerCase()),
 ))
 
-type ResultItem = Command | IProject | DoAction<ITask> | ILabel | TeamResult
+type ResultItem = Command | IProject | DoAction<ITask> | Label | TeamResult
 
 interface Result {
 	type: ACTION_TYPE
@@ -493,7 +493,9 @@ function searchTasks() {
 	}
 
 	if (labels.length > 0) {
-		const labelIds = labelStore.getLabelsByExactTitles(labels).map((l) => l.id)
+		const labelIds = getLabelsByExactTitles(labels)
+			.map(label => label.id)
+			.filter((id): id is number => typeof id === 'number')
 		if (labelIds.length > 0) {
 			filter += 'labels in ' + labelIds.join(', ')
 		}
@@ -618,15 +620,15 @@ async function doAction(type: ACTION_TYPE, item: ResultItem) {
 			selectedCmd.value = item as Command
 			searchInput.value?.focus()
 			break
-		case ACTION_TYPE.LABELS:
-			if (/\s/.test(item.title)) {
-				query.value = '*"' + item.title + '"'
-			} else {
-				query.value = '*' + item.title
-			}
+		case ACTION_TYPE.LABELS: {
+			const labelTitle = (item as Label).title ?? ''
+			query.value = /\s/.test(labelTitle)
+				? '*"' + labelTitle + '"'
+				: '*' + labelTitle
 			searchInput.value?.focus()
 			searchTasks()
 			break
+		}
 	}
 }
 

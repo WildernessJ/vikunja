@@ -238,7 +238,7 @@ import TaskCommentModel from '@/models/taskComment'
 import type {ITaskComment} from '@/modelTypes/ITaskComment'
 import type {ITask} from '@/modelTypes/ITask'
 
-import {uploadFile} from '@/helpers/attachments'
+import {uploadFile, uploadFilesForEditor} from '@/helpers/attachments'
 import {success} from '@/message'
 import {formatDateLong, formatDisplayDate} from '@/helpers/time/formatDate'
 import {clearEditorDraft} from '@/helpers/editorDraftStorage'
@@ -283,17 +283,21 @@ const newCommentText = ref('')
 const saved = ref<ITask['id'] | null>(null)
 const saving = ref<ITask['id'] | null>(null)
 
-const userAvatar = ref('')
+const userAvatar = ref<string>()
 const avatarCache = reactive(new Map<string, string>())
 
-function avatarFor(u: IUser, size: number) {
+function avatarFor(u: IUser, size: number): string | undefined {
 	const key = `${u.id}-${size}`
 	const cached = avatarCache.get(key)
 	if (!cached) {
-		fetchAvatarBlobUrl(u, size).then(url => avatarCache.set(key, url))
+		fetchAvatarBlobUrl(u, size).then(url => {
+			if (url) {
+				avatarCache.set(key, url)
+			}
+		})
 	}
 
-	return avatarCache.get(key) || ''
+	return cached
 }
 
 watch(() => authStore.info, async (nu) => {
@@ -381,19 +385,11 @@ async function waitForEditorRef() {
 }
 
 
-async function attachmentUpload(files: File[] | FileList): (Promise<string[]>) {
-
-	const uploadPromises: Promise<string>[] = []
-
-	Array.from(files).forEach((file: File) => {
-		const promise = new Promise<string>((resolve) => {
-			uploadFile(props.taskId, file, (uploadedFileUrl: string) => resolve(uploadedFileUrl))
-		})
-
-		uploadPromises.push(promise)
-	})
-
-	return await Promise.all(uploadPromises)
+function attachmentUpload(files: File[] | FileList): Promise<string[]> {
+	return uploadFilesForEditor(
+		(file, onSuccess) => uploadFile(props.taskId, file, onSuccess),
+		files,
+	)
 }
 
 const taskCommentService = shallowReactive(new TaskCommentService())

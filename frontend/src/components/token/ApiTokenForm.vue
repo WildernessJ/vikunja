@@ -264,7 +264,7 @@ function formatPermissionTitle(title: string): string {
 async function createToken() {
 	newTokenTitleValid.value = newToken.value.title.trim() !== ''
 	if (!newTokenTitleValid.value) {
-		apiTokenTitle.value.focus()
+		apiTokenTitle.value?.focus()
 		return
 	}
 
@@ -299,12 +299,15 @@ async function createToken() {
 	}
 
 	const token = await service.create(newToken.value)
-	emit('created', token)
 
+	// Reset before emitting: parents hide the form in their `created` handler, so
+	// anything after the emit would write to a component that's already unmounting.
 	newToken.value = createEmptyToken()
 	newTokenExpiry.value = 30
 	newTokenExpiryCustom.value = new Date()
 	resetPermissions()
+
+	emit('created', token)
 }
 </script>
 

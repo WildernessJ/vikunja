@@ -3,24 +3,42 @@ import TaskModel from '@/models/task'
 import type {ITask} from '@/modelTypes/ITask'
 import type {IRelationKind} from '@/types/IRelationKind'
 import AttachmentService from './attachment'
-import LabelService from './label'
 
 import {colorFromHex} from '@/helpers/color/colorFromHex'
 import {SECONDS_A_DAY, SECONDS_A_HOUR, SECONDS_A_WEEK} from '@/constants/date'
 import {objectToSnakeCase} from '@/helpers/case'
 import {apiV2Url, AuthenticatedHTTPFactory} from '@/helpers/fetcher'
 import {invalidateCachedTask} from '@/helpers/taskCache'
+import {toISOStringOrNull} from '@/helpers/time/toISOStringOrNull'
 import {translatedError} from '@/message'
 
 // Mirrors models.MaxTasksPerBulkCreation on the backend.
 const MAX_TASKS_PER_BULK_CREATION = 100
 
-const parseDate = (date: Date | null) => {
-	if (date) {
-		return new Date(date).toISOString()
+/**
+ * Tasks reaching processModel did not necessarily go through the TaskModel
+ * constructor - related tasks nested in a task are plain api objects - so
+ * repeatAfter is either the parsed object, raw seconds, or missing entirely.
+ */
+function repeatAfterToSeconds(repeatAfter: ITask['repeatAfter'] | undefined): number {
+	if (typeof repeatAfter === 'number') {
+		return repeatAfter
 	}
 
-	return null
+	if (!repeatAfter?.amount) {
+		return 0
+	}
+
+	switch (repeatAfter.type) {
+		case 'hours':
+			return repeatAfter.amount * SECONDS_A_HOUR
+		case 'days':
+			return repeatAfter.amount * SECONDS_A_DAY
+		case 'weeks':
+			return repeatAfter.amount * SECONDS_A_WEEK
+		default:
+			return 0
+	}
 }
 
 export default class TaskService extends AbstractService<ITask> {
@@ -64,29 +82,13 @@ export default class TaskService extends AbstractService<ITask> {
 
 	processModel(updatedModel: ITask) {
 		// remove all nulls, these would create empty reminders
-		const reminders = updatedModel.reminders
+		const reminders = (updatedModel.reminders ?? [])
 			.filter(r => r !== null)
 			.map(r => ({
 				...r,
 				// Make normal timestamps from js dates
-				reminder: new Date(r.reminder!).toISOString(),
+				reminder: toISOStringOrNull(r.reminder),
 			}))
-
-		// Make the repeating amount to seconds
-		let repeatAfterSeconds = 0
-		if (updatedModel.repeatAfter !== null && typeof updatedModel.repeatAfter === 'object' && (updatedModel.repeatAfter.amount !== null || updatedModel.repeatAfter.amount !== 0)) {
-			switch (updatedModel.repeatAfter.type) {
-				case 'hours':
-					repeatAfterSeconds = updatedModel.repeatAfter.amount * SECONDS_A_HOUR
-					break
-				case 'days':
-					repeatAfterSeconds = updatedModel.repeatAfter.amount * SECONDS_A_DAY
-					break
-				case 'weeks':
-					repeatAfterSeconds = updatedModel.repeatAfter.amount * SECONDS_A_WEEK
-					break
-			}
-		}
 
 		// Do the same for all related tasks
 		const relatedTasks = {...updatedModel.relatedTasks}
@@ -97,17 +99,12 @@ export default class TaskService extends AbstractService<ITask> {
 		})
 
 		// Process all attachments to prevent parsing errors
-		if (updatedModel.attachments.length > 0) {
+		if ((updatedModel.attachments?.length ?? 0) > 0) {
 			const attachmentService = new AttachmentService()
 			updatedModel.attachments.map(a => {
 				return attachmentService.processModel(a)
 			})
 		}
-
-		// Preprocess all labels
-		const labels = updatedModel.labels.length > 0
-			? updatedModel.labels.map(l => new LabelService().processModel(l))
-			: updatedModel.labels
 
 		const model = {
 			...updatedModel,
@@ -115,20 +112,19 @@ export default class TaskService extends AbstractService<ITask> {
 			// Ensure that projectId is an int
 			projectId: Number(updatedModel.projectId),
 			// Convert dates into an iso string
-			dueDate: parseDate(updatedModel.dueDate),
-			deadline: parseDate(updatedModel.deadline),
-			startDate: parseDate(updatedModel.startDate),
-			endDate: parseDate(updatedModel.endDate),
-			doneAt: parseDate(updatedModel.doneAt),
-			deletedAt: parseDate(updatedModel.deletedAt),
-			created: new Date(updatedModel.created).toISOString(),
-			updated: new Date(updatedModel.updated).toISOString(),
+			dueDate: toISOStringOrNull(updatedModel.dueDate),
+			deadline: toISOStringOrNull(updatedModel.deadline),
+			startDate: toISOStringOrNull(updatedModel.startDate),
+			endDate: toISOStringOrNull(updatedModel.endDate),
+			doneAt: toISOStringOrNull(updatedModel.doneAt),
+			deletedAt: toISOStringOrNull(updatedModel.deletedAt),
+			created: toISOStringOrNull(updatedModel.created),
+			updated: toISOStringOrNull(updatedModel.updated),
 			reminderDates: null,
 			reminders,
-			repeatAfter: repeatAfterSeconds,
-			hexColor: colorFromHex(updatedModel.hexColor),
+			repeatAfter: repeatAfterToSeconds(updatedModel.repeatAfter),
+			hexColor: colorFromHex(updatedModel.hexColor ?? ''),
 			relatedTasks,
-			labels,
 		}
 
 		const transformed = objectToSnakeCase(model)
@@ -252,4 +248,3 @@ export default class TaskService extends AbstractService<ITask> {
 		}
 	}
 }
-

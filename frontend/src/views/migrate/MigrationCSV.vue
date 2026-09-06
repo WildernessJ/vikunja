@@ -108,10 +108,10 @@
 						<div class="column-name">
 							<strong>{{ mapping.column_name }}</strong>
 							<span
-								v-if="detectionResult && detectionResult.preview_rows[0]"
+								v-if="previewRow"
 								class="preview-value"
 							>
-								{{ $t('migrate.csv.example') }}: {{ detectionResult.preview_rows[0][index] || '-' }}
+								{{ $t('migrate.csv.example') }}: {{ previewRow[index] || '-' }}
 							</span>
 						</div>
 						<div class="select is-fullwidth">
@@ -209,7 +209,7 @@ import {useTitle} from '@/composables/useTitle'
 import {useProjectStore} from '@/stores/projects'
 import {getErrorText} from '@/message'
 import type {Priority} from '@/constants/priorities'
-import type {ILabel} from '@/modelTypes/ILabel'
+import type {Label} from '@/client/generated'
 
 type Step = 'upload' | 'mapping' | 'success'
 
@@ -247,9 +247,11 @@ const previewTasks = computed(() => {
 		startDate: (pt.start_date || null) as unknown as Date | null,
 		endDate: (pt.end_date || null) as unknown as Date | null,
 		priority: pt.priority as Priority,
-		labels: (pt.labels || []).map((l, li) => ({id: -(li + 1), title: l})) as ILabel[],
+		labels: (pt.labels || []).map((l, li) => ({id: -(li + 1), title: l})) as Label[],
 	}))
 })
+
+const previewRow = computed(() => detectionResult.value?.preview_rows?.[0] ?? null)
 
 const hasValidMapping = computed(() => {
 	if (!config.value.mapping.length) return false

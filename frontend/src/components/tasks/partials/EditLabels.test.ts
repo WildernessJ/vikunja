@@ -1,21 +1,27 @@
 import {beforeEach, describe, expect, it, vi} from 'vitest'
 import {mount} from '@vue/test-utils'
-import type {ILabel} from '@/modelTypes/ILabel'
+import type {Label} from '@/client/generated'
 
 const createLabelMock = vi.fn()
 const addLabelMock = vi.fn(() => Promise.resolve())
 
-vi.mock('@/stores/labels', () => ({
-	useLabelStore: () => ({
-		labels: {},
-		isLoading: false,
-		filterLabelsByQuery: (labels: ILabel[]) => labels,
-		createLabel: (label: ILabel) => createLabelMock(label),
+vi.mock('@/composables/useLabels', () => ({
+	useLabels: () => ({
+		isPending: {value: false},
+		filterLabelsByQuery: (labels: Label[]) => labels,
+	}),
+}))
+
+vi.mock('@/client/queries/labels', () => ({
+	useCreateLabelMutation: () => ({
+		isPending: {value: false},
+		mutateAsync: (label: Label) => createLabelMock(label),
 	}),
 }))
 
 vi.mock('@/stores/tasks', () => ({
 	useTaskStore: () => ({
+		isLoading: false,
 		addLabel: addLabelMock,
 		removeLabel: vi.fn(() => Promise.resolve()),
 	}),
@@ -42,8 +48,8 @@ const MultiselectStub = {
 	template: '<div />',
 }
 
-function label(id: number, title: string): ILabel {
-	return {id, title, hexColor: 'ffffff'} as ILabel
+function label(id: number, title: string): Label {
+	return {id, title, hex_color: 'ffffff'}
 }
 
 function mountComponent(props: {taskId: number}) {

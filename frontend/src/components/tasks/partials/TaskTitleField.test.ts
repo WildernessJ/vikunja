@@ -7,7 +7,7 @@ const getLabelsByExactTitlesMock = vi.fn().mockReturnValue([])
 const getAllAssigneesMock = vi.fn().mockResolvedValue([])
 
 const website = {id: 1, title: 'Website'}
-const urgentLabel = {id: 9, title: 'urgent', hexColor: 'ff0000'}
+const urgentLabel = {id: 9, title: 'urgent', hex_color: 'ff0000'}
 
 vi.mock('@/stores/projects', () => ({
 	useProjectStore: () => ({
@@ -16,9 +16,9 @@ vi.mock('@/stores/projects', () => ({
 	}),
 }))
 
-vi.mock('@/stores/labels', () => ({
-	useLabelStore: () => ({
-		labels: {9: urgentLabel},
+vi.mock('@/composables/useLabels', () => ({
+	useLabels: () => ({
+		getLabelById: (id: number) => (id === urgentLabel.id ? urgentLabel : undefined),
 		filterLabelsByQuery: filterLabelsByQueryMock,
 		getLabelsByExactTitles: getLabelsByExactTitlesMock,
 	}),
@@ -264,7 +264,7 @@ describe('TaskTitleField', () => {
 	})
 
 	it('(F-D) aborts the accept without stripping or saving when the label store lookup misses', async () => {
-		filterLabelsByQueryMock.mockReturnValue([{id: 404, title: 'ghost', hexColor: '000000'}])
+		filterLabelsByQueryMock.mockReturnValue([{id: 404, title: 'ghost', hex_color: '000000'}])
 		getLabelsByExactTitlesMock.mockReturnValue([])
 		const {wrapper, onAcceptLabel, onSaveLiteralTitle} = mountField({modelValue: 'Ship it'})
 

@@ -712,7 +712,7 @@ func (err ErrInvalidTaskEstimatedDuration) Error() string {
 }
 
 // ErrCodeInvalidTaskEstimatedDuration holds the unique world-error code of this error.
-const ErrCodeInvalidTaskEstimatedDuration = 4035
+const ErrCodeInvalidTaskEstimatedDuration = 4039
 
 // HTTPError holds the http error description.
 func (err ErrInvalidTaskEstimatedDuration) HTTPError() web.HTTPError {
@@ -740,7 +740,7 @@ func (err ErrInvalidTaskRepeatRRule) Error() string {
 }
 
 // ErrCodeInvalidTaskRepeatRRule holds the unique world-error code of this error.
-const ErrCodeInvalidTaskRepeatRRule = 4034
+const ErrCodeInvalidTaskRepeatRRule = 4038
 
 // HTTPError holds the http error description.
 func (err ErrInvalidTaskRepeatRRule) HTTPError() web.HTTPError {
@@ -1401,7 +1401,7 @@ func (err ErrInvalidReminderRRule) Error() string {
 }
 
 // ErrCodeInvalidReminderRRule holds the unique world-error code of this error.
-const ErrCodeInvalidReminderRRule = 4032
+const ErrCodeInvalidReminderRRule = 4036
 
 // HTTPError holds the http error description.
 func (err ErrInvalidReminderRRule) HTTPError() web.HTTPError {
@@ -1430,7 +1430,7 @@ func (err ErrReminderRRuleRequiresAbsolute) Error() string {
 }
 
 // ErrCodeReminderRRuleRequiresAbsolute holds the unique world-error code of this error.
-const ErrCodeReminderRRuleRequiresAbsolute = 4033
+const ErrCodeReminderRRuleRequiresAbsolute = 4037
 
 // HTTPError holds the http error description.
 func (err ErrReminderRRuleRequiresAbsolute) HTTPError() web.HTTPError {

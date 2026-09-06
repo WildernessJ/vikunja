@@ -18,6 +18,7 @@ package models
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"regexp"
 	"slices"
@@ -96,18 +97,19 @@ type Task struct {
 	Title string `xorm:"TEXT not null" json:"title" valid:"minstringlength(1)" minLength:"1" doc:"The task title. This is what you'll see in the project."`
 	// The task description.
 	Description string `xorm:"longtext null" json:"description"`
+	// The project this task belongs to.
+	// Must precede done/due_date: xorm orders composite index columns by struct field order.
+	ProjectID int64 `xorm:"bigint INDEX not null unique(tasks_project_index) index(project_done_due_date)" json:"project_id" param:"project" doc:"The id of the project this task belongs to. On create it is taken from the URL; on update, setting it to a different project moves the task (requires write access to the target project)."`
 	// Whether a task is done or not.
-	Done bool `xorm:"INDEX null index(done_due_date)" json:"done"`
+	Done bool `xorm:"INDEX null index(project_done_due_date)" json:"done"`
 	// The time when a task was marked as done. This field is system-controlled and cannot be set via API.
 	DoneAt time.Time `xorm:"INDEX null 'done_at'" json:"done_at" readOnly:"true" doc:"When the task was marked as done. Set by the server; ignored on write."`
 	// The time when the task is due.
-	DueDate time.Time `xorm:"DATETIME INDEX null index(done_due_date) 'due_date'" json:"due_date"`
+	DueDate time.Time `xorm:"DATETIME INDEX null index(project_done_due_date) 'due_date'" json:"due_date"`
 	// A hard cutoff distinct from due_date ("when it must be done" vs "when I plan to work on it"). Independent of due_date, start_date and end_date.
 	Deadline time.Time `xorm:"DATETIME INDEX null 'deadline'" json:"deadline" doc:"A hard cutoff distinct from due_date. Independent of due_date, start_date and end_date; setting or clearing one does not affect the others."`
 	// An array of reminders that are associated with this task.
 	Reminders []*TaskReminder `xorm:"-" json:"reminders"`
-	// The project this task belongs to.
-	ProjectID int64 `xorm:"bigint INDEX not null unique(tasks_project_index)" json:"project_id" param:"project" doc:"The id of the project this task belongs to. On create it is taken from the URL; on update, setting it to a different project moves the task (requires write access to the target project)."`
 	// An amount in seconds this task repeats itself. If this is set, when marking the task as done, it will mark itself as "undone" and then increase all remindes and the due date by its amount.
 	RepeatAfter int64 `xorm:"bigint INDEX null" json:"repeat_after" valid:"range(0|9223372036854775807)" doc:"The interval in seconds this task repeats. When set, marking the task done re-opens it and bumps its reminders and due date by this amount."`
 	// Can have four possible values which will trigger when the task is marked as done: 0 = repeats after the amount specified in repeat_after, 1 = repeats all dates each months (ignoring repeat_after), 2 = repeats from the current date rather than the last set date, 3 = repeats on the calendar pattern in repeat_rrule.
@@ -1128,7 +1130,12 @@ func createTasks(s *xorm.Session, projectID int64, tasks []*Task, a web.Auth, up
 		return err
 	}
 
-	positions, taskBuckets, err := setTasksInBucketInViews(s, tasks, a, setBucket, taskProvidedBucket)
+	views, err := lockProjectViewsForPositionUpdate(s, projectID)
+	if err != nil {
+		return err
+	}
+
+	positions, taskBuckets, err := setTasksInBucketInViews(s, views, tasks, a, setBucket, taskProvidedBucket)
 	if err != nil {
 		return err
 	}
@@ -1206,16 +1213,12 @@ func createTasks(s *xorm.Session, projectID int64, tasks []*Task, a web.Auth, up
 	return
 }
 
-func setTasksInBucketInViews(s *xorm.Session, tasks []*Task, a web.Auth, setBucket bool, providedBuckets map[int64]*Bucket) ([]*TaskPosition, []*TaskBucket, error) {
+func setTasksInBucketInViews(s *xorm.Session, views []*ProjectView, tasks []*Task, a web.Auth, setBucket bool, providedBuckets map[int64]*Bucket) ([]*TaskPosition, []*TaskBucket, error) {
 	if len(tasks) == 0 {
 		return nil, nil, nil
 	}
 
-	views, err := getViewsForProject(s, tasks[0].ProjectID)
-	if err != nil {
-		return nil, nil, err
-	}
-
+	var err error
 	taskBuckets := []*TaskBucket{}
 
 	defaultBucketIDs := make(map[int64]int64)
@@ -1478,6 +1481,12 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 
 	views := []*ProjectView{}
 	if t.Done != ot.Done || t.ProjectID != ot.ProjectID {
+		// Locks both projects: a move rewrites task_positions in the old project too.
+		_, err = lockProjectViewsForPositionUpdate(s, ot.ProjectID, t.ProjectID)
+		if err != nil {
+			return
+		}
+
 		err = s.
 			Where("project_id = ? AND view_kind = ? AND bucket_configuration_mode = ?",
 				t.ProjectID, ProjectViewKindKanban, BucketConfigurationModeManual).
@@ -1749,6 +1758,26 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 // updateTasks updates multiple tasks with the same payload.
 // If fields is nil, it updates the default set of columns.
 func updateTasks(s *xorm.Session, a web.Auth, t *Task, ids []int64, fields []string) (tasks []*Task, err error) {
+	// Ids may span projects; per-task locking would follow caller order, not view order.
+	existing := []*Task{}
+	err = s.Table(&Task{}).Where(builder.In("id", ids)).Distinct("project_id").Find(&existing)
+	if err != nil {
+		return nil, fmt.Errorf("could not load projects of tasks to update: %w", err)
+	}
+
+	projectIDs := make([]int64, 0, len(existing)+1)
+	for _, et := range existing {
+		projectIDs = append(projectIDs, et.ProjectID)
+	}
+	if t.ProjectID != 0 {
+		projectIDs = append(projectIDs, t.ProjectID)
+	}
+
+	_, err = lockProjectViewsForPositionUpdate(s, projectIDs...)
+	if err != nil {
+		return nil, fmt.Errorf("could not lock project views for bulk task update: %w", err)
+	}
+
 	for _, id := range ids {
 		nt := clone.Clone(t)
 		nt.ID = id
@@ -2359,6 +2388,11 @@ func (t *Task) Delete(s *xorm.Session, a web.Auth) (err error) {
 	err = fullTask.ReadOne(s, a)
 	if err != nil {
 		return err
+	}
+
+	_, err = lockProjectViewsForPositionUpdate(s, fullTask.ProjectID)
+	if err != nil {
+		return
 	}
 
 	// Bucket and position rows are removed right away because bucket counts

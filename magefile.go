@@ -346,7 +346,14 @@ func waitForHTTP(ctx context.Context, url string, timeout time.Duration) error {
 }
 
 func ensureFrontendDistExists() error {
-	distPath := filepath.Join("frontend", "dist")
+	return ensureFrontendDistExistsIn(".")
+}
+
+// frontend/embed.go embeds dist/ with //go:embed all:dist, so every go build and
+// go test fails hard when that directory does not exist. A placeholder index.html
+// keeps them working in a worktree that never ran a frontend build.
+func ensureFrontendDistExistsIn(root string) error {
+	distPath := filepath.Join(root, "frontend", "dist")
 	if _, err := os.Stat(distPath); os.IsNotExist(err) {
 		if err := os.MkdirAll(distPath, 0o755); err != nil {
 			return fmt.Errorf("error creating %s: %w", distPath, err)
@@ -381,9 +388,33 @@ func Fmt(ctx context.Context) error {
 
 type Test mg.Namespace
 
+const webtestsPackage = "./pkg/webtests"
+
+// goTestPackagesExcept expands ./... minus the given package patterns.
+func goTestPackagesExcept(ctx context.Context, exclude ...string) ([]string, error) {
+	out, err := exec.CommandContext(ctx, "go", "list", "./...").Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list go packages: %w", err)
+	}
+
+	excluded := make(map[string]bool, len(exclude))
+	for _, pattern := range exclude {
+		excluded[strings.TrimPrefix(pattern, "./")] = true
+	}
+
+	var packages []string
+	for _, pkg := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if pkg == "" || excluded[strings.TrimPrefix(pkg, PACKAGE+"/")] {
+			continue
+		}
+		packages = append(packages, pkg)
+	}
+	return packages, nil
+}
+
 // Feature runs the feature tests
 func (Test) Feature(ctx context.Context) error {
-	mg.Deps(initVars)
+	mg.Deps(initVars, ensureFrontendDistExists)
 	// We run everything sequentially and not in parallel to prevent issues with real test databases
 	return runAndStreamOutput(ctx, "go", "test", goDetectVerboseFlag(), "-p", "1", "-coverprofile", "cover.out", "-timeout", "45m", "-short", "./...")
 }
@@ -397,29 +428,44 @@ func (Test) Coverage(ctx context.Context) error {
 
 // Web runs the web tests
 func (Test) Web(ctx context.Context) error {
-	mg.Deps(initVars)
+	mg.Deps(initVars, ensureFrontendDistExists)
 	// We run everything sequentially and not in parallel to prevent issues with real test databases
 	args := []string{"test", goDetectVerboseFlag(), "-p", "1", "-timeout", "45m", "./pkg/webtests"}
 	return runAndStreamOutput(ctx, "go", args...)
 }
 
+// Filter runs every test matching the given `go test -run` filter.
+//
+// Most packages run with -short, but pkg/webtests is run in a second pass without
+// it: its TestMain skips the entire package under -short, so a filter naming a web
+// test would otherwise report "ok" without having run anything. The second pass is
+// a no-op when the filter matches nothing there.
 func (Test) Filter(ctx context.Context, filter string) error {
-	mg.Deps(initVars)
-	// No -short here: -run already narrows to matching tests, and -short makes
-	// the webtests/e2etests/caldavtests packages skip entirely (their TestMain
-	// bails on testing.Short()), silently passing a filter aimed at one of them.
-	return runAndStreamOutput(ctx, "go", "test", goDetectVerboseFlag(), "-p", "1", "-timeout", "45m", "-run", filter, "./...")
+	mg.Deps(initVars, ensureFrontendDistExists)
+
+	packages, err := goTestPackagesExcept(ctx, webtestsPackage)
+	if err != nil {
+		return err
+	}
+
+	// We run everything sequentially and not in parallel to prevent issues with real test databases
+	args := append([]string{"test", goDetectVerboseFlag(), "-p", "1", "-timeout", "45m", "-run", filter, "-short"}, packages...)
+	if err := runAndStreamOutput(ctx, "go", args...); err != nil {
+		return err
+	}
+
+	return runAndStreamOutput(ctx, "go", "test", goDetectVerboseFlag(), "-p", "1", "-timeout", "45m", "-run", filter, webtestsPackage)
 }
 
 func (Test) All() {
-	mg.Deps(initVars)
+	mg.Deps(initVars, ensureFrontendDistExists)
 	mg.Deps(Test.Feature, Test.Web, Test.Caldav, Test.E2EApi)
 }
 
 // Caldav runs the CalDAV protocol compliance tests in pkg/caldavtests.
 // These tests exercise the full HTTP router with WebDAV/CalDAV requests.
 func (Test) Caldav(ctx context.Context) error {
-	mg.Deps(initVars)
+	mg.Deps(initVars, ensureFrontendDistExists)
 	return runAndStreamOutput(ctx, "go", "test", goDetectVerboseFlag(), "-p", "1", "-timeout", "45m", "./pkg/caldavtests")
 }
 
@@ -427,7 +473,7 @@ func (Test) Caldav(ctx context.Context) error {
 // These tests use the real event system (not events.Fake()) to verify
 // the full async pipeline: web handler → DB → event dispatch → watermill → listener.
 func (Test) E2EApi(ctx context.Context) error {
-	mg.Deps(initVars)
+	mg.Deps(initVars, ensureFrontendDistExists)
 	return runAndStreamOutput(ctx, "go", "test", goDetectVerboseFlag(), "-p", "1", "-timeout", "45m", "./pkg/e2etests")
 }
 
@@ -1870,6 +1916,10 @@ func (Dev) PrepareWorktree(ctx context.Context, name string, planPath string) er
 	// Initialize frontend
 	fmt.Println("Initializing frontend...")
 	frontendDir := filepath.Join(worktreePath, "frontend")
+
+	if err := ensureFrontendDistExistsIn(worktreePath); err != nil {
+		return err
+	}
 
 	// Run pnpm install
 	pnpmCmd := exec.CommandContext(ctx, "pnpm", "i")

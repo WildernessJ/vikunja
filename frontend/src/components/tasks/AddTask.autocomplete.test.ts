@@ -47,8 +47,8 @@ vi.mock('@/stores/projects', () => ({
 	}),
 }))
 
-vi.mock('@/stores/labels', () => ({
-	useLabelStore: () => ({
+vi.mock('@/composables/useLabels', () => ({
+	useLabels: () => ({
 		filterLabelsByQuery: filterLabelsByQueryMock,
 		getLabelsByExactTitles: getLabelsByExactTitlesMock,
 	}),
