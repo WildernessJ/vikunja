@@ -241,7 +241,42 @@ flip the toggle, come back: bars redraw without a reload.
 
 ## Execution Log
 
-_(empty — the build phase appends here)_
+Build phase, 2026-09-07, driver-only as routed. No halt; no stop criterion hit.
+`roundToNaturalDayBoundary`, `getDateWithTime`, `createDateFromString` and `GanttRowBars.vue`
+are untouched.
+
+**Red-first confirmed.** The nine tests were written before any source change. First run
+(`TZ=America/Los_Angeles`): 6 failed, 5 passed — exactly tests 1, 3, 4, 5, 6, 8 red, with 2, 7, 9
+and the file's pre-existing routing test green. Test 8 failed with `expected 10 to be 11`, the
+UTC-midnight day-shift the spec predicted. After the change: 11/11 green in Los Angeles, 7/7 green
+at UTC. `pnpm typecheck:ratchet` holds at 8 errors across 5 files (unchanged). `pnpm lint:fix`:
+0 errors, 16 pre-existing warnings, none in the touched files. `TZ=UTC mage test:feature`: no
+failures (backend untouched).
+
+**Deviations from the plan (both in the same direction — tighter, not looser):**
+
+1. The test mock is `taskStoreUpdateMock.mockImplementation(async (task) => task)`, not the plan's
+   `mockResolvedValue({id: 1, dueDate: <some Date>})`. The echo satisfies the stated contract (the
+   result always carries a `dueDate`) and also keeps `lastValue` in step with what was just saved,
+   so the `afterEach` unmount tick is a no-op instead of issuing a second `taskStore.update`. The
+   assertions still read `mock.calls[0][0].dueDate` per the plan.
+2. `updateDueDate` sets `lastValue.value = normalise(newTask.dueDate)`, where the plan left the
+   post-save assignment unstated. Normalising the server echo keeps both sides of the `+next ===
+   +lastValue` compare in one space; without it, a server value that is not already canonical would
+   differ from the next normalised read and the 1 s interval would re-save every tick.
+
+**Open questions: both took their documented defaults.** `ProjectCalendar.rescheduleTask` is out of
+scope (calendar drag stays a pure shift). `ProjectGantt.addGanttTask`'s hardcoded
+`setHours(23, 59, 0, 0)` is untouched — a third Gantt write site, 59.999 s off canonical; file a
+follow-up issue at review.
+
+**Look at first:** (a) `getRoundedDate` now forces the end side when the toggle is on, which changes
+bar *geometry* and is covered only by live-verify (d) plus the design argument that `computeBarX` /
+`computeBarWidth` see fixed points of the helper — no test asserts bar width. (b) The `dateOnly`
+entry in the bars watcher source list is likewise untested; the `GanttChart.test.ts` mock is a real
+`ref` precisely so this path is not silently inert, but nothing asserts a redraw. (c) `DeferTask`'s
+`normalise` is the single read seam — `grep -n 'new Date(' DeferTask.vue` shows only
+`new Date(createDateFromString(value))` inside it and the `new Date()` no-due-date fallback.
 
 ### Plan-phase review log
 

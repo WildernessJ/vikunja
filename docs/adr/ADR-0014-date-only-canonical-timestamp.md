@@ -38,9 +38,6 @@ supplies both canonical values.
   here), migrating old rows is heuristic. This is the price of the small delta.
 - Existing task timestamps are never rewritten; the toggle changes entry defaults and
   display only.
-- **Gantt drag/resize does not apply the canonical times.** It shares
-  `roundToNaturalDayBoundary` but calls it without `force`, so its before-noon
-  heuristic can store 00:00 for a due date with the toggle on. Entry and Gantt agree
-  on day granularity, not on the canonical clock value; the CalDAV and reminder-email
-  residuals above therefore do not hold for Gantt-dragged dates. Deferred — tracked
-  in a follow-up issue.
+- **Gantt drag/resize and Defer now apply the canonical times** (2026-09-07, #92/#95):
+  both force `roundToNaturalDayBoundary`, so the CalDAV and reminder-email residuals
+  above hold for Gantt-dragged and deferred dates too.
