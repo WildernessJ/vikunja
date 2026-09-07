@@ -39,6 +39,7 @@
 							<li
 								class="bucket"
 								:class="{'is-collapsed': collapsedBuckets[bucket.id]}"
+								:data-bucket-id="bucket.id"
 							>
 								<div
 									class="bucket-header"
@@ -575,7 +576,7 @@ function updateTasks(bucketId: IBucket['id'], tasks: IBucket['tasks']) {
 	})
 }
 
-async function updateTaskPosition(e: { originalEvent?: MouseEvent, to: HTMLElement, newIndex: number }) {
+async function updateTaskPosition(e: { originalEvent?: MouseEvent, to: HTMLElement, item: HTMLElement, newIndex: number }) {
 	drag.value = false
 
 	// Check if dropped on a sidebar project
@@ -599,18 +600,14 @@ async function updateTaskPosition(e: { originalEvent?: MouseEvent, to: HTMLEleme
 
 	const newBucket = buckets.value[bucketIndex]
 
-	// HACK:
-	// this is a hacky workaround for a known problem of vue.draggable.next when using the footer slot
-	// the problem: https://github.com/SortableJS/vue.draggable.next/issues/108
-	// This hack doesn't remove the problem that the ghost item is still displayed below the footer
-	// It just makes releasing the item possible.
+	// e.newIndex is a DOM index: it counts the footer slot and elements still leaving the
+	// transition group, so it can point past the last task. The bucket is already updated here.
+	const movedTaskId = parseInt(e.item.dataset.taskId ?? '', 10)
+	const newTaskIndex = newBucket.tasks.findIndex(t => t.id === movedTaskId)
 
-	// The newIndex of the event doesn't count in the elements of the footer slot.
-	// This is why in case the length of the tasks is identical with the newIndex
-	// we have to remove 1 to get the correct index.
-	const newTaskIndex = newBucket.tasks.length === e.newIndex
-		? e.newIndex - 1
-		: e.newIndex
+	if (newTaskIndex === -1) {
+		return
+	}
 
 	const task = newBucket.tasks[newTaskIndex]
 	const oldBucket = buckets.value.find(b => b.id === sourceBucket.value)
@@ -822,16 +819,24 @@ function handleRecurringTaskCompletion() {
 }
 
 // TODO: fix type
-function updateBucketPosition(e: { newIndex: number }) {
+function updateBucketPosition(e: { item: HTMLElement }) {
 	// (2) bucket positon is changed
 	dragBucket.value = false
 
-	const bucket = buckets.value[e.newIndex]
-	const bucketBefore = buckets.value[e.newIndex - 1] ?? null
-	const bucketAfter = buckets.value[e.newIndex + 1] ?? null
+	// Sortable reports a DOM index which can point past the last bucket, for example while a
+	// deleted bucket is still leaving the transition group. The buckets are already updated here.
+	const movedBucketId = parseInt(e.item.dataset.bucketId ?? '', 10)
+	const bucketIndex = buckets.value.findIndex(b => b.id === movedBucketId)
+
+	if (bucketIndex === -1) {
+		return
+	}
+
+	const bucketBefore = buckets.value[bucketIndex - 1] ?? null
+	const bucketAfter = buckets.value[bucketIndex + 1] ?? null
 
 	kanbanStore.updateBucket({
-		id: bucket.id,
+		id: movedBucketId,
 		projectId: projectId.value,
 		position: calculateItemPosition(
 			bucketBefore !== null ? bucketBefore.position : null,

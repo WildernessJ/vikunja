@@ -45,18 +45,17 @@ onMounted(async () => {
 })
 
 async function deleteToken() {
-	if (!tokenToDelete.value) {
+	const token = tokenToDelete.value
+	if (!token) {
 		return
 	}
-
-	await service.delete(tokenToDelete.value)
-	showDeleteModal.value = false
-	const index = tokens.value.findIndex(el => el.id === tokenToDelete.value?.id)
 	tokenToDelete.value = undefined
-	if (index === -1) {
-		return
+	showDeleteModal.value = false
+	await service.delete(token)
+	const index = tokens.value.findIndex(el => el.id === token.id)
+	if (index !== -1) {
+		tokens.value.splice(index, 1)
 	}
-	tokens.value.splice(index, 1)
 }
 
 function formatPermissionTitle(title: string): string {
@@ -174,8 +173,8 @@ function onTokenCreated(token: IApiToken) {
 			</template>
 
 			<template #text>
-				<p>
-					{{ $t('user.settings.apiTokens.delete.text1', {token: tokenToDelete?.title}) }}<br>
+				<p v-if="tokenToDelete">
+					{{ $t('user.settings.apiTokens.delete.text1', {token: tokenToDelete.title}) }}<br>
 					{{ $t('user.settings.apiTokens.delete.text2') }}
 				</p>
 			</template>

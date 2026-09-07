@@ -18,13 +18,18 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
+	"strconv"
 
 	"code.vikunja.io/api/pkg/config"
+	"code.vikunja.io/api/pkg/errorreport"
 	"code.vikunja.io/api/pkg/events"
 	"code.vikunja.io/api/pkg/log"
 	"code.vikunja.io/api/pkg/modules/migration"
 	"code.vikunja.io/api/pkg/notifications"
+	"code.vikunja.io/api/pkg/web"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/getsentry/sentry-go"
@@ -44,6 +49,39 @@ func (m *migrationFailedError) Error() string {
 	return fmt.Sprintf("migration from %s failed, original error message was: %s", m.MigratorKind, m.OriginalError.Error())
 }
 
+// shouldReportMigrationError filters out failures we cannot fix: a 4xx from the service we migrate from,
+// or a domain error that maps to a 4xx, means the user's account, token, url or data is the problem, not
+// Vikunja. The user still gets notified, with the actual message instead of the "we have been notified" one.
+func shouldReportMigrationError(err error) bool {
+	// ErrUpstreamRequestFailed maps to 502 no matter what the upstream said, so it needs its own check.
+	var upstreamErr *migration.ErrUpstreamRequestFailed
+	if errors.As(err, &upstreamErr) {
+		return !upstreamErr.IsClientError()
+	}
+
+	var httpErr web.HTTPErrorProcessor
+	if errors.As(err, &httpErr) {
+		code := httpErr.HTTPError().HTTPCode
+		return code < http.StatusBadRequest || code >= http.StatusInternalServerError
+	}
+
+	return true
+}
+
+// migrationFingerprint keeps failures apart by migrator and cause: every migration error reaches
+// Sentry wrapped in the same migrationFailedError from the same call site.
+func migrationFingerprint(migratorKind string, err error) []string {
+	fingerprint := []string{"migration_failed", migratorKind}
+
+	var upstreamErr *migration.ErrUpstreamRequestFailed
+	if errors.As(err, &upstreamErr) {
+		// The upstream body is user data, the status is what we can act on.
+		return append(fingerprint, "upstream", strconv.Itoa(upstreamErr.StatusCode))
+	}
+
+	return append(fingerprint, errorreport.Fingerprint(err)...)
+}
+
 // MigrationListener  represents a listener
 type MigrationListener struct {
 }
@@ -61,7 +99,11 @@ func (s *MigrationListener) Handle(msg *message.Message) (err error) {
 		return
 	}
 
-	mstr := registeredMigrators[event.MigratorKind]
+	mstr, has := registeredMigrators[event.MigratorKind]
+	if !has {
+		log.Errorf("[Migration] No migrator registered for kind %s, discarding event", event.MigratorKind)
+		return nil
+	}
 	event.Migrator = mstr.MigrationStruct()
 
 	// unmarshalling again to make sure the migrator has the correct type now
@@ -74,16 +116,24 @@ func (s *MigrationListener) Handle(msg *message.Message) (err error) {
 
 	m, err := migrateInListener(ms, event)
 	if err != nil {
-		log.Errorf("[Migration] Migration %d from %s for user %d failed. Error was: %s", m.ID, event.MigratorKind, event.User.ID, err.Error())
+		migrationID := int64(0)
+		if m != nil {
+			migrationID = m.ID
+		}
+		log.Errorf("[Migration] Migration %d from %s for user %d failed. Error was: %s", migrationID, event.MigratorKind, event.User.ID, err.Error())
 
 		var nerr error
-		if config.SentryEnabled.GetBool() {
+		if config.SentryEnabled.GetBool() && shouldReportMigrationError(err) {
 			nerr = notifications.Notify(event.User, &MigrationFailedReportedNotification{
 				MigratorName: ms.Name(),
 			})
-			sentry.CaptureException(&migrationFailedError{
+			failure := &migrationFailedError{
 				MigratorKind:  event.MigratorKind,
 				OriginalError: err,
+			}
+			sentry.WithScope(func(scope *sentry.Scope) {
+				errorreport.ApplyFingerprint(scope, err, migrationFingerprint(event.MigratorKind, err)...)
+				sentry.CaptureException(failure)
 			})
 		} else {
 			nerr = notifications.Notify(event.User, &MigrationFailedNotification{
@@ -92,13 +142,15 @@ func (s *MigrationListener) Handle(msg *message.Message) (err error) {
 			})
 		}
 		if nerr != nil {
-			log.Errorf("[Migration] Could not sent failed migration notification for migration %d to user %d, error was: %s", m.ID, event.User.ID, err.Error())
+			log.Errorf("[Migration] Could not sent failed migration notification for migration %d to user %d, error was: %s", migrationID, event.User.ID, err.Error())
 		}
 
 		// Still need to finish the migration, otherwise restarting will not work
-		err = migration.FinishMigration(m)
-		if err != nil {
-			log.Errorf("[Migration] Could not finish migration %d for user %d, error was: %s", m.ID, event.User.ID, err.Error())
+		if m != nil {
+			err = migration.FinishMigration(m)
+			if err != nil {
+				log.Errorf("[Migration] Could not finish migration %d for user %d, error was: %s", m.ID, event.User.ID, err.Error())
+			}
 		}
 	}
 
@@ -106,10 +158,30 @@ func (s *MigrationListener) Handle(msg *message.Message) (err error) {
 }
 
 func migrateInListener(ms migration.Migrator, event *MigrationRequestedEvent) (m *migration.Status, err error) {
-	m, err = migration.StartMigration(ms, event.User)
-	if err != nil {
-		return
+	if event.MigrationStatusID == 0 {
+		// Events queued before claim support must acquire one during an upgrade.
+		m, err = migration.ClaimMigration(ms, event.User)
+		if err != nil {
+			return
+		}
+	} else {
+		m, err = migration.GetMigrationStatusByID(event.MigrationStatusID)
+		if err != nil {
+			return
+		}
+		if !m.FinishedAt.IsZero() {
+			log.Debugf("[Migration] Skipping stale migration event for status %d of user %d", m.ID, event.User.ID)
+			return
+		}
 	}
+
+	// Convert panics to errors so the caller releases the claim.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Errorf("[Migration] Migration %d from %s for user %d panicked: %v", m.ID, event.MigratorKind, event.User.ID, r)
+			err = fmt.Errorf("migration panicked: %v", r)
+		}
+	}()
 
 	log.Debugf("[Migration] Starting migration %d from %s for user %d", m.ID, event.MigratorKind, event.User.ID)
 	err = ms.Migrate(event.User)

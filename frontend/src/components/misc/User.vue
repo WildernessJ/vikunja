@@ -49,7 +49,7 @@ const {t} = useI18n({useScope: 'global'})
 
 const displayName = computed(() => getDisplayName(props.user))
 const isBot = computed(() => ((props.user as IUser & {botOwnerId?: number}).botOwnerId ?? 0) > 0)
-const avatarSrc = ref('')
+const avatarSrc = ref<string>()
 
 async function loadAvatar() {
 	avatarSrc.value = await fetchAvatarBlobUrl(props.user, props.avatarSize)
@@ -71,6 +71,7 @@ watch(() => [props.user, props.avatarSize], loadAvatar, { immediate: true })
 .avatar-wrapper {
 	position: relative;
 	display: inline-flex;
+	flex-shrink: 0;
 	margin-inline-end: .5rem;
 }
 

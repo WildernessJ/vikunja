@@ -1341,6 +1341,91 @@ func TestTaskCollection_ReadAll(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "filter by creator username",
+			fields: fields{
+				Filter: "created_by = 'user6'",
+			},
+			args: defaultArgs,
+			want: []*Task{
+				task15,
+				task16,
+				task17,
+				task18,
+				task19,
+				task20,
+				task21,
+				task22,
+				task23,
+				task24,
+				task25,
+				task26,
+			},
+			wantErr: false,
+		},
+		{
+			name: "filter by creator username in list",
+			fields: fields{
+				Filter: "created_by ?= 'user6'",
+			},
+			args: defaultArgs,
+			want: []*Task{
+				task15,
+				task16,
+				task17,
+				task18,
+				task19,
+				task20,
+				task21,
+				task22,
+				task23,
+				task24,
+				task25,
+				task26,
+			},
+			wantErr: false,
+		},
+		{
+			name: "filter by creator username not equals",
+			fields: fields{
+				Filter: "created_by != 'user6'",
+			},
+			args: defaultArgs,
+			want: []*Task{
+				task1,
+				task2,
+				task3,
+				task4,
+				task5,
+				task6,
+				task7,
+				task8,
+				task9,
+				task10,
+				task11,
+				task12,
+				task27,
+				task28,
+				task29,
+				task30,
+				task31,
+				task32,
+				task33,
+				task39,
+				task47,
+				task48,
+			},
+			wantErr: false,
+		},
+		{
+			name: "filter by creator unknown username",
+			fields: fields{
+				Filter: "created_by = 'nonexistentuser'",
+			},
+			args:    defaultArgs,
+			want:    []*Task{},
+			wantErr: false,
+		},
+		{
 			name: "filter labels",
 			fields: fields{
 				Filter: "labels = 4",
@@ -2330,7 +2415,7 @@ func TestTaskCollection_TemplateFilterExclusion(t *testing.T) {
 	}
 }
 
-// Projects 41 -> 42 -> 44 are a three-level hierarchy owned by user6 (see fixtures).
+// Projects 41 -> 42 -> 45 are a three-level hierarchy owned by user6 (see fixtures).
 // Project 46 is an archived child of 41 owned by user6.
 func TestTaskCollection_ReadAll_IncludeChildProjects(t *testing.T) {
 	u := &user.User{ID: 6}
@@ -2424,7 +2509,7 @@ func TestTaskCollection_ReadAll_IncludeChildProjects(t *testing.T) {
 }
 
 // TestGetDescendantProjectsForUser_CTE characterizes the recursive-CTE descendant
-// resolution against the same 41 -> 42 -> 44 (+ archived 46) fixture tree the old
+// resolution against the same 41 -> 42 -> 45 (+ archived 46) fixture tree the old
 // BFS-over-getRawProjectsForUser implementation was proven against: same descendant
 // set, archived descendant still excluded, no regression from the rewrite (#61).
 func TestGetDescendantProjectsForUser_CTE(t *testing.T) {
@@ -2443,8 +2528,8 @@ func TestGetDescendantProjectsForUser_CTE(t *testing.T) {
 	}
 	sort.Slice(gotIDs, func(i, j int) bool { return gotIDs[i] < gotIDs[j] })
 
-	assert.Equal(t, []int64{42, 44}, gotIDs,
-		"expected exactly the child (42) and grandchild (44); archived child 46 must be excluded")
+	assert.Equal(t, []int64{42, 45}, gotIDs,
+		"expected exactly the child (42) and grandchild (45); archived child 46 must be excluded")
 }
 
 // TestGetDescendantProjectsForUser_PermissionNegative is the security-critical case
@@ -2490,7 +2575,7 @@ func TestGetDescendantProjectsForUser_LinkShareAuth(t *testing.T) {
 }
 
 // setupExclusionRollupFixture builds a fresh, dynamic project tree (not the shared
-// 41/42/44/46 fixture) so exclusion tests can exercise multiple siblings without
+// 41/42/45/46 fixture) so exclusion tests can exercise multiple siblings without
 // editing the YAML fixtures: root -> {child1 -> grandchild, child2}.
 func setupExclusionRollupFixture(t *testing.T, u *user.User) (root, child1 *Project, tasks map[string]*Task) {
 	t.Helper()

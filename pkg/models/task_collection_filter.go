@@ -17,6 +17,7 @@
 package models
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"regexp"
@@ -25,12 +26,10 @@ import (
 	"time"
 
 	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/db"
 
 	"github.com/ganigeorgiev/fexpr"
 	"github.com/iancoleman/strcase"
 	"github.com/jszwedko/go-datemath"
-	"xorm.io/builder"
 	"xorm.io/xorm/schemas"
 )
 
@@ -62,15 +61,17 @@ type taskFilter struct {
 	join       taskFilterConcatinator
 }
 
-// adjustDateForMysql adjusts dates with year < 1 to be compatible with MySQL/MariaDB.
-// MySQL does not support dates where year < 1. We set the year to 1 and add an extra day
-// if the date is January 1st to survive xorm's timezone conversion to GMT.
-func adjustDateForMysql(t time.Time) time.Time {
-	if db.GetDialect() != builder.MYSQL || t.Year() >= 1 {
+// clampDateToDriverRange lifts boundaries with year < 1 back into year 1:
+// converting the zero-date sentinel to UTC from a timezone east of Greenwich
+// underflows into year 0, which the MySQL driver refuses to encode ("year is
+// not in the range [1, 9999]"). The extra day for January 1st keeps the
+// boundary strictly after the sentinel, so `due_date > 0001-01-01` keeps
+// meaning "has a due date".
+func clampDateToDriverRange(t time.Time) time.Time {
+	if t.Year() >= 1 {
 		return t
 	}
 	t = t.AddDate(1-t.Year(), 0, 0)
-	// Add extra day to survive timezone conversion to GMT (only needed for Jan 1st)
 	if t.Month() == 1 && t.Day() == 1 {
 		t = t.AddDate(0, 0, 1)
 	}
@@ -110,7 +111,7 @@ func parseTimeFromUserInput(timeString string, loc *time.Location) (value time.T
 	}
 	// UTC, not service timezone — see getValueForField.
 	value = value.UTC()
-	value = adjustDateForMysql(value)
+	value = clampDateToDriverRange(value)
 	return value, err
 }
 
@@ -265,13 +266,74 @@ func preprocessFilterString(filter string) string {
 	})
 }
 
+// These caps block GHSA-xxc3-xpmc-vmvr before fexpr allocates while leaving
+// realistic hand-written filters unaffected.
+const (
+	maxFilterBytes = 16 * 1024
+	maxFilterDepth = 100
+)
+
+func validateFilterComplexity(filter string) error {
+	if len(filter) > maxFilterBytes {
+		return &ErrFilterTooComplex{Reason: fmt.Sprintf("it exceeds the %d-byte limit", maxFilterBytes)}
+	}
+
+	depth := 0
+	for i := 0; i < len(filter); {
+		switch c := filter[i]; c {
+		case '\'', '"':
+			if end := quotedRunEnd(filter, i); end > 0 {
+				i = end
+				continue
+			}
+			i++
+		case '(':
+			depth++
+			if depth > maxFilterDepth {
+				return &ErrFilterTooComplex{Reason: fmt.Sprintf("it exceeds the %d-level nesting limit", maxFilterDepth)}
+			}
+			i++
+		case ')':
+			depth--
+			if depth < 0 {
+				return &ErrInvalidFilterExpression{
+					Expression:      filter,
+					ExpressionError: errors.New("unexpected closing parenthesis"),
+				}
+			}
+			i++
+		default:
+			i++
+		}
+	}
+
+	return nil
+}
+
+func prepareFilterForParsing(filter string) (string, error) {
+	// Preprocessing may shrink or expand input, so enforce the cap on both forms.
+	if err := validateFilterComplexity(filter); err != nil {
+		return "", err
+	}
+
+	filter = preprocessFilterString(filter)
+	if err := validateFilterComplexity(filter); err != nil {
+		return "", err
+	}
+
+	return filter, nil
+}
+
 func getTaskFiltersFromFilterString(filter string, filterTimezone string) (filters []*taskFilter, err error) {
 
 	if filter == "" {
 		return
 	}
 
-	filter = preprocessFilterString(filter)
+	filter, err = prepareFilterForParsing(filter)
+	if err != nil {
+		return nil, err
+	}
 
 	parsedFilter, err := fexpr.Parse(filter)
 	if err != nil {
@@ -302,6 +364,16 @@ func getTaskFiltersFromFilterString(filter string, filterTimezone string) (filte
 	}
 
 	return
+}
+
+func isErrInvalidFilter(err error) bool {
+	return IsErrInvalidFilterExpression(err) ||
+		IsErrFilterTooComplex(err) ||
+		IsErrInvalidTaskFilterValue(err) ||
+		IsErrInvalidTaskFilterConcatinator(err) ||
+		IsErrInvalidTaskFilterComparator(err) ||
+		IsErrInvalidTaskField(err) ||
+		IsErrInvalidTimezone(err)
 }
 
 func validateTaskFieldComparator(comparator taskFilterComparator) error {
@@ -392,7 +464,7 @@ func getValueForField(field reflect.StructField, rawValue string, loc *time.Loca
 				// the driver drops a bound parameter's offset, so a non-UTC wall clock
 				// shifts the boundary. loc still controls how the datemath rounds.
 				tt = t.Time(datemath.WithLocation(loc)).UTC()
-				tt = adjustDateForMysql(tt)
+				tt = clampDateToDriverRange(tt)
 			} else {
 				tt, err = parseTimeFromUserInput(rawValue, loc)
 			}
@@ -428,9 +500,16 @@ func getNativeValueForTaskField(fieldName string, comparator taskFilterComparato
 
 	realFieldName := strings.ReplaceAll(strcase.ToCamel(fieldName), "Id", "ID")
 
-	if realFieldName == "Assignees" {
+	if realFieldName == "Assignees" || realFieldName == "CreatedBy" {
 		vals := strings.Split(value, ",")
-		valueSlice := append([]string{}, vals...)
+		valueSlice := make([]string, 0, len(vals))
+		for _, val := range vals {
+			val = strings.TrimSpace(val)
+			if val == "" {
+				continue
+			}
+			valueSlice = append(valueSlice, val)
+		}
 		return nil, valueSlice, nil
 	}
 

@@ -112,6 +112,11 @@ func GetUserStats(s *xorm.Session, a web.Auth, weeks int) (*UserStats, error) {
 		return p
 	}
 
+	accessible, err := accessibleProjectIDsCond(s, a, "project_id")
+	if err != nil {
+		return nil, err
+	}
+
 	dayIndex := make(map[string]*UserStatsDay, len(stats.CompletedPerDay))
 	for _, d := range stats.CompletedPerDay {
 		dayIndex[d.Date] = d
@@ -120,7 +125,7 @@ func GetUserStats(s *xorm.Session, a web.Auth, weeks int) (*UserStats, error) {
 	// One windowed scan for completions, grouped in Go by day and by project.
 	var completed []*Task
 	err = s.
-		Where(accessibleProjectIDsSubquery(a, "project_id")).
+		Where(accessible).
 		And("done = ?", true).
 		And("done_at >= ? AND done_at < ?", windowStart, boundary).
 		Cols("project_id", "done_at").
@@ -139,7 +144,7 @@ func GetUserStats(s *xorm.Session, a web.Auth, weeks int) (*UserStats, error) {
 	// One windowed count for authored tasks; unlike CompletedInProjects this is
 	// scoped to the requesting user (see the honest-labeling invariant above).
 	stats.CreatedByMe, err = s.
-		Where(accessibleProjectIDsSubquery(a, "project_id")).
+		Where(accessible).
 		And("created_by_id = ?", fullUser.ID).
 		And("created >= ? AND created < ?", windowStart, boundary).
 		Count(&Task{})
@@ -150,7 +155,7 @@ func GetUserStats(s *xorm.Session, a web.Auth, weeks int) (*UserStats, error) {
 	// One unwindowed scan for open/overdue snapshots, same boundary as GetProjectTaskCounts.
 	var undone []*Task
 	err = s.
-		Where(accessibleProjectIDsSubquery(a, "project_id")).
+		Where(accessible).
 		And("done = ?", false).
 		Cols("project_id", "due_date").
 		Find(&undone)

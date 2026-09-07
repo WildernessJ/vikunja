@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"math"
 	"os"
 	"strconv"
@@ -60,10 +61,22 @@ func (f *File) fileID() string {
 	return strconv.FormatInt(f.ID, 10)
 }
 
+// DeleteBlob removes a stored blob after its database row has been rolled back.
+func DeleteBlob(id int64) error {
+	return storage.Remove(strconv.FormatInt(id, 10))
+}
+
 // LoadFileByID returns a file by its ID
 func (f *File) LoadFileByID() (err error) {
 	f.File, err = storage.Open(f.fileID())
-	return
+	if err != nil {
+		// A db row without its blob is a broken install, not a server error.
+		if errors.Is(err, fs.ErrNotExist) {
+			return ErrFileDoesNotExist{FileID: f.ID}
+		}
+		return fmt.Errorf("failed to open file %d: %w", f.ID, err)
+	}
+	return nil
 }
 
 // LoadFileMetaByID loads the file metadata using the caller's session — an engine

@@ -156,6 +156,11 @@ function handleMouseMove(e: MouseEvent) {
 		return
 	}
 
+	// Synthetic drag events carry no pointer position, and elementsFromPoint throws on NaN
+	if (!Number.isFinite(e.clientX) || !Number.isFinite(e.clientY)) {
+		return
+	}
+
 	const elementsUnderMouse = document.elementsFromPoint(e.clientX, e.clientY)
 	const isOverThisProject = elementsUnderMouse.some(el => {
 		const projectId = (el as HTMLElement).dataset?.projectId
@@ -278,10 +283,6 @@ const canToggleFavorite = computed(() => {
 	opacity: 0;
 }
 
-.is-touch .color-bubble {
-	opacity: 1 !important;
-}
-
 .color-bubble-wrapper {
 	position: relative;
 	inline-size: 1rem;
@@ -329,6 +330,10 @@ const canToggleFavorite = computed(() => {
 @media (pointer: coarse) {
 	.drag-handle {
 		display: none !important;
+	}
+
+	.color-bubble {
+		opacity: 1 !important;
 	}
 }
 

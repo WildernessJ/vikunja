@@ -11,7 +11,7 @@ import {
 	type TokenAtCaret,
 	type TokenInsertResult,
 } from '@/modules/quickAddMagic'
-import {useLabelStore} from '@/stores/labels'
+import {useLabels} from '@/composables/useLabels'
 import {useProjectStore} from '@/stores/projects'
 import ProjectUserService from '@/services/projectUsers'
 import {getDisplayName} from '@/models/user'
@@ -52,6 +52,9 @@ export function useQuickAddAutocomplete(options: {
 	assigneeProjectId: ComputedRef<number | null>,
 }) {
 	const {title, mode, isMultiline, assigneeProjectId} = options
+	// Not lazy like the rest: useLabels() subscribes a vue-query observer, so it
+	// has to be created once here rather than per watch run.
+	const {getLabelsByExactTitles, filterLabelsByQuery} = useLabels()
 
 	// Stores/service are constructed lazily, only once a token of their kind is
 	// actually active - so mounting the composer never requires every consumer
@@ -106,11 +109,10 @@ export function useQuickAddAutocomplete(options: {
 		}
 
 		if (token.type === 'label') {
-			const labelStore = useLabelStore()
 			const alreadyTypedTitles = getLabelsFromPrefix(title.value, mode.value) ?? []
-			const alreadyTypedLabels = labelStore.getLabelsByExactTitles(alreadyTypedTitles)
-			items.value = labelStore.filterLabelsByQuery(alreadyTypedLabels, token.query)
-				.map(l => ({kind: 'label' as const, id: l.id, display: l.title, insertValue: l.title, color: getHexColor(l.hexColor)}))
+			const alreadyTypedLabels = getLabelsByExactTitles(alreadyTypedTitles)
+			items.value = filterLabelsByQuery(alreadyTypedLabels, token.query)
+				.map(l => ({kind: 'label' as const, id: l.id ?? 0, display: l.title ?? '', insertValue: l.title ?? '', color: getHexColor(l.hex_color ?? '')}))
 			return
 		}
 

@@ -297,7 +297,7 @@ func TestUserStats(t *testing.T) {
 		s := db.NewSession()
 		defer s.Close()
 
-		freshUser := &user.User{ID: 21} // fixture user with no owned/shared projects and no team membership (17/18 are disabled/locked, not just empty)
+		freshUser := &user.User{ID: 22} // fixture user with no owned/shared projects and no team membership (21 owns project 44; 17/18 are disabled/locked, not just empty)
 
 		stats, err := GetUserStats(s, freshUser, 12)
 		require.NoError(t, err)
@@ -348,4 +348,51 @@ func TestUserStats(t *testing.T) {
 		assert.Len(t, clampedFromHuge.CompletedPerDay, len(explicit52.CompletedPerDay))
 		assert.EqualValues(t, 0, clampedFromHuge.CompletedInProjects, "a completion 53 weeks ago must fall outside a 52-week-clamped window")
 	})
+}
+
+// The Statistics page and the sidebar count badges must scope projects
+// identically (the mirror invariant on GetUserStats). getAllProjectsForUser
+// drops templates on its own; the project-access memo behind
+// accessibleProjectIDsCond does not, so a template project shows up on exactly
+// one of the two unless the memo path filters them too.
+func TestUserStatsExcludesTemplateProjects(t *testing.T) {
+	requestingUser := &user.User{ID: 1}
+
+	db.LoadAndAssertFixtures(t)
+	s := db.NewSession()
+	defer s.Close()
+
+	template := mustInsertStatsProject(t, s, "stats-template", requestingUser.ID)
+	_, err := s.ID(template.ID).Cols("is_template").Update(&Project{IsTemplate: true})
+	require.NoError(t, err)
+
+	fullUser, err := user.GetUserByID(s, requestingUser.ID)
+	require.NoError(t, err)
+	boundary, err := startOfTomorrowInUserTimezone(fullUser)
+	require.NoError(t, err)
+	mustInsertStatsTask(t, s, template.ID, 1, requestingUser.ID, false, time.Time{}, boundary.Add(-72*time.Hour))
+
+	require.NoError(t, s.Commit())
+
+	s2 := db.NewSession()
+	defer s2.Close()
+	counts, err := GetProjectTaskCounts(s2, requestingUser)
+	require.NoError(t, err)
+	assert.NotContains(t, counts, template.ID, "a template project must not appear in the sidebar counts")
+
+	s3 := db.NewSession()
+	defer s3.Close()
+	stats, err := GetUserStats(s3, requestingUser, 12)
+	require.NoError(t, err)
+
+	var open, overdue int64
+	for _, c := range counts {
+		open += c.Open
+		overdue += c.DueOverdue
+	}
+	assert.Equal(t, open, stats.Open, "open totals must agree with GetProjectTaskCounts")
+	assert.Equal(t, overdue, stats.Overdue, "overdue totals must agree with GetProjectTaskCounts")
+	for _, p := range stats.Projects {
+		assert.NotEqual(t, template.ID, p.ProjectID, "a template project must not appear in the per-project stats breakdown")
+	}
 }

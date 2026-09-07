@@ -59,6 +59,15 @@ Review checkpoint: any new `:deep(.popup)` rule nested under `&.is-open`, or any
 typecheck ratchet (1), and a real e2e run of the affected specs (quick-add-composer,
 project-view-calendar, recurring-reminder → 23 passed) plus in-browser live-verify of all 7 consumers.
 
+Re-confirmed at the v2.6.0 sync (2026-09-06): upstream's own 2026-08 popup work took the opposite
+route — an always-mounted wrapper toggled with `:inert`. It was evaluated and **not** adopted; the
+`v-if` stands. Upstream's three behavioral fixes were ported onto it instead: Escape closes the popup
+owning focus (`1e2583e68`), a trigger can close its own popup via the `closedByClickOutside` guard
+(`cafe1c74b`), and focus returns to the trigger on close (`dcdd05e59`, without the `inert` pre-flush
+machinery — unmounting already blurs to body). Upstream's `Popup.test.ts` was kept; its `inert`
+assertions became `exists()` checks (strictly stronger under `v-if`) and its one case asserting closed
+content is in the DOM was deleted as unreachable by design.
+
 ## Links
 
 - Source: the "Popup keeps closed content mounted" residue (tracked in PROJECT_STATE open questions);

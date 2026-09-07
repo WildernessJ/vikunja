@@ -19,10 +19,8 @@ package models
 import (
 	"archive/zip"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"time"
 
@@ -344,8 +342,7 @@ func exportTaskAttachments(s *xorm.Session, wr *zip.Writer, taskIDs []int64) (er
 	for _, ta := range tas {
 		err = ta.File.LoadFileByID()
 		if err != nil {
-			var pathError *fs.PathError
-			if errors.As(err, &pathError) {
+			if files.IsErrFileDoesNotExist(err) {
 				continue
 			}
 			return err
@@ -394,8 +391,7 @@ func exportProjectBackgrounds(s *xorm.Session, u *user.User, wr *zip.Writer) (er
 		}
 		err = bgFile.LoadFileByID()
 		if err != nil {
-			var pathError *fs.PathError
-			if errors.As(err, &pathError) {
+			if files.IsErrFileDoesNotExist(err) {
 				continue
 			}
 			return err
@@ -428,7 +424,7 @@ func GetUserDataExportFile(s *xorm.Session, u *user.User) (*files.File, error) {
 // session first; the caller must close the reader.
 func OpenUserDataExportFile(exportFile *files.File) error {
 	if err := exportFile.LoadFileByID(); err != nil {
-		if os.IsNotExist(err) {
+		if files.IsErrFileDoesNotExist(err) {
 			return ErrUserDataExportDoesNotExist{}
 		}
 		return err

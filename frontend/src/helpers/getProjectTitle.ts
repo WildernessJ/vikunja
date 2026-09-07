@@ -1,7 +1,7 @@
 import {translate} from '@/message'
 import type {IProject} from '@/modelTypes/IProject'
 
-export function getProjectTitle(project: IProject) {
+export function getProjectTitle(project: Pick<IProject, 'id' | 'title'>) {
 	if (project.id === -1) {
 		return translate('project.pseudo.favorites.title')
 	}

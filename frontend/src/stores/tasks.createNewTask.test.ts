@@ -19,10 +19,9 @@ vi.mock('@/services/task', () => ({
 	},
 }))
 
-vi.mock('@/services/labelTask', () => ({
-	default: class {
-		create = vi.fn().mockResolvedValue({})
-	},
+vi.mock('@/client/generated', () => ({
+	taskLabelsCreate: vi.fn().mockResolvedValue({data: {}}),
+	taskLabelsDelete: vi.fn().mockResolvedValue({data: {}}),
 }))
 
 const findProjectByExactnameMock = vi.fn().mockReturnValue(null)
@@ -44,7 +43,13 @@ const createLabelMock = vi.hoisted(() => vi.fn())
 vi.mock('@/stores/base', () => ({useBaseStore: () => ({})}))
 vi.mock('@/stores/kanban', () => ({useKanbanStore: () => ({})}))
 vi.mock('@/stores/projectCounts', () => ({useProjectCountsStore: () => ({loadCounts: vi.fn().mockResolvedValue(undefined)})}))
-vi.mock('@/stores/labels', () => ({useLabelStore: () => ({labels: {}, createLabel: createLabelMock})}))
+vi.mock('@/client/queries/labels', () => ({
+	ensureLabels: vi.fn().mockResolvedValue([]),
+	refreshLabels: vi.fn().mockResolvedValue([]),
+	createLabel: createLabelMock,
+	getLabelByExactTitle: (labels: Array<{title?: string}>, title: string) =>
+		labels.find(label => label.title?.toLowerCase() === title.toLowerCase()),
+}))
 vi.mock('@/stores/config', () => ({useConfigStore: () => ({concurrentWrites: true})}))
 
 const errorMock = vi.hoisted(() => vi.fn())

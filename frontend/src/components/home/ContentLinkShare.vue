@@ -44,7 +44,10 @@
 			>
 				{{ $t('misc.loading') }}
 			</h1>
-			<Card class="has-text-start view">
+			<Card
+				class="has-text-start view"
+				:has-content="false"
+			>
 				<RouterView />
 				<PoweredByLink utm-medium="link_share" />
 			</Card>
@@ -58,7 +61,6 @@ import {useRoute} from 'vue-router'
 
 import {useBaseStore} from '@/stores/base'
 import {useProjectStore} from '@/stores/projects'
-import {useLabelStore} from '@/stores/labels'
 import {useAuthStore} from '@/stores/auth'
 
 import Logo from '@/components/home/Logo.vue'
@@ -79,9 +81,6 @@ const logoVisible = computed(() => baseStore.logoVisible)
 const projectLoadError = ref(false)
 
 projectStore.loadAllProjects()
-
-const labelStore = useLabelStore()
-labelStore.loadAllLabels()
 
 // Ensure project is loaded for link share
 async function ensureProjectLoaded() {

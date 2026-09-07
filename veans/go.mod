@@ -1,9 +1,9 @@
 module code.vikunja.io/veans
 
-go 1.26.4
+go 1.27.0
 
 require (
-	charm.land/bubbletea/v2 v2.0.8
+	charm.land/bubbletea/v2 v2.0.9
 	charm.land/lipgloss/v2 v2.0.6
 	github.com/dustinkirkland/golang-petname v0.0.0-20260215035315-f0c533e9ce9b
 	github.com/magefile/mage v1.17.2

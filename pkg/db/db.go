@@ -17,10 +17,12 @@
 package db
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -37,8 +39,8 @@ import (
 	"xorm.io/xorm/schemas"
 
 	_ "github.com/go-sql-driver/mysql" // Because.
-	"github.com/lib/pq"
-	_ "github.com/mattn/go-sqlite3" // Because.
+	_ "github.com/jackc/pgx/v5/stdlib" // Because.
+	_ "github.com/mattn/go-sqlite3"    // Because.
 )
 
 var (
@@ -48,6 +50,11 @@ var (
 	// and can be used for full text search.
 	paradedbInstalled bool
 )
+
+var postgresConnectionCredentials = regexp.MustCompile(`(?i)(postgres(?:ql)?://)[^@\s"]+@`)
+
+// DatabasePathMemory is the database.path value selecting an ephemeral database.
+const DatabasePathMemory = "memory"
 
 // registeredTables holds all table beans registered by Vikunja packages.
 var registeredTables []interface{}
@@ -95,7 +102,11 @@ func CreateDBEngine() (engine *xorm.Engine, err error) {
 	case "postgres":
 		engine, err = initPostgresEngine()
 		if err != nil {
-			return
+			return nil, sanitizePostgresConnectionError(
+				err,
+				config.DatabaseUser.GetString(),
+				config.DatabasePassword.GetString(),
+			)
 		}
 	case "sqlite":
 		// Otherwise use sqlite
@@ -120,10 +131,17 @@ func CreateDBEngine() (engine *xorm.Engine, err error) {
 	// xorm connects lazily, so this is where an unreachable database first surfaces. Without it
 	// the first real query reports it instead, which reads as a schema or extension bug (#3287).
 	if err = engine.Ping(); err != nil {
+		if config.DatabaseType.GetString() == "postgres" {
+			err = sanitizePostgresConnectionError(
+				err,
+				config.DatabaseUser.GetString(),
+				config.DatabasePassword.GetString(),
+			)
+		}
 		return nil, err
 	}
 
-	checkParadeDB(engine)
+	engine.AddHook(writeInvalidationHook{})
 
 	x = engine
 	return
@@ -173,8 +191,29 @@ func parsePostgreSQLHostPort(info string) (string, string) {
 	return host, port
 }
 
+func sanitizePostgresConnectionError(err error, user, password string) error {
+	if err == nil {
+		return nil
+	}
+
+	message := err.Error()
+	if user != "" || password != "" {
+		userInfoCandidates := []string{
+			user + ":" + password + "@",
+			url.PathEscape(user) + ":" + url.PathEscape(password) + "@",
+			url.QueryEscape(user) + ":" + url.QueryEscape(password) + "@",
+		}
+		for _, userInfo := range userInfoCandidates {
+			message = strings.ReplaceAll(message, userInfo, "<redacted>@")
+		}
+	}
+	message = postgresConnectionCredentials.ReplaceAllString(message, `${1}<redacted>@`)
+
+	return errors.New(message)
+}
+
 // Copied and adopted from https://github.com/go-gitea/gitea/blob/f337c32e868381c6d2d948221aca0c59f8420c13/modules/setting/database.go#L176-L186
-func getPostgreSQLConnectionString(dbHost, dbUser, dbPasswd, dbName, dbSchema, dbSslMode, dbSslCert, dbSslKey, dbSslRootCert string) (connStr string) {
+func getPostgreSQLConnectionString(dbHost, dbUser, dbPasswd, dbName, dbSchema, dbSslMode, dbSslCert, dbSslKey, dbSslRootCert, queryExecMode string) (connStr string) {
 	dbParam := "?"
 	if strings.Contains(dbName, dbParam) {
 		dbParam = "&"
@@ -190,16 +229,55 @@ func getPostgreSQLConnectionString(dbHost, dbUser, dbPasswd, dbName, dbSchema, d
 	// Pin search_path so raw SQL resolves to the same schema as xorm-built statements (#3118).
 	// Quoting preserves case; public stays so extension operators (e.g. ParadeDB's |||) keep resolving.
 	if dbSchema != "" {
-		searchPath := pq.QuoteIdentifier(dbSchema)
+		searchPath := quoteIdentifier(dbSchema)
 		if dbSchema != "public" {
 			searchPath += ",public"
 		}
 		connStr += "&search_path=" + url.QueryEscape(searchPath)
 	}
+	if queryExecMode != "" {
+		connStr += "&default_query_exec_mode=" + url.QueryEscape(queryExecMode)
+	}
 	return connStr
 }
 
+// Copied from github.com/lib/pq so that pq is not needed just for this.
+func quoteIdentifier(name string) string {
+	if end := strings.IndexRune(name, 0); end > -1 {
+		name = name[:end]
+	}
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+}
+
 func initPostgresEngine() (engine *xorm.Engine, err error) {
+	engine, err = newPostgresEngine("")
+	if err != nil {
+		return nil, err
+	}
+
+	// Ping first so an unreachable database still reports as a connection error
+	// (#3287) instead of as a failed extension lookup.
+	if err = engine.Ping(); err != nil {
+		return nil, err
+	}
+
+	checkParadeDB(engine)
+	if !paradedbInstalled {
+		return engine, nil
+	}
+
+	// ParadeDB's ||| operator needs the search term while the statement is planned,
+	// which named prepared statements do not provide; unnamed ones are planned at
+	// Bind. ParadeDB installations trade the statement cache for working search.
+	// paradedb/paradedb#5907 fixed this for === only; revisit once ||| follows.
+	if err = engine.Close(); err != nil {
+		return nil, fmt.Errorf("could not close initial database connection: %w", err)
+	}
+
+	return newPostgresEngine("exec")
+}
+
+func newPostgresEngine(queryExecMode string) (engine *xorm.Engine, err error) {
 	connStr := getPostgreSQLConnectionString(
 		config.DatabaseHost.GetString(),
 		config.DatabaseUser.GetString(),
@@ -210,9 +288,10 @@ func initPostgresEngine() (engine *xorm.Engine, err error) {
 		config.DatabaseSslCert.GetString(),
 		config.DatabaseSslKey.GetString(),
 		config.DatabaseSslRootCert.GetString(),
+		queryExecMode,
 	)
 
-	engine, err = xorm.NewEngine("postgres", connStr)
+	engine, err = xorm.NewEngine("pgx", connStr)
 	if err != nil {
 		return
 	}
@@ -240,17 +319,19 @@ type DatabasePathConfig struct {
 // resolveDatabasePath resolves a database path configuration to an absolute path.
 //
 // Resolution rules:
-//  1. If ConfiguredPath is "memory", returns "memory" (special case for in-memory DB)
+//  1. If ConfiguredPath is DatabasePathMemory, returns it (ephemeral database)
 //  2. If ConfiguredPath is already absolute, returns it as-is (cleaned)
 //  3. If ConfiguredPath is relative:
 //     a. If RootPath differs from ExecutablePath (explicitly configured),
 //     joins with RootPath
-//     b. Otherwise, joins with platform-specific user data directory
+//     b. Otherwise, joins with the user data directory, falling back to RootPath
+//     when userDataDir reports the directory as unavailable
 //
-// The getUserDataDir parameter allows injecting a mock for testing.
-func resolveDatabasePath(cfg DatabasePathConfig, getUserDataDir func() (string, error)) (string, error) {
-	if cfg.ConfiguredPath == "memory" {
-		return "memory", nil
+// Directory creation only ever happens inside userDataDir, so an operator-configured
+// path never gets its parents created behind their back.
+func resolveDatabasePath(cfg DatabasePathConfig, userDataDir func() (string, error)) (string, error) {
+	if cfg.ConfiguredPath == DatabasePathMemory {
+		return DatabasePathMemory, nil
 	}
 
 	var path string
@@ -261,7 +342,7 @@ func resolveDatabasePath(cfg DatabasePathConfig, getUserDataDir func() (string, 
 	case cfg.RootPath != cfg.ExecutablePath:
 		path = filepath.Join(cfg.RootPath, cfg.ConfiguredPath)
 	default:
-		dataDir, err := getUserDataDir()
+		dataDir, err := userDataDir()
 		if err != nil {
 			log.Warningf("Could not get user data directory, falling back to rootpath: %v", err)
 			path = filepath.Join(cfg.RootPath, cfg.ConfiguredPath)
@@ -273,7 +354,7 @@ func resolveDatabasePath(cfg DatabasePathConfig, getUserDataDir func() (string, 
 	return filepath.Abs(path)
 }
 
-func initSqliteEngine() (engine *xorm.Engine, err error) {
+func databasePathConfig() DatabasePathConfig {
 	rootPath := config.ServiceRootpath.GetString()
 
 	executablePath := rootPath
@@ -281,18 +362,33 @@ func initSqliteEngine() (engine *xorm.Engine, err error) {
 		executablePath = filepath.Dir(execPath)
 	}
 
-	cfg := DatabasePathConfig{
+	return DatabasePathConfig{
 		ConfiguredPath: config.DatabasePath.GetString(),
 		RootPath:       rootPath,
 		ExecutablePath: executablePath,
 	}
+}
 
-	path, err := resolveDatabasePath(cfg, getUserDataDir)
+// ResolvedDatabasePath returns the absolute path of the SQLite database file,
+// or DatabasePathMemory for the ephemeral database. Only meaningful when
+// database.type is sqlite. It creates nothing — see ensureDatabasePath.
+func ResolvedDatabasePath() (string, error) {
+	return resolveDatabasePath(databasePathConfig(), existingUserDataDir)
+}
+
+// ensureDatabasePath returns the path ResolvedDatabasePath reports once the user data
+// directory exists, creating that directory if it is the one selected.
+func ensureDatabasePath() (string, error) {
+	return resolveDatabasePath(databasePathConfig(), createdUserDataDir)
+}
+
+func initSqliteEngine() (engine *xorm.Engine, err error) {
+	path, err := ensureDatabasePath()
 	if err != nil {
-		return nil, fmt.Errorf("could not resolve database path: %w", err)
+		return nil, fmt.Errorf("could not prepare database path: %w", err)
 	}
 
-	if path == "memory" {
+	if path == DatabasePathMemory {
 		// Use a temp file with WAL mode instead of in-memory shared cache.
 		// Shared cache (file::memory:?cache=shared) uses table-level locking
 		// where _busy_timeout is ineffective (returns SQLITE_LOCKED, not
@@ -342,8 +438,42 @@ func initSqliteEngine() (engine *xorm.Engine, err error) {
 	return
 }
 
-// getUserDataDir returns the platform-appropriate directory for application data
-func getUserDataDir() (string, error) {
+// existingUserDataDir returns the user data directory only when it is already there.
+// Treating an absent directory as unavailable keeps resolution free of side effects
+// while still reporting the path ensureDatabasePath uses, once it has run.
+func existingUserDataDir() (string, error) {
+	dir, err := resolveUserDataDir()
+	if err != nil {
+		return "", err
+	}
+
+	info, err := os.Stat(dir)
+	if err != nil {
+		return "", fmt.Errorf("could not stat data directory %s: %w", dir, err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("data directory %s is not a directory", dir)
+	}
+
+	return dir, nil
+}
+
+// createdUserDataDir creates the user data directory. Creation lives here so a failure
+// surfaces as the rootpath fallback instead of a hard startup error.
+func createdUserDataDir() (string, error) {
+	dir, err := resolveUserDataDir()
+	if err != nil {
+		return "", err
+	}
+
+	if err := os.MkdirAll(dir, 0o700); err != nil { // #nosec G703 -- dir is from XDG standard paths
+		return "", fmt.Errorf("could not create data directory %s: %w", dir, err)
+	}
+
+	return dir, nil
+}
+
+func resolveUserDataDir() (string, error) {
 	var dataDir string
 
 	switch runtime.GOOS {
@@ -378,11 +508,6 @@ func getUserDataDir() (string, error) {
 			}
 			dataDir = filepath.Join(home, ".local", "share", "vikunja")
 		}
-	}
-
-	// Ensure the directory exists
-	if err := os.MkdirAll(dataDir, 0o700); err != nil { // #nosec G703 -- dataDir is from config or XDG standard paths
-		return "", fmt.Errorf("could not create data directory %s: %w", dataDir, err)
 	}
 
 	return dataDir, nil
@@ -465,6 +590,7 @@ func WipeEverything() error {
 // s.Close() will auto-rollback any uncommitted transaction.
 func NewSession() *xorm.Session {
 	s := x.NewSession()
+	attachSessionCache(s)
 	if err := s.Begin(); err != nil {
 		log.Fatalf("Failed to begin database transaction: %s", err)
 	}
@@ -568,6 +694,19 @@ func CreateParadeDBIndexes() error {
 	)`
 	if _, err := x.Exec(timeEntriesIndexSQL); err != nil {
 		return fmt.Errorf("could not ensure paradedb time entry index: %w", err)
+	}
+
+	// Create ParadeDB index for labels (title/description search via MultiFieldSearch)
+	labelsIndexSQL := `CREATE INDEX IF NOT EXISTS idx_labels_paradedb ON labels USING bm25 (id, title, description)
+	WITH (
+		key_field='id',
+		text_fields='{
+			"title": {"fast": true, "record": "freq"},
+			"description": {"fast": true, "record": "freq"}
+		}'
+	)`
+	if _, err := x.Exec(labelsIndexSQL); err != nil {
+		return fmt.Errorf("could not ensure paradedb label index: %w", err)
 	}
 
 	return nil

@@ -1,4 +1,4 @@
-import {computed, readonly, ref} from 'vue'
+import {computed, readonly, ref, watch} from 'vue'
 import type {Ref} from 'vue'
 import {acceptHMRUpdate, defineStore} from 'pinia'
 
@@ -9,6 +9,7 @@ import UserModel, {getDisplayName, fetchAvatarBlobUrl, invalidateAvatarCache} fr
 import AvatarService from '@/services/avatar'
 import UserSettingsService from '@/services/userSettings'
 import {getToken, refreshToken, removeToken, saveToken} from '@/helpers/auth'
+import {clearTaskCache} from '@/helpers/taskCache'
 import {useWebSocket} from '@/composables/useWebSocket'
 import {dropDevicePushSubscription} from '@/composables/usePushNotifications'
 import {setModuleLoading} from '@/stores/helper'
@@ -31,6 +32,7 @@ import {TIME_FORMAT} from '@/constants/timeFormat'
 import {RELATION_KIND} from '@/types/IRelationKind'
 import {DEFAULT_FONT_SIZE, DEFAULT_FONT_FAMILY} from '@/helpers/appearance'
 import type {IProvider} from '@/types/IProvider'
+import {queryClient} from '@/client/queryClient'
 
 // Set on explicit logout so the login page won't immediately bounce the user
 // back to the OIDC provider. Lives in sessionStorage so it survives the
@@ -120,7 +122,7 @@ export const useAuthStore = defineStore('auth', () => {
 	const needsTotpPasscode = ref(false)
 	
 	const info = ref<IUser | null>(null)
-	const avatarUrl = ref('')
+	const avatarUrl = ref<string>()
 	const settings = ref<IUserSettings>(new UserSettingsModel())
 	
 	const currentSessionId = ref<string | null>(null)
@@ -145,6 +147,14 @@ export const useAuthStore = defineStore('auth', () => {
 	const userDisplayName = computed(() => info.value ? getDisplayName(info.value) : undefined)
 	
 	const isLinkShareAuth = computed(() => info.value?.type === AUTH_TYPES.LINK_SHARE)
+
+	// Identity-bound caches survive same-user object replacements.
+	watch(() => [info.value?.id ?? null, info.value?.type ?? null] as const, ([id, type], [prevId, prevType]) => {
+		if (id !== prevId || type !== prevType) {
+			clearTaskCache()
+			queryClient.clear()
+		}
+	}, {flush: 'sync'})
 
 	function setIsLoading(newIsLoading: boolean) {
 		isLoading.value = newIsLoading 
@@ -200,6 +210,7 @@ export const useAuthStore = defineStore('auth', () => {
 				desktopQuickEntryShortcut: 'CmdOrCtrl+Shift+A',
 				fontSize: DEFAULT_FONT_SIZE,
 				fontFamily: DEFAULT_FONT_FAMILY,
+				defaultDueTime: undefined,
 				// Typed Partial because the API may omit keys for users without
 				// saved settings; the defaults above are the fallback for those.
 				...(newSettings.frontendSettings as Partial<IFrontendSettings>),
@@ -280,7 +291,7 @@ export const useAuthStore = defineStore('auth', () => {
 				...credentials,
 				language,
 			})
-			return login(credentials)
+			return await login(credentials)
 		} catch (e) {
 			const err = e as HTTPError
 			if (err.response?.data?.code === 2002 && err.response?.data?.invalid_fields?.[0]?.startsWith('language:')) {
@@ -502,12 +513,11 @@ export const useAuthStore = defineStore('auth', () => {
 	/**
 	 * Try to verify the email
 	 */
-	async function verifyEmail(): Promise<boolean> {
-		const emailVerifyToken = localStorage.getItem('emailConfirmToken')
-		if (emailVerifyToken) {
+	async function verifyEmail(token = localStorage.getItem('emailConfirmToken')): Promise<boolean> {
+		if (token) {
 			const stopLoading = setModuleLoading(setIsLoading)
 			try {
-				await HTTPFactory().post('user/confirm', {token: emailVerifyToken})
+				await HTTPFactory().post('user/confirm', {token})
 				return true
 			} catch(e) {
 				const err = e as HTTPError
@@ -616,13 +626,13 @@ export const useAuthStore = defineStore('auth', () => {
 
 		removeToken()
 		const loggedInVia = getLoggedInVia()
-		window.localStorage.clear() // Clear all settings and history we might have saved in local storage.
 		lastUserInfoRefresh.value = null
-
-		// Mark unauthenticated before touching settings below: that reset re-fires
-		// settings watchers (e.g. useTaskList's), and this flag is what keeps them
-		// from firing a doomed request during teardown (issue #44 follow-up).
+		// Must precede the settings reset below: that reset re-fires settings watchers
+		// (e.g. useTaskList's), and this flag is what keeps them from firing a doomed
+		// request during teardown (issue #44 follow-up).
 		setAuthenticated(false)
+		setUser(null)
+		window.localStorage.clear() // Clear all settings and history we might have saved in local storage.
 
 		// Reset to model defaults so the settings-driven composables (useColorScheme,
 		// useAppearance) re-fire and strip the logged-out user's styling from <html>

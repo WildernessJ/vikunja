@@ -37,6 +37,7 @@ export interface IFrontendSettings {
 	hiddenNavItems?: string[]
 	fontSize?: FontSizeKey
 	fontFamily?: FontFamilyKey
+	defaultDueTime?: string
 }
 
 export interface IExtraSettingsLink {

@@ -26,6 +26,7 @@ import (
 	"github.com/getsentry/sentry-go"
 
 	"code.vikunja.io/api/pkg/config"
+	"code.vikunja.io/api/pkg/errorreport"
 	"code.vikunja.io/api/pkg/log"
 	vmetrics "code.vikunja.io/api/pkg/metrics"
 	"github.com/ThreeDotsLabs/watermill"
@@ -55,8 +56,18 @@ type Event interface {
 	Name() string
 }
 
+// MetadataSkipErrorReporting marks a message whose failure is a user
+// configuration problem (an unreachable webhook target, say) rather than a bug,
+// so parking it in the poison queue must not page us. The poison middleware
+// republishes the same message, so metadata a handler sets survives.
+const MetadataSkipErrorReporting = "skip_error_reporting"
+
 type messageHandleFailedError struct {
 	Metadata message.Metadata
+}
+
+func shouldReportPoisonedMessage(meta message.Metadata) bool {
+	return meta.Get(MetadataSkipErrorReporting) != "true"
 }
 
 func (m *messageHandleFailedError) Error() string {
@@ -94,11 +105,20 @@ func InitEvents() (err error) {
 		for s, m := range msg.Metadata {
 			meta += s + "=" + m + ", "
 		}
-		log.Errorf("Error while handling message %s, %s payload=%s", msg.UUID, meta, string(msg.Payload))
+		// The payload is deliberately not logged: events can carry credentials and user data.
+		log.Errorf("Error while handling message %s, %s", msg.UUID, meta)
 
-		if config.SentryEnabled.GetBool() {
-			sentry.CaptureException(&messageHandleFailedError{
-				Metadata: msg.Metadata,
+		if config.SentryEnabled.GetBool() && shouldReportPoisonedMessage(msg.Metadata) {
+			failure := &messageHandleFailedError{Metadata: msg.Metadata}
+			sentry.WithScope(func(scope *sentry.Scope) {
+				// The wrapper error itself says nothing about the failure, so group by the handler
+				// that choked and why.
+				errorreport.ApplyFingerprint(scope, failure,
+					"message_handle_failed",
+					msg.Metadata.Get(middleware.PoisonedHandlerKey),
+					errorreport.Normalize(msg.Metadata.Get(middleware.ReasonForPoisonedKey)),
+				)
+				sentry.CaptureException(failure)
 			})
 		}
 		return nil

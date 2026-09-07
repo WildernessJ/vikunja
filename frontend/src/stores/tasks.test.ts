@@ -17,12 +17,29 @@ vi.mock('@/stores/base', () => ({
 	useBaseStore: () => ({setHasTasks: vi.fn()}),
 }))
 
+const labelQueries = vi.hoisted(() => ({
+	ensureLabels: vi.fn(),
+	refreshLabels: vi.fn(),
+	createLabel: vi.fn(),
+	getLabelByExactTitle: vi.fn((labels: Array<{title?: string}>, title: string) =>
+		labels.find(label => label.title?.toLowerCase() === title.toLowerCase()),
+	),
+}))
+
+const labelSdk = vi.hoisted(() => ({
+	taskLabelsCreate: vi.fn(),
+	taskLabelsDelete: vi.fn(),
+}))
+
+vi.mock('@/client/queries/labels', () => labelQueries)
+vi.mock('@/client/generated', () => labelSdk)
+
 import {buildDefaultRemindersForQuickAdd, useTaskStore} from './tasks'
-import {useLabelStore} from './labels'
-import LabelModel from '@/models/label'
+import {useKanbanStore} from './kanban'
 import {REMINDER_PERIOD_RELATIVE_TO_TYPES} from '@/types/IReminderPeriodRelativeTo'
-import type {ILabel} from '@/modelTypes/ILabel'
 import type {ITaskReminder} from '@/modelTypes/ITaskReminder'
+import type {IBucket} from '@/modelTypes/IBucket'
+import type {ITask} from '@/modelTypes/ITask'
 
 const aDefault: ITaskReminder = {
 	reminder: null,
@@ -67,18 +84,19 @@ describe('buildDefaultRemindersForQuickAdd', () => {
 describe('ensureLabelsExist', () => {
 	beforeEach(() => {
 		setActivePinia(createPinia())
+		labelQueries.ensureLabels.mockReset()
+		labelQueries.refreshLabels.mockReset().mockImplementation(() => labelQueries.ensureLabels())
+		labelQueries.createLabel.mockReset()
 	})
 
 	it('skips labels that fail to create and returns the resolved ones', async () => {
 		const taskStore = useTaskStore()
-		const labelStore = useLabelStore()
-		labelStore.setLabels([{id: 1, title: 'existing'}] as ILabel[])
-
-		vi.spyOn(labelStore, 'createLabel').mockImplementation(async label => {
+		labelQueries.ensureLabels.mockResolvedValue([{id: 1, title: 'existing'}])
+		labelQueries.createLabel.mockImplementation(async label => {
 			if (label.title === 'forbidden') {
 				throw new Error('403')
 			}
-			return new LabelModel({id: 99, title: label.title})
+			return {id: 99, title: label.title}
 		})
 
 		const result = await taskStore.ensureLabelsExist(['existing', 'created', 'forbidden'])
@@ -88,5 +106,90 @@ describe('ensureLabelsExist', () => {
 		expect(titles).toContain('created')
 		expect(titles).not.toContain('forbidden')
 		expect(result).toHaveLength(2)
+	})
+
+	it('loads the labels before creating unknown ones and reuses what it finds', async () => {
+		const taskStore = useTaskStore()
+		labelQueries.ensureLabels.mockResolvedValue([{id: 1, title: 'foo'}, {id: 2, title: 'bar'}])
+
+		const result = await taskStore.ensureLabelsExist(['foo', 'bar'])
+
+		expect(labelQueries.createLabel).not.toHaveBeenCalled()
+		expect(result.map(l => l.id).sort()).toEqual([1, 2])
+	})
+
+	it('deduplicates label titles before resolving them', async () => {
+		const taskStore = useTaskStore()
+		labelQueries.ensureLabels.mockResolvedValue([{id: 1, title: 'foo'}])
+
+		const result = await taskStore.ensureLabelsExist(['foo', 'foo'])
+
+		expect(result).toEqual([{id: 1, title: 'foo'}])
+	})
+
+	it('still creates the label when loading them fails', async () => {
+		const taskStore = useTaskStore()
+		labelQueries.ensureLabels.mockRejectedValue(new Error('nope'))
+		labelQueries.createLabel.mockImplementation(async label => ({id: 42, title: label.title}))
+
+		const result = await taskStore.ensureLabelsExist(['foo'])
+
+		expect(result.map(l => l.title)).toEqual(['foo'])
+	})
+
+	it('revalidates stale labels before creating missing titles', async () => {
+		const taskStore = useTaskStore()
+		const remoteLabel = {id: 2, title: 'remote'}
+		labelQueries.ensureLabels.mockResolvedValue([{id: 1, title: 'cached'}])
+		labelQueries.refreshLabels.mockResolvedValue([{id: 1, title: 'cached'}, remoteLabel])
+
+		const result = await taskStore.ensureLabelsExist(['remote'])
+
+		expect(labelQueries.refreshLabels).toHaveBeenCalledOnce()
+		expect(labelQueries.createLabel).not.toHaveBeenCalled()
+		expect(result).toEqual([remoteLabel])
+	})
+})
+
+describe('task label operations', () => {
+	beforeEach(() => {
+		setActivePinia(createPinia())
+		labelSdk.taskLabelsCreate.mockReset()
+		labelSdk.taskLabelsDelete.mockReset()
+	})
+
+	it('adds a label with the generated task-label operation', async () => {
+		labelSdk.taskLabelsCreate.mockResolvedValue({data: {label_id: 4}})
+		const taskStore = useTaskStore()
+		const kanbanStore = useKanbanStore()
+		kanbanStore.setBuckets([{
+			id: 1,
+			tasks: [{id: 7, labels: []} as unknown as ITask],
+		} as IBucket])
+
+		await taskStore.addLabel({taskId: 7, label: {id: 4, title: 'label'}})
+
+		expect(labelSdk.taskLabelsCreate).toHaveBeenCalledWith({
+			path: {projecttask: 7},
+			body: {label_id: 4},
+		})
+		expect(kanbanStore.buckets[0].tasks[0].labels).toEqual([{id: 4, title: 'label'}])
+	})
+
+	it('removes a label with the generated task-label operation', async () => {
+		labelSdk.taskLabelsDelete.mockResolvedValue({data: undefined})
+		const taskStore = useTaskStore()
+		const kanbanStore = useKanbanStore()
+		kanbanStore.setBuckets([{
+			id: 1,
+			tasks: [{id: 7, labels: [{id: 4, title: 'label'}]} as unknown as ITask],
+		} as IBucket])
+
+		await taskStore.removeLabel({taskId: 7, label: {id: 4, title: 'label'}})
+
+		expect(labelSdk.taskLabelsDelete).toHaveBeenCalledWith({
+			path: {projecttask: 7, label: 4},
+		})
+		expect(kanbanStore.buckets[0].tasks[0].labels).toEqual([])
 	})
 })

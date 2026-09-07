@@ -14,8 +14,8 @@ vi.mock('@/stores/projects', () => ({
 	}),
 }))
 
-vi.mock('@/stores/labels', () => ({
-	useLabelStore: () => ({
+vi.mock('@/composables/useLabels', () => ({
+	useLabels: () => ({
 		filterLabelsByQuery: filterLabelsByQueryMock,
 		getLabelsByExactTitles: getLabelsByExactTitlesMock,
 	}),
@@ -69,7 +69,7 @@ describe('useQuickAddAutocomplete', () => {
 
 	it('excludes already-typed labels from the label query', async () => {
 		getLabelsByExactTitlesMock.mockReturnValue([{id: 5, title: 'errand'}])
-		filterLabelsByQueryMock.mockReturnValue([{id: 6, title: 'urgent'}])
+		filterLabelsByQueryMock.mockReturnValue([{id: 6, title: 'urgent', hex_color: '#e8a33d'}])
 		const {title, autocomplete} = setup()
 		title.value = '*errand *urg'
 		autocomplete.setCaretOffset(title.value.length)
@@ -77,7 +77,7 @@ describe('useQuickAddAutocomplete', () => {
 
 		expect(filterLabelsByQueryMock).toHaveBeenCalledWith([{id: 5, title: 'errand'}], 'urg')
 		expect(autocomplete.items.value).toEqual([
-			{kind: 'label', id: 6, display: 'urgent', insertValue: 'urgent'},
+			{kind: 'label', id: 6, display: 'urgent', insertValue: 'urgent', color: '#e8a33d'},
 		])
 	})
 

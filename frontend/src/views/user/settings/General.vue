@@ -74,6 +74,18 @@
 				/>
 			</div>
 			<FormField
+				:label="$t('user.settings.general.defaultDueTime')"
+				layout="two-col"
+			>
+				<FormInput
+					v-model="settings.frontendSettings.defaultDueTime"
+					type="time"
+				/>
+			</FormField>
+			<p class="help">
+				{{ $t('user.settings.general.defaultDueTimeDescription') }}
+			</p>
+			<FormField
 				v-if="hasFilters"
 				:label="$t('user.settings.general.filterUsedOnOverview')"
 				layout="two-col"
@@ -686,7 +698,7 @@ const {
 type UserWithAuthProvider = IUser & {authProvider?: string}
 const externalAuthProvider = computed(() => (authStore.info as UserWithAuthProvider | null)?.authProvider)
 
-const isExternalUser = computed(() => !authStore.info?.isLocalUser)
+const isExternalUser = computed(() => authStore.info?.isLocalUser === false)
 
 watch(
 	() => authStore.settings,

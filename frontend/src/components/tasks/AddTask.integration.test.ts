@@ -2,8 +2,8 @@ import {describe, it, expect, vi, beforeEach} from 'vitest'
 import {mount, flushPromises} from '@vue/test-utils'
 import {createPinia, setActivePinia} from 'pinia'
 
-// Only the service (HTTP) layer is mocked here - useTaskStore and useLabelStore run for
-// real, so the AddTask -> createNewTask -> addLabelsToTask -> ensureLabelsExist chain
+// Only the service (HTTP) layer is mocked here - useTaskStore and the label queries run
+// for real, so the AddTask -> createNewTask -> addLabelsToTask -> ensureLabelsExist chain
 // actually executes, unlike AddTask.test.ts (mocks the whole tasks store) or
 // tasks.createNewTask.test.ts (calls the store directly, bypassing AddTask's overrides).
 
@@ -25,17 +25,34 @@ vi.mock('@/services/task', () => ({
 }))
 
 const labelCreateMock = vi.hoisted(() => vi.fn())
-vi.mock('@/services/label', () => ({
-	default: class {
-		create = labelCreateMock
+// createLabel writes the new label into the query cache, so a later ensureLabels()
+// in the same flow sees it and doesn't create it again - model that here.
+const labelCache = vi.hoisted(() => ({value: [] as Array<{title?: string}>}))
+vi.mock('@/client/queries/labels', () => ({
+	ensureLabels: vi.fn(async () => labelCache.value),
+	refreshLabels: vi.fn(async () => labelCache.value),
+	createLabel: async (input: {title: string}) => {
+		const label = await labelCreateMock(input)
+		labelCache.value.push(label)
+		return label
 	},
+	getLabelByExactTitle: (labels: Array<{title?: string}>, title: string) =>
+		labels.find(label => label.title?.toLowerCase() === title.toLowerCase()),
 }))
 
 const labelTaskCreateMock = vi.hoisted(() => vi.fn())
-vi.mock('@/services/labelTask', () => ({
-	default: class {
-		create = labelTaskCreateMock
-	},
+vi.mock('@/client/generated', () => ({
+	taskLabelsCreate: labelTaskCreateMock,
+	taskLabelsDelete: vi.fn().mockResolvedValue({data: {}}),
+}))
+
+vi.mock('@/composables/useLabels', () => ({
+	useLabels: () => ({
+		labels: {value: []},
+		isPending: {value: false},
+		filterLabelsByQuery: () => [],
+		getLabelsByExactTitles: () => [],
+	}),
 }))
 
 vi.mock('@/services/taskRelation', () => ({
@@ -121,6 +138,7 @@ describe('AddTask integration - real task/label store chain (#57)', () => {
 			error: null,
 		}))
 		labelCreateMock.mockReset()
+		labelCache.value = []
 		labelTaskCreateMock.mockReset().mockResolvedValue({})
 	})
 

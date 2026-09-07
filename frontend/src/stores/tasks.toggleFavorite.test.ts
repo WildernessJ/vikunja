@@ -22,7 +22,6 @@ vi.mock('@/stores/projects', () => ({
 vi.mock('@/stores/base', () => ({useBaseStore: () => ({})}))
 vi.mock('@/stores/kanban', () => ({useKanbanStore: () => ({})}))
 vi.mock('@/stores/projectCounts', () => ({useProjectCountsStore: () => ({})}))
-vi.mock('@/stores/labels', () => ({useLabelStore: () => ({})}))
 vi.mock('@/stores/auth', () => ({useAuthStore: () => ({})}))
 vi.mock('@/stores/config', () => ({useConfigStore: () => ({})}))
 

@@ -9,11 +9,16 @@ import {watch, onMounted} from 'vue'
 
 import QuickActions from '@/components/quick-actions/QuickActions.vue'
 import {useBaseStore} from '@/stores/base'
+import {useProjectStore} from '@/stores/projects'
+import {ensureLabels} from '@/client/queries/labels'
 
 const baseStore = useBaseStore()
+const projectStore = useProjectStore()
 
 onMounted(() => {
 	baseStore.setQuickActionsActive(true)
+	ensureLabels()
+	projectStore.loadAllProjects()
 })
 
 // When QuickActions closes (Escape, task created, etc.), tell Electron to hide the window

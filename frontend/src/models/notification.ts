@@ -58,6 +58,15 @@ export default class NotificationModel extends AbstractModel<INotification> impl
 				}
 				break
 			}
+			case NOTIFICATION_NAMES.TASK_CREATED: {
+				const n = this.notification as NotificationCreated
+				this.notification = {
+					doer: new UserModel(n.doer),
+					task: new TaskModel(n.task),
+					project: new ProjectModel(n.project),
+				}
+				break
+			}
 			case NOTIFICATION_NAMES.PROJECT_CREATED: {
 				const n = this.notification as NotificationCreated
 				// NotificationCreated also declares `task`, but project.created events carry no task; see report.
@@ -123,6 +132,10 @@ export default class NotificationModel extends AbstractModel<INotification> impl
 			case NOTIFICATION_NAMES.TASK_DELETED: {
 				const n = this.notification as NotificationTask
 				return `deleted ${(n.task as TaskModel).getTextIdentifier()}`
+			}
+			case NOTIFICATION_NAMES.TASK_CREATED: {
+				const n = this.notification as NotificationCreated
+				return `created ${(n.task as TaskModel).getTextIdentifier()}`
 			}
 			case NOTIFICATION_NAMES.PROJECT_CREATED: {
 				const n = this.notification as NotificationCreated

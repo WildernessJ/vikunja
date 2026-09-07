@@ -4,7 +4,7 @@ import {parseTaskText, PrefixMode} from '@/modules/quickAddMagic'
 import {useDateOnly} from '@/composables/useDateOnly'
 import {parseSubtasksViaIndention} from '@/helpers/parseSubtasksViaIndention'
 import {resolveOverride} from '@/helpers/resolveOverride'
-import type {ILabel} from '@/modelTypes/ILabel'
+import type {Label} from '@/client/generated'
 import type {IProject} from '@/modelTypes/IProject'
 import type {ITaskReminder} from '@/modelTypes/ITaskReminder'
 import type {CreateNewTaskOverrides} from '@/stores/tasks'
@@ -14,13 +14,13 @@ import type {CreateNewTaskOverrides} from '@/stores/tasks'
 export interface ComposerOverrides {
 	dueDate?: Date | null,
 	priority?: number | null,
-	labels?: ILabel[],
+	labels?: Label[],
 	project?: IProject | null,
 	description?: string,
 	reminders?: ITaskReminder[],
 }
 
-const EMPTY_LABEL_LIST: ILabel[] = []
+const EMPTY_LABEL_LIST: Label[] = []
 const EMPTY_REMINDER_LIST: ITaskReminder[] = []
 
 export function useQuickAddComposer(title: Ref<string>, mode: Ref<PrefixMode>) {
@@ -43,9 +43,9 @@ export function useQuickAddComposer(title: Ref<string>, mode: Ref<PrefixMode>) {
 	const effectivePriority = computed<number | null>(
 		() => resolveOverride(overrides, 'priority', parsed.value.priority),
 	)
-	const effectiveLabels = computed<ILabel[]>(
+	const effectiveLabels = computed<Label[]>(
 		() => overrides.labels ?? (parsed.value.labels.length > 0
-			? parsed.value.labels.map(name => ({title: name} as ILabel))
+			? parsed.value.labels.map(name => ({title: name} as Label))
 			: EMPTY_LABEL_LIST),
 	)
 	const effectiveProject = computed<IProject | null>(

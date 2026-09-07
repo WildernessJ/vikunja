@@ -91,8 +91,9 @@ func TestHumaUserStats(t *testing.T) {
 	})
 
 	t.Run("Fresh user with no projects gets a well-formed zeroed response", func(t *testing.T) {
-		// testuser21 owns no projects and is on no team with project access.
-		rec := humaRequest(t, e, http.MethodGet, "/api/v2/user/stats", "", humaTokenFor(t, &testuser21), "")
+		// testuser22 owns no projects and is on no team with project access
+		// (testuser21 owns fixture project 44).
+		rec := humaRequest(t, e, http.MethodGet, "/api/v2/user/stats", "", humaTokenFor(t, &testuser22), "")
 		require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
 
 		var resp userStatsResponse

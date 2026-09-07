@@ -11,6 +11,7 @@ import {LINK_SHARE_HASH_PREFIX} from '@/constants/linkShareHash'
 import {REDIRECT_HASH_PREFIX} from '@/constants/redirectHash'
 import {AUTH_ROUTE_NAMES} from '@/constants/authRouteNames'
 import {PRO_FEATURE} from '@/constants/proFeatures'
+import {error, success, translate} from '@/message'
 
 import {useAuthStore} from '@/stores/auth'
 import {useBaseStore} from '@/stores/base'
@@ -570,6 +571,27 @@ function resolveRedirectHash(hash: string) {
 
 export async function getAuthForRoute(to: RouteLocation, authStore: ReturnType<typeof useAuthStore>) {
 	const redirect = resolveRedirectHash(to.hash)
+
+	// Signed-in browsers bounce off the login page, so the token has to be redeemed here.
+	const rawConfirmToken = to.query.userEmailConfirm
+	const confirmToken = Array.isArray(rawConfirmToken) ? rawConfirmToken[0] : rawConfirmToken
+	if (typeof confirmToken === 'string' && confirmToken !== '' && authStore.authUser) {
+		try {
+			// info may predate a change requested in another session; re-read before judging.
+			await authStore.refreshUserInfo()
+			const hadPending = !!authStore.info?.pendingEmail
+			await authStore.verifyEmail(confirmToken)
+			await authStore.refreshUserInfo()
+			if (hadPending && !authStore.info?.pendingEmail) {
+				success({message: translate('user.settings.updateEmailConfirmed')})
+				return {name: 'user.settings.email-update'}
+			}
+		} catch (e) {
+			// verifyEmail rethrows with the axios error as cause; the i18n code lookup needs the original
+			error((e as {cause?: unknown})?.cause ?? e)
+		}
+		return {name: 'home'}
+	}
 
 	if (authStore.authUser || authStore.authLinkShare) {
 		// An already-signed-in browser that opens a copied /login#redirect=<oauth.authorize> URL

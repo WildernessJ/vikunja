@@ -458,12 +458,21 @@
   deleted_at: 2018-12-01 01:12:04
   created: 2018-12-01 01:12:04
   updated: 2018-12-01 01:12:04
-# Task in grandchild project 44 (subproject task rollup test)
+# Write target for bot 23 in the #3592 regression.
+- id: 52
+  title: 'task #52 in bot project'
+  done: false
+  created_by_id: 23
+  project_id: 44
+  index: 1
+  created: 2018-12-01 01:12:04
+  updated: 2018-12-01 01:12:04
+# Task in grandchild project 45 (subproject task rollup test)
 - id: 54
   title: 'task #54 in hierarchy grandchild'
   done: false
   created_by_id: 6
-  project_id: 44
+  project_id: 45
   index: 1
   created: 2018-12-01 01:12:04
   updated: 2018-12-01 01:12:04

@@ -221,7 +221,7 @@ import {autoUpdate, computePosition, flip, offset, shift} from '@floating-ui/dom
 import {RELATION_KIND} from '@/types/IRelationKind'
 import type {ITask} from '@/modelTypes/ITask'
 import type {IProject} from '@/modelTypes/IProject'
-import type {ILabel} from '@/modelTypes/ILabel'
+import type {Label} from '@/client/generated'
 
 import Expandable from '@/components/base/Expandable.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
@@ -491,12 +491,12 @@ async function addTask() {
 		const allLabels = tasksToCreate.map(({title}) => getLabelsFromPrefix(title, quickAddMagicMode.value) ?? [])
 		const requestedLabels = [...new Set(allLabels.flat())]
 		const resolvedLabels = await taskStore.ensureLabelsExist(requestedLabels)
-		const resolvedLabelsByTitle = new Map(resolvedLabels.map(l => [l.title.toLowerCase(), l]))
+		const resolvedLabelsByTitle = new Map(resolvedLabels.map(l => [(l.title ?? '').toLowerCase(), l]))
 
 		// Every task (single or multi) gets its labels pre-resolved and passed down as an
 		// override, so the store never re-resolves by title and re-toasts a label that
 		// already failed in the batch resolve above.
-		const labelsOverrideFor = (title: string): ILabel[] | undefined => {
+		const labelsOverrideFor = (title: string): Label[] | undefined => {
 			if (composerOverrides?.labels !== undefined) {
 				return composerOverrides.labels
 			}
@@ -506,7 +506,7 @@ async function addTask() {
 			}
 			return parsedLabels
 				.map(labelTitle => resolvedLabelsByTitle.get(labelTitle.toLowerCase()))
-				.filter((l): l is ILabel => l !== undefined)
+				.filter((l): l is Label => l !== undefined)
 		}
 
 		const overridesFor = (title: string) => {
@@ -575,7 +575,7 @@ async function addTask() {
 					projectId: (project !== null
 						? await taskStore.findProjectId({project, projectId: 0})
 						: currentProjectIdValue) || authStore.settings.defaultProjectId || 0,
-					labels: labelsOverrideFor(title)?.map(l => l.title),
+					labels: labelsOverrideFor(title)?.map(l => l.title ?? ''),
 				})))
 
 			// Input like a lone bullet passes the empty check but parses to nothing.

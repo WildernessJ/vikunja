@@ -114,7 +114,8 @@ func validateTaskField(fieldName string) error {
 	case
 		taskPropertyAssignees,
 		taskPropertyLabels,
-		taskPropertyReminders:
+		taskPropertyReminders,
+		taskPropertyCreatedBy:
 		return nil
 	}
 
@@ -252,20 +253,16 @@ const maxDescendantDepth = 1000
 // getDescendantProjectsForUser returns every descendant (all levels) of parentProjectID
 // that the acting user can read, archived ones excluded.
 //
-// It's a single recursive CTE seeded at parentProjectID, walking parent_project_id
-// downward, intersected with the same permission-scoped accessible-project CTE
-// accessibleProjectIDsSubquery/getUserProjectsStatement use (pkg/models/project.go).
 // Vikunja's permission model cascades read access down the whole project tree (see
 // checkPermissionsForProjects), so once parentProjectID is confirmed readable by the
-// caller every true descendant is provably readable too - but the intersection is kept
-// as defense in depth against that invariant ever changing or against a future
-// implementation bug in the tree walk (this area has CVE-2026-55064 history).
+// caller every true descendant is provably readable too - but the intersection with
+// the access memo is kept as defense in depth against that invariant ever changing or
+// against a future implementation bug in the tree walk (CVE-2026-55064 history).
 func getDescendantProjectsForUser(s *xorm.Session, a web.Auth, parentProjectID int64) (descendants []*Project, err error) {
 	// Link shares are scoped to exactly the project they were created for and never
-	// cascade to children (see accessibleProjectIDsSubquery in pkg/models/project.go,
-	// which does the equivalent equality check instead of expanding). GetFromAuth
-	// errors with ErrMustNotBeLinkShare for a *LinkSharing, so short-circuit here
-	// rather than let a link-share client asking for include_child_projects=true 500.
+	// cascade to children. GetFromAuth errors with ErrMustNotBeLinkShare for a
+	// *LinkSharing, so short-circuit here rather than let a link-share client asking
+	// for include_child_projects=true 500.
 	if _, isLinkShare := a.(*LinkSharing); isLinkShare {
 		return nil, nil
 	}
@@ -275,23 +272,12 @@ func getDescendantProjectsForUser(s *xorm.Session, a web.Auth, parentProjectID i
 		return nil, fmt.Errorf("resolving acting user for descendant project lookup: %w", err)
 	}
 
-	baseQuery := getUserProjectsStatement(u.ID, "", false)
-	baseSQLStr, baseArgs, err := baseQuery.Select("l.id").ToSQL()
+	access, err := getProjectAccessForUser(s, u.ID)
 	if err != nil {
-		return nil, fmt.Errorf("building accessible-projects base query: %w", err)
+		return nil, fmt.Errorf("resolving accessible projects for descendant project lookup: %w", err)
 	}
 
-	// accessible_projects mirrors accessibleProjectIDsSubquery's recursive-CTE
-	// accessible-set construction (pkg/models/project.go) - hand-inlined here for the
-	// depth-tracking descendant walk below; MUST be kept in sync if the permission
-	// model in accessibleProjectIDsSubquery/getUserProjectsStatement ever changes.
-	sql := `WITH RECURSIVE accessible_projects AS (
-	` + baseSQLStr + `
-	UNION ALL
-	SELECT p.id FROM projects p
-	INNER JOIN accessible_projects ap ON p.parent_project_id = ap.id
-),
-descendant_projects AS (
+	sql := `WITH RECURSIVE descendant_projects AS (
 	SELECT id, parent_project_id, CASE WHEN is_archived THEN 1 ELSE 0 END AS archived_cascade, 0 AS depth
 	FROM projects
 	WHERE id = ?
@@ -305,17 +291,19 @@ SELECT p.id, p.title, p.description, p.identifier, p.hex_color, p.owner_id, p.pa
 FROM projects p
 INNER JOIN descendant_projects d ON d.id = p.id
 WHERE d.id <> ?
-  AND d.archived_cascade = 0
-  AND d.id IN (SELECT id FROM accessible_projects)`
+  AND d.archived_cascade = 0`
 
-	args := make([]interface{}, 0, len(baseArgs)+2)
-	args = append(args, baseArgs...)
-	args = append(args, parentProjectID, parentProjectID)
-
-	descendants = []*Project{}
-	err = s.SQL(sql, args...).Find(&descendants)
+	reachable := []*Project{}
+	err = s.SQL(sql, parentProjectID, parentProjectID).Find(&reachable)
 	if err != nil {
 		return nil, fmt.Errorf("resolving descendant projects for project %d: %w", parentProjectID, err)
+	}
+
+	descendants = make([]*Project, 0, len(reachable))
+	for _, p := range reachable {
+		if _, has := access.permission(p.ID); has {
+			descendants = append(descendants, p)
+		}
 	}
 
 	return descendants, nil

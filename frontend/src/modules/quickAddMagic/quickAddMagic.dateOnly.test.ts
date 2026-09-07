@@ -1,4 +1,5 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
+import {setActivePinia, createPinia} from 'pinia'
 
 import {parseTaskText, PrefixMode} from '.'
 
@@ -6,6 +7,7 @@ const NOW = new Date('2024-03-05T09:00:00')
 
 describe('parseTaskText with dateOnly', () => {
 	beforeEach(() => {
+		setActivePinia(createPinia())
 		vi.useFakeTimers()
 		vi.setSystemTime(NOW)
 	})

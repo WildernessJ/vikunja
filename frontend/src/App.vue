@@ -25,7 +25,7 @@
 				v-else
 				show-api-config
 			>
-				<RouterView />
+				<RouterView v-if="showNoAuthRoute" />
 			</NoAuthWrapper>
 		</template>
 
@@ -80,9 +80,10 @@ const baseStore = useBaseStore()
 
 const {isQuickAddMode} = useQuickAddMode()
 
-// Native #main-content activation scrolls but never moves focus into <main>; do it explicitly for SPA routing
+// Activating #main-content only scrolls natively, so focus has to be moved explicitly.
+// Deferred a frame because a synchronous focus() did not stick in Safari.
 function skipToMainContent() {
-	document.getElementById('main-content')?.focus()
+	requestAnimationFrame(() => document.getElementById('main-content')?.focus())
 }
 
 // Make the Electron frameless window transparent
@@ -94,6 +95,12 @@ if (isQuickAddMode) {
 const route = useRoute()
 
 const showAuthLayout = computed(() => authStore.authUser && typeof route.name === 'string' && !AUTH_ROUTE_NAMES.has(route.name))
+
+// The router guard bounces every other route to /login while logged out, so anything
+// else reaching the logged-out shell means the auth state was cleared mid-navigation
+// (logout, expired session) while the old route is still current. Mounting it there
+// would run app components against a null `authStore.info`.
+const showNoAuthRoute = computed(() => typeof route.name === 'string' && AUTH_ROUTE_NAMES.has(route.name))
 
 useBodyClass('is-touch', isTouchDevice())
 useAppBadge()

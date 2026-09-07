@@ -1,10 +1,12 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
+import {setActivePinia, createPinia} from 'pinia'
 
 import {parseTaskText, PrefixMode} from '.'
 import {parseDate} from './dateParser'
 
 describe('Parse deadline from {…} syntax', () => {
 	beforeEach(() => {
+		setActivePinia(createPinia())
 		// A Monday, so "next friday" resolves deterministically.
 		vi.useFakeTimers()
 		vi.setSystemTime(new Date(2024, 0, 1, 12, 0, 0))
