@@ -8,7 +8,8 @@ below — never edit it on this fork, so upstream syncs merge clean.
 ## Corrections to the imported doc
 
 - Frontend layout: `src/models/` holds **model classes**; the TypeScript interfaces for
-  them live in `src/modelTypes/` (the imported doc conflates the two).
+  them live in `src/modelTypes/` (the imported doc no longer lists either — upstream trimmed its
+  layout section in v2.6.0; kept here because the split still trips people up).
 - i18n: frontend strings (`frontend/src/i18n/lang`) and API strings (`pkg/i18n/lang`) are
   two independent trees with no shared keys and no cross-check — if a change surfaces text
   on **both** a UI element (toast/label) **and** an API/notification (email), add the
@@ -27,14 +28,14 @@ carries no repo-specific instruction. Edit doctrine there, never here.
 Repo-specific deviations and config only, from here down.
 
 Per-repo config is `.workflow.yaml` at repo root (local-only, git-excluded): mage-based
-build/test commands (plain `go test` does NOT work — see Essential Commands), frontend
+build/test commands (plain `go test` does NOT work — see Development Commands), frontend
 typecheck, and `live_verify_mode: browser`.
 
 - **Worktrees:** `mage dev:prepare-worktree <name> ""` still works and creates the worktree in
   `../` rather than `.worktrees/`; either is fine, but **all `flowlib` run-state commands must
   run from the worktree root** — `.workflow-run.json` is cwd-relative and both build and review
   must read the same file.
-- **Suite:** `mage test:web` + `pnpm typecheck` (plain `go test` does NOT work — see Essential
+- **Suite:** `mage test:feature` + `pnpm typecheck` (`mage test:web` is `pkg/webtests` only; plain `go test` does NOT work — see Development
   Commands). Live-verify is in the browser.
 
 `specs/` was excluded via `.git/info/exclude` until 2026-08-09, grouped with the harness
