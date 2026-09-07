@@ -46,8 +46,13 @@ extend scope by one line per date in `rescheduleTask`. Default if unanswered: ac
    which routes every date through `getRoundedDate`; both rounded values are fixed points of the
    helper) and stays untouched. **Deviation from the issue text:** #92 says "thread into both
    components"; `GanttRowBars.vue` never writes a date and its one call is a no-op on rounded input.
-   Accepted residual: the bar watcher keys on `[visibleNodes, filters]`, so flipping the toggle while
-   a Gantt view is mounted leaves stale geometry until remount. The toggle lives on another route.
+   The bar watcher keys on `[visibleNodes, filters]`, and `ProjectView` sits inside
+   `<keep-alive :include="['project.view']">` (`ContentAuth.vue`), so a Gantt view survives a trip to
+   settings and back — the toggle would flip with stale geometry until a hard reload. Add `dateOnly`
+   to the watcher's sources so the bars rebuild when the toggle changes. One token.
+   Disclosed side effect: `startOnly`/`endOnly` bars synthesise the missing side at ±7 days; with the
+   end forced to 23:59:59.999 the span renders as 8 day-widths, not 7. Consistent with "a task on day
+   D covers day D"; accepted.
 3. **DeferTask: every read of `dueDate.value` goes through one normaliser.** Once `dateFormat` is
    `'Y-m-d'`, vue-flatpickr-component's `onInput` emits the **string** `'YYYY-MM-DD'` into the
    v-model after every pick *and after every `deferDays` click* (flatpickr's `setDate` dispatches an
@@ -68,11 +73,17 @@ extend scope by one line per date in `rescheduleTask`. Default if unanswered: ac
    fresh `Date` (`new Date(createDateFromString(v))`) so the object handed to `taskStore.update` is a
    copy, as today. `getDateWithTime` is **not** used: with the toggle off, deferring must keep the
    task's existing time, not apply `defaultDueTime`.
-6. **In-flight guard.** `updateDueDate` returns early while `saving` is true. Pre-existing hole: a
-   save slower than 1 s let the next tick issue a second PUT. One line, same file, and the
-   live-verify "one PUT" check depends on it.
-7. **Picker config mirrors `DatepickerInline`:** `enableTime: !dateOnly`,
-   `dateFormat: dateOnly ? 'Y-m-d' : 'Y-m-d H:i'`, `altFormat` short/long (`date.altFormatShort` exists).
+6. **No in-flight guard (round-2 reversal).** Round 1 proposed `if (saving.value) return` at the top of
+   `updateDueDate`. Round 2 showed it drops a second click deterministically: the buttons are not
+   disabled during a save, the guard swallows the click, and the parent's `modelValue` echo then
+   resets `dueDate` to the first save's value, so the change is gone with no UI hint. Today's
+   behaviour (a second PUT racing the first) is the lesser evil and is pre-existing. Not touched;
+   recorded as a residual. A queued re-save after the in-flight one resolves would be the real fix and
+   is out of scope.
+7. **Picker config takes three keys from `DatepickerInline`, not the whole block:**
+   `enableTime: !dateOnly`, `dateFormat: dateOnly ? 'Y-m-d' : 'Y-m-d H:i'`, `altFormat` short/long
+   (`date.altFormatShort` exists). Do **not** copy its `defaultHour`/`defaultMinute` spread — that
+   would pull `defaultDueTime` into the defer path (Design 5).
 
 ## Implementation plan
 
@@ -81,6 +92,7 @@ extend scope by one line per date in `rescheduleTask`. Default if unanswered: ac
 - `import {useDateOnly} from '@/composables/useDateOnly'`; `const {store: dateOnly} = useDateOnly()`.
 - Local `function toEndBoundary(d: Date) { return roundToNaturalDayBoundary(d, false, dateOnly.value) }`.
 - `getRoundedDate`: `roundToNaturalDayBoundary(date, isStart, !isStart && dateOnly.value)`.
+- Bars watcher (line ~366): `watch([visibleNodes, filters, dateOnly], …)`.
 - `updateGanttTask`: the five `roundToNaturalDayBoundary(newEnd)` calls (endDate ×3, dueDate ×2)
   → `toEndBoundary(newEnd)`. Start-side calls unchanged.
 
@@ -95,17 +107,20 @@ extend scope by one line per date in `rescheduleTask`. Default if unanswered: ac
 - `modelValue` watch: `lastValue.value = normalise(value.dueDate)`.
 - `flatPickerConfig`: per Design 7.
 - `deferDays`: `const base = normalise(dueDate.value) ?? new Date()`; add days; assign; call `updateDueDate`.
-- `updateDueDate`: `if (saving.value) return`; `const next = normalise(dueDate.value)`; return if
+- `updateDueDate`: `const next = normalise(dueDate.value)`; return if
   `next === null || !task.value`; return if `lastValue.value && +next === +lastValue.value`; save
   `dueDate: next`.
-- Grep gate before commit: `grep -n 'new Date(dueDate' DeferTask.vue` returns nothing.
+- Convention, not enforced: no bare `new Date(...)` on a picker value anywhere in the file
+  (`grep -n 'new Date(' DeferTask.vue` should show only `new Date()` for the no-due-date fallback and
+  the copy inside `normalise`). The real gate is test 8 in Los Angeles.
 
 ### `docs/adr/ADR-0014-date-only-canonical-timestamp.md`
 
 - Replace the "Gantt drag/resize does not apply the canonical times … Deferred — tracked in a
-  follow-up issue" consequence with a one-line dated note: closed by #92/#95 on this branch; the
-  CalDAV and reminder-email residuals now hold for Gantt-dragged and deferred dates too. The ADR must
-  not state a falsehood after merge.
+  follow-up issue" consequence with a one-line dated note: closed by #92/#95; the CalDAV and
+  reminder-email residuals now hold for Gantt-dragged and deferred dates too. Leave the `**Status:**`
+  line and the `docs/adr/README.md` row as "Accepted" — the decision is unchanged, a residual closed.
+  (ADR-0014 uses a bold status line, not the template's front matter; pre-existing, not fixed here.)
 
 ### Edge cases
 
@@ -128,9 +143,13 @@ All date assertions on **local-time components** (`getFullYear/getMonth/getDate/
 ISO strings. The DeferTask file is run under two zones (see Verification); test 8 is red only west
 of UTC, which is exactly why.
 
-`frontend/src/components/gantt/GanttChart.test.ts` (extend; `vi.mock('@/composables/useDateOnly')`
-with a hoisted `ref(false)`, the `TaskContextMenu.test.ts` pattern — required, since this file mounts
-without pinia and `useDateOnly` reaches the auth store):
+`frontend/src/components/gantt/GanttChart.test.ts` (extend). Mock the **composable module**, not the
+auth store: `vi.mock('@/composables/useDateOnly', () => ({useDateOnly: () => ({store: dateOnlyRef})}))`
+with `dateOnlyRef` a `vi.hoisted` reactive `ref(false)` flipped per test. It must be a real `ref`:
+`useDateOnly` is a `createSharedComposable` and a computed reading a plain object would cache the
+first test's value (the same trap `TaskContextMenu.test.ts:33-34` documents for its auth-store mock —
+that file mocks `@/stores/auth`, which is the wrong layer here). Required because this file mounts
+without pinia and the real `useDateOnly` reaches the auth store:
 
 1. dateOnly **on**, task with `dueDate` only, `updateGanttTask('1', start, 09:00 on day D)` → emitted
    `update:task` has `dueDate` at D 23:59:59.999. **(red today: 00:00)**
@@ -139,22 +158,23 @@ without pinia and `useDateOnly` reaches the auth store):
 
 `frontend/src/components/tasks/partials/DeferTask.test.ts` (extend; same `useDateOnly` mock; the file
 already has pinia for `useTimeFormat`, keep it; `flat-pickr` stays stubbed — the string path is
-exercised by assigning `wrapper.vm.dueDate` directly, which VTU's proxy allows):
+exercised by assigning `wrapper.vm.dueDate` directly, which VTU's proxy allows). Every mount starts a
+1 s `setInterval`; `afterEach` unmounts every wrapper so a slow test cannot get a stray tick:
 
 4. dateOnly **on**, task due 10:00 on D, `deferDays(1)` → `taskStore.update` called with `dueDate`
    D+1 23:59:59.999. **(red today: 10:00)**
 5. dateOnly **on**, task due D 23:59:59.999, set `wrapper.vm.dueDate = 'YYYY-MM-DD'` of D, call
    `updateDueDate()` → `taskStore.update` **not** called (the raw compare would have saved). **(red today)**
-6. dateOnly **on** → `flatPickerConfig.enableTime === false`; **off** → `true`.
+6. dateOnly **on** → `flatPickerConfig.enableTime === false`; **off** → `true`. **(red today: hardcoded `true`)**
 7. dateOnly **off**, `deferDays(1)` from 10:00 → saved `dueDate` is D+1 10:00. (unchanged behaviour)
 8. dateOnly **on**, `wrapper.vm.dueDate = 'YYYY-MM-DD'` of D, `deferDays(1)` → saved `dueDate` has
    local date D+1. **(red west of UTC today and with a naive port of the plan; green at UTC — hence the two-zone run)**
 9. dateOnly **on**, task with `dueDate: null` mounted → no throw, `taskStore.update` not called after
-   `updateDueDate()`. **(red against a null-unsafe normaliser)**
+   `updateDueDate()`. (green today — the current code never touches a null seed; this guards the
+   round-1 C2 defect, which a naive normalised seed would introduce)
 
-Not tested, by decision: the in-flight guard (Design 6, one line) and the 1 s interval itself.
-Test 5 establishes that one `updateDueDate()` with a matching day does not save; it does not exercise
-the timer. Live-verify (b) covers the timer.
+Not tested, by decision: the 1 s interval itself. Test 5 establishes that one `updateDueDate()` with a
+matching day does not save; it does not exercise the timer. Live-verify (b) covers the timer.
 
 ## Verification
 
@@ -163,20 +183,22 @@ cd frontend && pnpm install --frozen-lockfile 2>&1 | tail -3          # worktree
 cd frontend && TZ=America/Los_Angeles pnpm vitest run src/components/gantt/GanttChart.test.ts src/components/tasks/partials/DeferTask.test.ts 2>&1 | tee /tmp/vitest-la.log
 cd frontend && TZ=UTC pnpm vitest run src/components/tasks/partials/DeferTask.test.ts 2>&1 | tee /tmp/vitest-utc.log
 cd frontend && pnpm typecheck 2>&1 | tee /tmp/typecheck.log            # ratchet: no new errors in the two touched files
-grep -n 'new Date(dueDate' frontend/src/components/tasks/partials/DeferTask.vue   # must print nothing
-mage test:feature 2>&1 | tee /tmp/feature.log                          # backend untouched; suite green is the merge gate
+TZ=UTC mage test:feature 2>&1 | tee /tmp/feature.log                   # backend untouched; two upstream tests are TZ-dependent (PITFALLS), hence TZ=UTC
 ```
 
-Done looks like: nine tests green in both zones (1, 3, 4, 5, 8, 9 were red first); grep gate empty;
-typecheck ratchet unchanged; lint clean (`pnpm lint:fix`); ADR-0014 consequence replaced.
+Done looks like: nine tests green in both zones (**1, 3, 4, 5, 6, 8 red first**; 2, 7, 9 are guards
+that pass today); typecheck ratchet unchanged; lint clean (`pnpm lint:fix`); ADR-0014 consequence
+replaced.
 
 **Live verify (browser, dev servers via `/dev`, machine zone is west of UTC):** toggle date-only on.
 (a) Gantt: drag a due-only bar's end to a new day, then read the row: `select due_date from tasks
 where id=…` shows `…23:59:59.999` local. (b) Task detail → Defer: no time row; click "+1 day"
 **twice** — the task moves two days and each click issues one PUT; pick a calendar day → that day
 23:59:59.999, one PUT, no further PUTs while the popup stays open. Open the popup on a dateless task:
-no error, no PUT. (c) Toggle off: defer keeps the task's existing time; Gantt drag stores 00:00 for a
-before-noon drop as before.
+no error, no PUT. Wait for each save to settle before the next click — the pre-existing race on
+overlapping clicks is a residual, not under test. (c) Toggle off: defer keeps the task's existing
+time; Gantt drag stores 00:00 for a before-noon drop as before. (d) With Gantt open, go to settings,
+flip the toggle, come back: bars redraw without a reload.
 
 ## Stop criteria
 
@@ -188,7 +210,7 @@ before-noon drop as before.
   `GanttRowBars.vue` → halt; that is a design change.
 - Typecheck ratchet regresses in a file outside the two touched ones → halt.
 - Test 8 green at UTC but red in Los Angeles **after** the plan is implemented → halt; a bare parse
-  survived somewhere (the grep gate should have caught it).
+  survived somewhere.
 
 ## Execution Log
 
@@ -201,3 +223,11 @@ _(empty — the build phase appends here)_
   C5 "byte-identical" false; S1 ADR-0014 left stating a falsehood; S4 stop criterion pre-violated;
   S3 import claim wrong. All addressed above. S2 (calendar `addDays` convention) → open question
   for Jason. C6 (in-flight guard) adopted as Design 6. C7/C8 recorded as accepted residuals.
+- Round 2 (verifier, 2026-09-07): REFUTED. Blocker: the round-1 Design 6 guard drops a second click
+  deterministically (parent `modelValue` echo resets the ref) → guard **dropped**, pre-existing race
+  kept as residual. Also: `keep-alive` makes the Gantt toggle staleness permanent → `dateOnly` added
+  to the bars watcher; `mage test:feature` needs `TZ=UTC`; red-first list corrected (6 red, 9 green);
+  mock target clarified (composable module, real `ref`); ADR status/README stay "Accepted";
+  `defaultHour` spread excluded explicitly; startOnly/endOnly 8-day width disclosed; grep gate
+  demoted to convention. Held under running: `normalise` arithmetic in LA, test 8 red/green split,
+  vitest honours `TZ`, flatpickr emits the string, no post-save loop from ms truncation.
