@@ -31,6 +31,12 @@ DeferTask's "+N days" is the same gesture and #95 asks it to snap. The fork then
 "shift by N days" on a legacy task. Either accept (calendar drag stays a pure shift; recorded here) or
 extend scope by one line per date in `rescheduleTask`. Default if unanswered: accept, out of scope.
 
+**Open question 2 (round 3):** `ProjectGantt.addGanttTask` (lines ~120-133) creates a task whose end
+date is hardcoded to `setHours(23, 59, 0, 0)` → 23:59:00.000, ignoring the toggle. 59.999 s off the
+canonical value, invisible in the UI, visible to CalDAV/reminder email. Same class, third Gantt write
+site, a create path with no existing test. Default if unanswered: out of scope, file a follow-up issue
+at review. The ADR replacement text says "Gantt-dragged and deferred dates", which stays true.
+
 ## Design
 
 1. **Force at the write sites, read the toggle via `useDateOnly()`.** Same shape as the Calendar fix
@@ -101,7 +107,7 @@ extend scope by one line per date in `rescheduleTask`. Default if unanswered: ac
 - Imports: `useDateOnly`, `roundToNaturalDayBoundary`, `createDateFromString`.
 - `const {store: dateOnly} = useDateOnly()`.
 - `const dueDate = ref<Date | string | null>(null)` — flatpickr writes a string; type it honestly.
-- `function normalise(value: Date | string | null): Date | null` — `null` → `null`; else
+- `function normalise(value: Date | string | null): Date | null` — falsy (`null`, `''`) → `null`; else
   `new Date(createDateFromString(value))`, then `roundToNaturalDayBoundary(_, false, true)` when
   `dateOnly.value`.
 - `modelValue` watch: `lastValue.value = normalise(value.dueDate)`.
@@ -144,22 +150,42 @@ ISO strings. The DeferTask file is run under two zones (see Verification); test 
 of UTC, which is exactly why.
 
 `frontend/src/components/gantt/GanttChart.test.ts` (extend). Mock the **composable module**, not the
-auth store: `vi.mock('@/composables/useDateOnly', () => ({useDateOnly: () => ({store: dateOnlyRef})}))`
-with `dateOnlyRef` a `vi.hoisted` reactive `ref(false)` flipped per test. It must be a real `ref`:
-`useDateOnly` is a `createSharedComposable` and a computed reading a plain object would cache the
-first test's value (the same trap `TaskContextMenu.test.ts:33-34` documents for its auth-store mock —
-that file mocks `@/stores/auth`, which is the wrong layer here). Required because this file mounts
+auth store, using the mechanism at `TaskContextMenu.test.ts:35-41` (that file targets `@/stores/auth`;
+the mechanism is what to copy, not the target). `vi.hoisted` runs above the import bindings, so
+`ref` from `vue` is in its temporal dead zone there — `vi.hoisted(() => ref(false))` throws
+`ReferenceError` and collects zero tests (verified under vitest 4.1.11). Shape:
+
+```ts
+const dateOnlyMock = vi.hoisted((): {ref: {value: boolean}} => ({ref: {value: false}}))
+vi.mock('@/composables/useDateOnly', async () => {
+	const {ref} = await import('vue')
+	dateOnlyMock.ref = ref(false)
+	return {useDateOnly: () => ({store: dateOnlyMock.ref})}
+})
+```
+
+It must be a real `ref`, not a plain `{value}` object: `GanttChart.vue` puts `dateOnly` in a
+`watch([...])` source list, and a plain object is an invalid watch source (Vue warns, the third source
+is inert, and the toggle-flip path under test is silently disabled). Required because this file mounts
 without pinia and the real `useDateOnly` reaches the auth store:
 
 1. dateOnly **on**, task with `dueDate` only, `updateGanttTask('1', start, 09:00 on day D)` → emitted
    `update:task` has `dueDate` at D 23:59:59.999. **(red today: 00:00)**
 2. dateOnly **off**, same call → `dueDate` at D 00:00:00.000 (heuristic preserved). (regression guard)
-3. dateOnly **on**, start+end task → `endDate` forced, `startDate` at 00:00. **(red today)**
+3. dateOnly **on**, start+end task, `newEnd` **09:00** on day D (before noon — an afternoon value
+   passes with or without the fix) → `endDate` D 23:59:59.999, `startDate` at 00:00. **(red today)**
 
 `frontend/src/components/tasks/partials/DeferTask.test.ts` (extend; same `useDateOnly` mock; the file
 already has pinia for `useTimeFormat`, keep it; `flat-pickr` stays stubbed — the string path is
 exercised by assigning `wrapper.vm.dueDate` directly, which VTU's proxy allows). Every mount starts a
-1 s `setInterval`; `afterEach` unmounts every wrapper so a slow test cannot get a stray tick:
+1 s `setInterval`; `afterEach` unmounts every wrapper so a slow test cannot get a stray tick.
+**Mock-return contract:** `onBeforeUnmount` calls `updateDueDate()`, which reads `newTask.dueDate` off
+the store mock's result. `beforeEach` must give `taskStoreUpdateMock` a default
+`mockResolvedValue({id: 1, dueDate: <some Date>})` (today it only has `mockReset()`), and tests
+must not rely on `mockResolvedValueOnce` alone — a second call returning `undefined` at unmount is an
+unhandled rejection that fails the file with every assertion green (verified by running). Tests that
+assert the saved value should read it from `taskStoreUpdateMock.mock.calls[0][0].dueDate`, not from
+what the mock returns:
 
 4. dateOnly **on**, task due 10:00 on D, `deferDays(1)` → `taskStore.update` called with `dueDate`
    D+1 23:59:59.999. **(red today: 10:00)**
@@ -182,7 +208,7 @@ matching day does not save; it does not exercise the timer. Live-verify (b) cove
 cd frontend && pnpm install --frozen-lockfile 2>&1 | tail -3          # worktree has no node_modules
 cd frontend && TZ=America/Los_Angeles pnpm vitest run src/components/gantt/GanttChart.test.ts src/components/tasks/partials/DeferTask.test.ts 2>&1 | tee /tmp/vitest-la.log
 cd frontend && TZ=UTC pnpm vitest run src/components/tasks/partials/DeferTask.test.ts 2>&1 | tee /tmp/vitest-utc.log
-cd frontend && pnpm typecheck 2>&1 | tee /tmp/typecheck.log            # ratchet: no new errors in the two touched files
+cd frontend && pnpm typecheck:ratchet 2>&1 | tee /tmp/typecheck.log    # the gate; plain `pnpm typecheck` exits non-zero on ~900 baseline errors. Neither touched file is in typecheck-baseline.json → budget 0
 TZ=UTC mage test:feature 2>&1 | tee /tmp/feature.log                   # backend untouched; two upstream tests are TZ-dependent (PITFALLS), hence TZ=UTC
 ```
 
@@ -196,7 +222,8 @@ where id=…` shows `…23:59:59.999` local. (b) Task detail → Defer: no time 
 **twice** — the task moves two days and each click issues one PUT; pick a calendar day → that day
 23:59:59.999, one PUT, no further PUTs while the popup stays open. Open the popup on a dateless task:
 no error, no PUT. Wait for each save to settle before the next click — the pre-existing race on
-overlapping clicks is a residual, not under test. (c) Toggle off: defer keeps the task's existing
+overlapping clicks is a residual, not under test; so is the 1 s timer re-issuing an identical PUT
+when a save takes longer than a second (pre-existing, `lastValue` advances only after the await). (c) Toggle off: defer keeps the task's existing
 time; Gantt drag stores 00:00 for a before-noon drop as before. (d) With Gantt open, go to settings,
 flip the toggle, come back: bars redraw without a reload.
 
@@ -231,3 +258,11 @@ _(empty — the build phase appends here)_
   `defaultHour` spread excluded explicitly; startOnly/endOnly 8-day width disclosed; grep gate
   demoted to convention. Held under running: `normalise` arithmetic in LA, test 8 red/green split,
   vitest honours `TZ`, flatpickr emits the string, no post-save loop from ms truncation.
+- Round 3 (verifier, 2026-09-07): **no blocker**; design held (watcher amendment rebuilds real
+  geometry; settings save replaces the store object so the computed fires; keep-alive does not swallow
+  the flip — run). Mechanical fixes applied: `vi.hoisted(() => ref())` is a TDZ throw → async mock
+  factory pattern spelled out; `afterEach` unmount needs a default mock return → contract stated;
+  test 3 pinned to a before-noon `newEnd`; `pnpm typecheck` → `pnpm typecheck:ratchet`; normaliser
+  treats `''` as `null`; real-`ref` rationale corrected (watch source, not computed caching); timer
+  re-PUT residual noted. New site found: `ProjectGantt.addGanttTask` 23:59:00 → open question 2.
+  Loop closed per the stop criterion set at round 1 (no confirmed blocker, or three rounds).
