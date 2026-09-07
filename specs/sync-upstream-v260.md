@@ -195,8 +195,11 @@ Built 2026-09-06 across two executor-max dispatches with a verifier round after 
    rested on a misattribution. `git log --format='%an'` on `useTaskListFiltering.ts` shows both
    commits that touched the parameter (`d895053d2`, `d59b2e1f7`) are `kolaente` — upstream code
    inherited by a prior sync, not a fork feature — and upstream deliberately reversed itself in
-   `d59b2e1f7`. The function is 2-param now, so keeping the argument would not compile. Fork-visible
-   effect: subtasks render nested only in saved-filter list views, not also as top-level rows.
+   `d59b2e1f7`, inverting its own test case in `useTaskListFiltering.test.ts`. The merge took upstream's
+   function and test as-is; the fork has no stake in either. (The build's original note said keeping
+   the argument "would not compile" — the old parameter was optional, so that was not the constraint;
+   the audit corrected the wording.) Fork-visible effect: subtasks render nested only in saved-filter
+   list views, not also as top-level rows.
 3. **`magefile.go` `test:filter` taken from upstream, with a known residual.** Upstream runs `-short`
    for everything except `pkg/webtests`, but `pkg/caldavtests` and `pkg/e2etests` carry the same
    `testing.Short()` TestMain guard, so a filter aimed at either **prints `ok` having executed
@@ -204,7 +207,9 @@ Built 2026-09-06 across two executor-max dispatches with a verifier round after 
    Not patched: that would be a fork delta in an upstream-owned file to suppress an upstream defect,
    conflicting on every future sync. This spec's own gates were checked and genuinely execute
    (`TaskPosition` 36 subtests; `TestErrorCodesAreUnique` in `pkg/web`). Belongs in PITFALLS.
-4. **Typecheck gate settled at 8, not the spec's 5** (Jason's call, this session). All three extra
+4. **Typecheck gate settled at 8** (Jason's call, this session). `main`'s `typecheck-baseline.json`
+   budgeted 1 error in 1 file (`CreateEdit.vue`); the spec's "5-error baseline" was the plan session's
+   count including the carried, unbudgeted `services/task.test.ts` regression. All three extra
    errors are in files byte-identical to `upstream/main` — `client/queries/labels.ts` TS2589, and
    `FilterAutocomplete.ts` TS2345 + `highlighter.ts` TS2322 from upstream's lockfile resolving two
    copies of `prosemirror-view`. The per-file ratchet (`typecheck-baseline.json`) was regenerated;
@@ -268,3 +273,10 @@ Fixed in-review, red-first, within the fix threshold (Jason's call):
 
 The verifier's `.gitignore` finding for `.agents/skills/dev` was refuted: `.git/info/exclude`
 line 15 already covers it and `git check-ignore` confirms from both checkouts.
+
+The cold audit (`.flow-audit.md`, preserved at `docs/context/flow-audit-sync-v260.md`) also found the two
+backend tests upstream shipped red — `TestClaimMigrationTakesOverStaleClaim` and
+`TestCleanupOldTokens/…pending_email_change` — fail only in a non-UTC local zone on SQLite (bound Go
+local time vs stored UTC text); both pass with `TZ=UTC`. Upstream CI and the prod container run UTC.
+`mage test:web` could not see them because it runs `pkg/webtests` only; `.workflow.yaml` `test_command`
+is now `mage test:feature`.
