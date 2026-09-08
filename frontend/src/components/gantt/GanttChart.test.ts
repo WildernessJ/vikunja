@@ -1,4 +1,5 @@
 import {describe, it, expect, vi, beforeEach} from 'vitest'
+import {nextTick} from 'vue'
 import {mount} from '@vue/test-utils'
 import {createI18n} from 'vue-i18n'
 import {createRouter, createMemoryHistory} from 'vue-router'
@@ -50,7 +51,10 @@ function mountChart(isLoading: boolean, tasks = new Map<ITask['id'], ITask>()) {
 	})
 }
 
-type ChartVm = {updateGanttTask: (id: string, newStart: Date, newEnd: Date) => void}
+type ChartVm = {
+	updateGanttTask: (id: string, newStart: Date, newEnd: Date) => void
+	ganttBars: {start: Date, end: Date}[][]
+}
 
 function mountWithTask(task: ITask) {
 	const tasks = new Map<ITask['id'], ITask>([[task.id, task]])
@@ -125,5 +129,26 @@ describe('GanttChart.vue date-only writes', () => {
 		expect(update.startDate.getDate()).toBe(9)
 		expect(update.startDate.getHours()).toBe(0)
 		expect(update.startDate.getMilliseconds()).toBe(0)
+	})
+
+	// Covers getRoundedDate's end-side force and dateOnly in the bars watcher: with the
+	// view kept alive, a toggle flip in settings must redraw without a reload.
+	it('rounds a legacy before-noon end to the canonical end of day for bar geometry, and redraws on a toggle flip', async () => {
+		const wrapper = mountWithTask({
+			id: 1,
+			startDate: new Date(2026, 8, 8, 8, 0),
+			endDate: new Date(2026, 8, 10, 9, 30),
+		} as ITask)
+		const vm = wrapper.vm as unknown as ChartVm
+		expect(vm.ganttBars[0][0].end.getDate()).toBe(10)
+		expect(vm.ganttBars[0][0].end.getHours()).toBe(0)
+
+		dateOnlyMock.ref.value = true
+		await nextTick()
+
+		expect(vm.ganttBars[0][0].end.getDate()).toBe(10)
+		expect(vm.ganttBars[0][0].end.getHours()).toBe(23)
+		expect(vm.ganttBars[0][0].end.getMilliseconds()).toBe(999)
+		expect(vm.ganttBars[0][0].start.getHours()).toBe(0)
 	})
 })

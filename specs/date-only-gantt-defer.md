@@ -333,3 +333,22 @@ entry in the bars watcher source list is likewise untested; the `GanttChart.test
   treats `''` as `null`; real-`ref` rationale corrected (watch source, not computed caching); timer
   re-PUT residual noted. New site found: `ProjectGantt.addGanttTask` 23:59:00 → open question 2.
   Loop closed per the stop criterion set at round 1 (no confirmed blocker, or three rounds).
+
+### Review-phase log
+
+- Round 1 (verifier, 2026-09-07, fresh session): **SURVIVES, no blocker.** Reproduced red-first
+  (6 failures with both `.vue` files reverted) and re-ran the whole unit suite (2122 green,
+  Los Angeles, UTC and Sydney). Two `verified-by-running` coverage gaps, no defects:
+  1. "Look at first (a)/(b)" were still untested — reverting `getRoundedDate`'s force and the
+     watcher's `dateOnly` source left every test green. **Fixed here:** test 10 in
+     `GanttChart.test.ts` mounts a legacy 09:30-end task, asserts bar end at 00:00, flips the mocked
+     toggle, `nextTick`, asserts 23:59:59.999. Mutation-checked (`expected +0 to be 23` with both
+     lines reverted). 12/12 green in both zones; ratchet unchanged.
+  2. **Disclosed, not fixed:** CI runs `pnpm test:unit` on `ubuntu-latest` (UTC) and
+     `vite.config.ts` pins no `TZ`, so test 8 — the only gate on the string-parse regression —
+     is inert in CI. A naive `new Date(value)` port passes 7/7 at UTC. Pinning `test.env.TZ`
+     touches a file outside this diff and may surface other TZ-dependent frontend tests; put to
+     Jason at the live pause.
+  Tail: eslint ignores `**/*.test.ts` (the lint claim was vacuous for the test files); DeferTask's
+  toggle-off convergence depends on `SingleTaskInProject`'s `v-model` echo (same on `main`); a
+  start-edge resize on a legacy due-only task canonicalises the stored due time (user-initiated).
