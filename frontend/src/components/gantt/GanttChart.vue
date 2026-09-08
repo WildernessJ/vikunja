@@ -113,6 +113,7 @@ import Loading from '@/components/misc/Loading.vue'
 
 import {MILLISECONDS_A_DAY} from '@/constants/date'
 import {roundToNaturalDayBoundary} from '@/helpers/time/roundToNaturalDayBoundary'
+import {useDateOnly} from '@/composables/useDateOnly'
 
 const props = defineProps<{
 	isLoading: boolean,
@@ -131,6 +132,13 @@ const dayWidthPixels = ref(0)
 let resizeObserver: ResizeObserver | undefined
 
 const {tasks, filters} = toRefs(props)
+const {store: dateOnly} = useDateOnly()
+
+// Date-only mode wants the canonical end of day for every end/due date, not the
+// before-noon heuristic — see ADR-0014.
+function toEndBoundary(date: Date) {
+	return roundToNaturalDayBoundary(date, false, dateOnly.value)
+}
 
 const dayjsLanguageLoading = useDayjsLanguageSync(dayjs)
 const ganttContainer = ref<HTMLElement | null>(null)
@@ -242,7 +250,7 @@ function toggleCollapse(taskId: number) {
 }
 
 function getRoundedDate(value: string | Date | undefined, fallback: Date | string, isStart: boolean) {
-	return roundToNaturalDayBoundary(value ? new Date(value) : new Date(fallback), isStart)
+	return roundToNaturalDayBoundary(value ? new Date(value) : new Date(fallback), isStart, !isStart && dateOnly.value)
 }
 
 function transformTaskToGanttBar(node: GanttTaskTreeNode): GanttBarModel {
@@ -364,7 +372,9 @@ watch(
 
 // Derive bars, rows, and cells from visible nodes
 watch(
-	[visibleNodes, filters],
+	// dateOnly is a source, not just a read: ProjectView is kept alive, so a toggle flip
+	// in settings would otherwise leave the bars drawn with the old rounding until a reload.
+	[visibleNodes, filters, dateOnly],
 	() => {
 		const bars: GanttBarModel[] = []
 		const rows: string[] = []
@@ -526,26 +536,26 @@ function updateGanttTask(id: string, newStart: Date, newEnd: Date) {
 	if (hasStartDate && hasEndDate) {
 		// Both dates exist — update both
 		update.startDate = roundToNaturalDayBoundary(newStart, true)
-		update.endDate = roundToNaturalDayBoundary(newEnd)
+		update.endDate = toEndBoundary(newEnd)
 	} else if (hasStartDate && !hasEndDate && hasDueDate) {
 		// startDate + dueDate (no endDate) — treat as fully dated
 		update.startDate = roundToNaturalDayBoundary(newStart, true)
-		update.dueDate = roundToNaturalDayBoundary(newEnd)
+		update.dueDate = toEndBoundary(newEnd)
 	} else if (hasStartDate && !hasEndDate) {
 		// startOnly — only update startDate, don't persist the synthetic end
 		update.startDate = roundToNaturalDayBoundary(newStart, true)
 	} else if (!hasStartDate && (hasEndDate || hasDueDate)) {
 		// endOnly / dueOnly — only update the end side
 		if (hasEndDate) {
-			update.endDate = roundToNaturalDayBoundary(newEnd)
+			update.endDate = toEndBoundary(newEnd)
 		}
 		if (hasDueDate) {
-			update.dueDate = roundToNaturalDayBoundary(newEnd)
+			update.dueDate = toEndBoundary(newEnd)
 		}
 	} else {
 		// No dates at all — update both (existing behavior for dateless tasks)
 		update.startDate = roundToNaturalDayBoundary(newStart, true)
-		update.endDate = roundToNaturalDayBoundary(newEnd)
+		update.endDate = toEndBoundary(newEnd)
 	}
 
 	emit('update:task', update)

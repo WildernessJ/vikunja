@@ -1,7 +1,18 @@
-import {describe, it, expect} from 'vitest'
+import {describe, it, expect, vi, beforeEach} from 'vitest'
+import {nextTick} from 'vue'
 import {mount} from '@vue/test-utils'
 import {createI18n} from 'vue-i18n'
 import {createRouter, createMemoryHistory} from 'vue-router'
+
+// This file mounts without pinia, so the real useDateOnly (which reaches the auth store)
+// can't run. It has to be a real ref: GanttChart puts `dateOnly` in a watch source list,
+// and a plain object is an invalid watch source.
+const dateOnlyMock = vi.hoisted((): {ref: {value: boolean}} => ({ref: {value: false}}))
+vi.mock('@/composables/useDateOnly', async () => {
+	const {ref} = await import('vue')
+	dateOnlyMock.ref = ref(false)
+	return {useDateOnly: () => ({store: dateOnlyMock.ref})}
+})
 
 import GanttChart from './GanttChart.vue'
 import GanttTimelineHeader from './GanttTimelineHeader.vue'
@@ -24,13 +35,13 @@ const FILTERS: GanttFilters = {
 	showTasksWithoutDates: false,
 }
 
-function mountChart(isLoading: boolean) {
+function mountChart(isLoading: boolean, tasks = new Map<ITask['id'], ITask>()) {
 	return mount(GanttChart, {
 		shallow: true,
 		props: {
 			isLoading,
 			filters: FILTERS,
-			tasks: new Map<ITask['id'], ITask>(),
+			tasks,
 			defaultTaskStartDate: FILTERS.dateFrom,
 			defaultTaskEndDate: FILTERS.dateTo,
 		},
@@ -40,7 +51,21 @@ function mountChart(isLoading: boolean) {
 	})
 }
 
+type ChartVm = {
+	updateGanttTask: (id: string, newStart: Date, newEnd: Date) => void
+	ganttBars: {start: Date, end: Date}[][]
+}
+
+function mountWithTask(task: ITask) {
+	const tasks = new Map<ITask['id'], ITask>([[task.id, task]])
+	return mountChart(false, tasks)
+}
+
 describe('GanttChart.vue', () => {
+	beforeEach(() => {
+		dateOnlyMock.ref.value = false
+	})
+
 	it('measures the day width once the chart replaces the loading state', async () => {
 		const wrapper = mountChart(true)
 		expect(wrapper.findComponent(GanttTimelineHeader).exists()).toBe(false)
@@ -48,5 +73,111 @@ describe('GanttChart.vue', () => {
 		await wrapper.setProps({isLoading: false})
 
 		expect(wrapper.findComponent(GanttTimelineHeader).props('dayWidthPixels')).toBeGreaterThan(0)
+	})
+})
+
+describe('GanttChart.vue date-only writes', () => {
+	beforeEach(() => {
+		dateOnlyMock.ref.value = false
+	})
+
+	it('writes the canonical end of day for a due-only task when date-only is on', async () => {
+		dateOnlyMock.ref.value = true
+		const wrapper = mountWithTask({id: 1, dueDate: new Date(2026, 8, 10, 10, 0)} as ITask)
+
+		;(wrapper.vm as unknown as ChartVm).updateGanttTask('1', new Date(2026, 8, 9, 0, 0), new Date(2026, 8, 10, 9, 0))
+
+		const update = wrapper.emitted('update:task')?.[0][0] as {dueDate: Date}
+		expect(update.dueDate.getFullYear()).toBe(2026)
+		expect(update.dueDate.getMonth()).toBe(8)
+		expect(update.dueDate.getDate()).toBe(10)
+		expect(update.dueDate.getHours()).toBe(23)
+		expect(update.dueDate.getMinutes()).toBe(59)
+		expect(update.dueDate.getSeconds()).toBe(59)
+		expect(update.dueDate.getMilliseconds()).toBe(999)
+	})
+
+	it('keeps the before-noon heuristic when date-only is off', async () => {
+		const wrapper = mountWithTask({id: 1, dueDate: new Date(2026, 8, 10, 10, 0)} as ITask)
+
+		;(wrapper.vm as unknown as ChartVm).updateGanttTask('1', new Date(2026, 8, 9, 0, 0), new Date(2026, 8, 10, 9, 0))
+
+		const update = wrapper.emitted('update:task')?.[0][0] as {dueDate: Date}
+		expect(update.dueDate.getDate()).toBe(10)
+		expect(update.dueDate.getHours()).toBe(0)
+		expect(update.dueDate.getMinutes()).toBe(0)
+		expect(update.dueDate.getSeconds()).toBe(0)
+		expect(update.dueDate.getMilliseconds()).toBe(0)
+	})
+
+	it('forces the end side but not the start side for a start+end task when date-only is on', async () => {
+		dateOnlyMock.ref.value = true
+		const wrapper = mountWithTask({
+			id: 1,
+			startDate: new Date(2026, 8, 8, 8, 0),
+			endDate: new Date(2026, 8, 10, 8, 0),
+		} as ITask)
+
+		;(wrapper.vm as unknown as ChartVm).updateGanttTask('1', new Date(2026, 8, 9, 14, 0), new Date(2026, 8, 10, 9, 0))
+
+		const update = wrapper.emitted('update:task')?.[0][0] as {startDate: Date, endDate: Date}
+		expect(update.endDate.getDate()).toBe(10)
+		expect(update.endDate.getHours()).toBe(23)
+		expect(update.endDate.getMinutes()).toBe(59)
+		expect(update.endDate.getSeconds()).toBe(59)
+		expect(update.endDate.getMilliseconds()).toBe(999)
+		expect(update.startDate.getDate()).toBe(9)
+		expect(update.startDate.getHours()).toBe(0)
+		expect(update.startDate.getMilliseconds()).toBe(0)
+	})
+
+	// One case per remaining updateGanttTask branch, all before-noon so the force is what passes them.
+	it.each([
+		['startDate + dueDate', {startDate: new Date(2026, 8, 8, 8, 0), dueDate: new Date(2026, 8, 10, 8, 0)}, 'dueDate'],
+		['endDate only', {endDate: new Date(2026, 8, 10, 8, 0)}, 'endDate'],
+		['no dates', {}, 'endDate'],
+	])('writes the canonical end of day for a %s task when date-only is on', (_label, dates, field) => {
+		dateOnlyMock.ref.value = true
+		const wrapper = mountWithTask({id: 1, ...dates} as ITask)
+
+		;(wrapper.vm as unknown as ChartVm).updateGanttTask('1', new Date(2026, 8, 9, 0, 0), new Date(2026, 8, 10, 9, 0))
+
+		const update = wrapper.emitted('update:task')?.[0][0] as Record<string, Date>
+		expect(update[field].getDate()).toBe(10)
+		expect(update[field].getHours()).toBe(23)
+		expect(update[field].getMilliseconds()).toBe(999)
+	})
+
+	it('does not write an end for a start-only task', () => {
+		dateOnlyMock.ref.value = true
+		const wrapper = mountWithTask({id: 1, startDate: new Date(2026, 8, 8, 8, 0)} as ITask)
+
+		;(wrapper.vm as unknown as ChartVm).updateGanttTask('1', new Date(2026, 8, 9, 0, 0), new Date(2026, 8, 10, 9, 0))
+
+		const update = wrapper.emitted('update:task')?.[0][0] as Record<string, Date | undefined>
+		expect(update.startDate?.getDate()).toBe(9)
+		expect(update.endDate).toBeUndefined()
+		expect(update.dueDate).toBeUndefined()
+	})
+
+	// Covers getRoundedDate's end-side force and dateOnly in the bars watcher: with the
+	// view kept alive, a toggle flip in settings must redraw without a reload.
+	it('rounds a legacy before-noon end to the canonical end of day for bar geometry, and redraws on a toggle flip', async () => {
+		const wrapper = mountWithTask({
+			id: 1,
+			startDate: new Date(2026, 8, 8, 8, 0),
+			endDate: new Date(2026, 8, 10, 9, 30),
+		} as ITask)
+		const vm = wrapper.vm as unknown as ChartVm
+		expect(vm.ganttBars[0][0].end.getDate()).toBe(10)
+		expect(vm.ganttBars[0][0].end.getHours()).toBe(0)
+
+		dateOnlyMock.ref.value = true
+		await nextTick()
+
+		expect(vm.ganttBars[0][0].end.getDate()).toBe(10)
+		expect(vm.ganttBars[0][0].end.getHours()).toBe(23)
+		expect(vm.ganttBars[0][0].end.getMilliseconds()).toBe(999)
+		expect(vm.ganttBars[0][0].start.getHours()).toBe(0)
 	})
 })

@@ -50,7 +50,10 @@ import {useTaskStore} from '@/stores/tasks'
 import type {ITask} from '@/modelTypes/ITask'
 import {useFlatpickrLanguage} from '@/helpers/useFlatpickrLanguage'
 import {useTimeFormat} from '@/composables/useTimeFormat'
+import {useDateOnly} from '@/composables/useDateOnly'
 import {TIME_FORMAT} from '@/constants/timeFormat'
+import {roundToNaturalDayBoundary} from '@/helpers/time/roundToNaturalDayBoundary'
+import {createDateFromString} from '@/helpers/time/createDateFromString'
 
 const props = defineProps<{
 	modelValue: ITask,
@@ -62,6 +65,7 @@ const emit = defineEmits<{
 
 const {t} = useI18n({useScope: 'global'})
 const {store: timeFormat} = useTimeFormat()
+const {store: dateOnly} = useDateOnly()
 
 const taskStore = useTaskStore()
 const task = ref<ITask>()
@@ -70,16 +74,28 @@ const task = ref<ITask>()
 const saving = ref(false)
 
 // We're saving the due date separately to prevent null errors in very short periods where the task is null.
-const dueDate = ref<Date | null>(null)
+// flatpickr writes a 'Y-m-d' string back into the v-model, so this is not always a Date.
+const dueDate = ref<Date | string | null>(null)
 const lastValue = ref<Date | null>(null)
 const changeInterval = ref<ReturnType<typeof setInterval>>()
+
+// The only place a picker value is read: a bare `new Date('YYYY-MM-DD')` is UTC midnight,
+// which is the previous evening west of UTC.
+function normalise(value: Date | string | null | undefined): Date | null {
+	if (!value) {
+		return null
+	}
+
+	const date = new Date(createDateFromString(value))
+	return dateOnly.value ? roundToNaturalDayBoundary(date, false, true) : date
+}
 
 watch(
 	() => props.modelValue,
 	(value) => {
 		task.value = { ...value }
 		dueDate.value = value.dueDate
-		lastValue.value = value.dueDate
+		lastValue.value = normalise(value.dueDate)
 	},
 	{immediate: true},
 )
@@ -105,28 +121,29 @@ onBeforeUnmount(() => {
 })
 
 const flatPickerConfig = computed(() => ({
-	altFormat: t('date.altFormatLong'),
+	altFormat: dateOnly.value ? t('date.altFormatShort') : t('date.altFormatLong'),
 	altInput: true,
-	dateFormat: 'Y-m-d H:i',
-	enableTime: true,
+	dateFormat: dateOnly.value ? 'Y-m-d' : 'Y-m-d H:i',
+	enableTime: !dateOnly.value,
 	time_24hr: timeFormat.value === TIME_FORMAT.HOURS_24,
 	inline: true,
 	locale: useFlatpickrLanguage().value,
 }))
 
 function deferDays(days: number) {
-	const newDate = dueDate.value ? new Date(dueDate.value) : new Date()
+	const newDate = normalise(dueDate.value) ?? new Date()
 	newDate.setDate(newDate.getDate() + days)
 	dueDate.value = newDate
 	updateDueDate()
 }
 
 async function updateDueDate() {
-	if (!dueDate.value || !task.value) {
+	const next = normalise(dueDate.value)
+	if (next === null || !task.value) {
 		return
 	}
 
-	if (lastValue.value && +new Date(dueDate.value) === +lastValue.value) {
+	if (lastValue.value && +next === +lastValue.value) {
 		return
 	}
 
@@ -134,9 +151,9 @@ async function updateDueDate() {
 	try {
 		const newTask = await taskStore.update({
 			...task.value,
-			dueDate: new Date(dueDate.value),
+			dueDate: next,
 		})
-		lastValue.value = newTask.dueDate
+		lastValue.value = normalise(newTask.dueDate)
 		task.value = newTask
 		emit('update:modelValue', newTask)
 	} finally {
