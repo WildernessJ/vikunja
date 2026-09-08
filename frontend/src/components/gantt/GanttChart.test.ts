@@ -131,6 +131,35 @@ describe('GanttChart.vue date-only writes', () => {
 		expect(update.startDate.getMilliseconds()).toBe(0)
 	})
 
+	// One case per remaining updateGanttTask branch, all before-noon so the force is what passes them.
+	it.each([
+		['startDate + dueDate', {startDate: new Date(2026, 8, 8, 8, 0), dueDate: new Date(2026, 8, 10, 8, 0)}, 'dueDate'],
+		['endDate only', {endDate: new Date(2026, 8, 10, 8, 0)}, 'endDate'],
+		['no dates', {}, 'endDate'],
+	])('writes the canonical end of day for a %s task when date-only is on', (_label, dates, field) => {
+		dateOnlyMock.ref.value = true
+		const wrapper = mountWithTask({id: 1, ...dates} as ITask)
+
+		;(wrapper.vm as unknown as ChartVm).updateGanttTask('1', new Date(2026, 8, 9, 0, 0), new Date(2026, 8, 10, 9, 0))
+
+		const update = wrapper.emitted('update:task')?.[0][0] as Record<string, Date>
+		expect(update[field].getDate()).toBe(10)
+		expect(update[field].getHours()).toBe(23)
+		expect(update[field].getMilliseconds()).toBe(999)
+	})
+
+	it('does not write an end for a start-only task', () => {
+		dateOnlyMock.ref.value = true
+		const wrapper = mountWithTask({id: 1, startDate: new Date(2026, 8, 8, 8, 0)} as ITask)
+
+		;(wrapper.vm as unknown as ChartVm).updateGanttTask('1', new Date(2026, 8, 9, 0, 0), new Date(2026, 8, 10, 9, 0))
+
+		const update = wrapper.emitted('update:task')?.[0][0] as Record<string, Date | undefined>
+		expect(update.startDate?.getDate()).toBe(9)
+		expect(update.endDate).toBeUndefined()
+		expect(update.dueDate).toBeUndefined()
+	})
+
 	// Covers getRoundedDate's end-side force and dateOnly in the bars watcher: with the
 	// view kept alive, a toggle flip in settings must redraw without a reload.
 	it('rounds a legacy before-noon end to the canonical end of day for bar geometry, and redraws on a toggle flip', async () => {

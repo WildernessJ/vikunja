@@ -352,3 +352,8 @@ entry in the bars watcher source list is likewise untested; the `GanttChart.test
   Tail: eslint ignores `**/*.test.ts` (the lint claim was vacuous for the test files); DeferTask's
   toggle-off convergence depends on `SingleTaskInProject`'s `v-model` echo (same on `main`); a
   start-edge resize on a legacy due-only task canonicalises the stored due time (user-initiated).
+- Live verify (Jason, 2026-09-07): **pass** on all four steps. Post-pause decisions: the three untested
+  `updateGanttTask` branches (cold-audit O1) got one case each plus a start-only no-write guard, each
+  mutation-checked to a single failure; the `test.env.TZ` pin is filed as a follow-up issue (vitest
+  honours `test.env.TZ` — verified: a `UTC` pin masks the naive-parse mutation, a Los Angeles pin
+  fails tests 5 and 8).
