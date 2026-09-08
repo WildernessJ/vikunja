@@ -127,6 +127,12 @@ describe('DeferTask', () => {
 			expect((on.vm as unknown as DeferVm).flatPickerConfig.enableTime).toBe(false)
 			expect((on.vm as unknown as DeferVm).flatPickerConfig.dateFormat).toBe('Y-m-d')
 
+			// Unmount before flipping. onBeforeUnmount normalises with whatever the toggle
+			// says at unmount time, so unmounting after the flip would rewrite this task's
+			// date to 10:00 — a save nothing asked for.
+			on.unmount()
+			expect(taskStoreUpdateMock).not.toHaveBeenCalled()
+
 			dateOnlyMock.ref.value = false
 			const off = mountDeferTask({id: 2, dueDate: new Date(2026, 8, 10, 10, 0)} as ITask)
 			expect((off.vm as unknown as DeferVm).flatPickerConfig.enableTime).toBe(true)

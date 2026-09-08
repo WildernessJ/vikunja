@@ -218,7 +218,9 @@ replaced.
 
 **Live verify (browser, dev servers via `/dev`, machine zone is west of UTC):** toggle date-only on.
 (a) Gantt: drag a due-only bar's end to a new day, then read the row: `select due_date from tasks
-where id=…` shows `…23:59:59.999` local. (b) Task detail → Defer: no time row; click "+1 day"
+where id=…` shows `…23:59:59.999` local. (b) Defer — the popup behind a task row's due-date button in a **project list view**
+(`SingleTaskInProject.vue`, the component's only consumer; it is *not* reachable from task detail):
+no time row; click "+1 day"
 **twice** — the task moves two days and each click issues one PUT; pick a calendar day → that day
 23:59:59.999, one PUT, no further PUTs while the popup stays open. Open the popup on a dateless task:
 no error, no PUT. Wait for each save to settle before the next click — the pre-existing race on
@@ -258,8 +260,11 @@ failures (backend untouched).
 1. The test mock is `taskStoreUpdateMock.mockImplementation(async (task) => task)`, not the plan's
    `mockResolvedValue({id: 1, dueDate: <some Date>})`. The echo satisfies the stated contract (the
    result always carries a `dueDate`) and also keeps `lastValue` in step with what was just saved,
-   so the `afterEach` unmount tick is a no-op instead of issuing a second `taskStore.update`. The
-   assertions still read `mock.calls[0][0].dueDate` per the plan.
+   so the `afterEach` unmount tick issues no second `taskStore.update`. The assertions still read
+   `mock.calls[0][0].dueDate` per the plan. Round 1 of the build-phase review showed this held for
+   every test but 6, which flips the toggle between two mounts — the echo cannot help there, because
+   `onBeforeUnmount` normalises against the toggle's value at unmount time, not at mount time. Test 6
+   now unmounts before flipping and asserts it.
 2. `updateDueDate` sets `lastValue.value = normalise(newTask.dueDate)`, where the plan left the
    post-save assignment unstated. Normalising the server echo keeps both sides of the `+next ===
    +lastValue` compare in one space; without it, a server value that is not already canonical would
@@ -277,6 +282,33 @@ entry in the bars watcher source list is likewise untested; the `GanttChart.test
 `ref` precisely so this path is not silently inert, but nothing asserts a redraw. (c) `DeferTask`'s
 `normalise` is the single read seam — `grep -n 'new Date(' DeferTask.vue` shows only
 `new Date(createDateFromString(value))` inside it and the `new Date()` no-due-date fallback.
+
+### Build-phase review log
+
+- Round 1 (verifier, 2026-09-07): **SURVIVES, no blocker.** Loop stopped at round 1 per the stop
+  criterion set before it began (first clean round, or three rounds). The agent independently
+  reproduced red-first — it reverted only the two `.vue` files in a scratchpad copy and got exactly
+  the 6 predicted failures, so the tests are not tautological — and ran the whole unit suite
+  (154 files / 2122 tests green). It confirmed by running: the fixed-point claim in Design 2, the
+  visibility filter is unaffected, DST is correct at both transitions, `dateOnly` in the bars watcher
+  does redraw (closing "Look at first (b)"), and deviation 2 is load-bearing (with a server echo that
+  truncates milliseconds, dropping the normalise re-saves every tick). Three low findings, two of
+  them errors in build-phase documents, both fixed here:
+  1. The Execution Log's claim that the echo mock makes every `afterEach` unmount a no-op was false
+     for test 6, which flips the toggle between its two mounts — the first wrapper then unmounted with
+     the toggle off, normalised to 10:00, and issued a save nothing asked for. Fixed: test 6 unmounts
+     the first wrapper before flipping, and asserts no save at that point. Mutation-checked — putting
+     the flip back before the unmount fails the assertion with "called 1 times".
+  2. Live-verify (b) named "Task detail → Defer"; `DeferTask.vue`'s only consumer is
+     `SingleTaskInProject.vue:131`. Corrected above.
+  3. **Disclosed, not fixed — Design 2's claim is true for the static path only.** With the toggle on,
+     `computeBarWidth` gives `ceil` day-widths from a `23:59:59.999` end, but the resize *preview*
+     path routes through `GanttRowBars.computeBarX`, whose `dayjs().diff(…, 'day')` truncates — so a
+     bar shrinks one day-width on pointer-down and snaps back on release. Pre-existing on `main` for
+     any end date at or after 12:00 (which includes every date the #91 entry path already stored
+     canonically); this change extends it from task-dependent to universal in date-only mode. Written
+     values round-trip correctly and nothing persists wrong. Fixing it is a geometry change, outside
+     this spec's scope — for a follow-up issue at review, alongside `ProjectGantt.addGanttTask`.
 
 ### Plan-phase review log
 
