@@ -1,6 +1,7 @@
 import {shallowMount} from '@vue/test-utils'
 import {describe, expect, it, vi} from 'vitest'
 import {ref} from 'vue'
+import dayjs from 'dayjs'
 
 const addTask = vi.fn()
 
@@ -45,6 +46,7 @@ describe('ProjectGantt.addGanttTask', () => {
 
 		const {startDate, endDate} = addTask.mock.calls[0][0] as {startDate: Date, endDate: Date}
 		expect(startDate.getHours()).toBe(0)
+		expect(dayjs(endDate).diff(startDate, 'day')).toBe(7)
 		expect([endDate.getHours(), endDate.getMinutes(), endDate.getSeconds(), endDate.getMilliseconds()])
 			.toEqual([23, 59, 59, 999])
 	})

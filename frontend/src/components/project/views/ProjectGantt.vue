@@ -73,6 +73,7 @@ import type {RouteLocationNormalized} from 'vue-router'
 
 import {useBaseStore} from '@/stores/base'
 import {useFlatpickrLanguage} from '@/helpers/useFlatpickrLanguage'
+import {roundToNaturalDayBoundary} from '@/helpers/time/roundToNaturalDayBoundary'
 
 import Foo from '@/components/misc/flatpickr/Flatpickr.vue'
 import ProjectWrapper from '@/components/project/ProjectWrapper.vue'
@@ -117,11 +118,11 @@ const DEFAULT_DATE_RANGE_DAYS = 7
 
 const today = new Date()
 const defaultTaskStartDate: DateISO = new Date(today.setHours(0, 0, 0, 0)).toISOString()
-const defaultTaskEndDate: DateISO = new Date(new Date(
+const defaultTaskEndDate: DateISO = roundToNaturalDayBoundary(new Date(
 	today.getFullYear(),
 	today.getMonth(),
 	today.getDate() + DEFAULT_DATE_RANGE_DAYS,
-).setHours(23, 59, 59, 999)).toISOString()
+), false, true).toISOString()
 
 async function addGanttTask(title: ITask['title']) {
 	return await addTask({

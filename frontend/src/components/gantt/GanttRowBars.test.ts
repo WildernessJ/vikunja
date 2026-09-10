@@ -16,10 +16,10 @@ const bar = {
 	meta: {label: 'task'},
 }
 
-function mountBars(edge?: 'start' | 'end', currentDays = 0) {
+function mountBars(edge?: 'start' | 'end', currentDays = 0, theBar = bar) {
 	return mount(GanttRowBars, {
 		props: {
-			bars: [bar],
+			bars: [theBar],
 			totalWidth: 300,
 			dateFromDate: new Date(2026, 8, 1),
 			dateToDate: new Date(2026, 8, 30, 23, 59, 59, 999),
@@ -29,8 +29,8 @@ function mountBars(edge?: 'start' | 'end', currentDays = 0) {
 			dragState: edge === undefined ? null : {
 				barId: bar.id,
 				startX: 0,
-				originalStart: bar.start,
-				originalEnd: bar.end,
+				originalStart: theBar.start,
+				originalEnd: theBar.end,
 				currentDays,
 				edge,
 			},
@@ -44,24 +44,30 @@ function mountBars(edge?: 'start' | 'end', currentDays = 0) {
 	})
 }
 
-function width(wrapper: ReturnType<typeof mountBars>) {
-	return Number(wrapper.find('rect.gantt-bar').attributes('width'))
+// [x, width] in day-widths
+function geometry(wrapper: ReturnType<typeof mountBars>) {
+	const rect = wrapper.find('rect.gantt-bar')
+	return [Number(rect.attributes('x')) / DAY_WIDTH, Number(rect.attributes('width')) / DAY_WIDTH]
 }
 
 describe('GanttRowBars resize preview', () => {
-	it('draws the static bar three days wide', () => {
-		expect(width(mountBars())).toBe(3 * DAY_WIDTH)
+	it('draws the static bar three days wide from day 7', () => {
+		expect(geometry(mountBars())).toEqual([7, 3])
 	})
 
-	it.each(['start', 'end'] as const)('keeps the width on %s-edge pointer-down before any movement', (edge) => {
-		expect(width(mountBars(edge, 0))).toBe(3 * DAY_WIDTH)
+	it('draws a legacy midnight end (date-only off) two days wide', () => {
+		expect(geometry(mountBars(undefined, 0, {...bar, end: new Date(2026, 8, 10, 0, 0)}))).toEqual([7, 2])
 	})
 
-	it('grows by one day-width when the end edge moves a day', () => {
-		expect(width(mountBars('end', 1))).toBe(4 * DAY_WIDTH)
+	it.each(['start', 'end'] as const)('keeps the geometry on %s-edge pointer-down before any movement', (edge) => {
+		expect(geometry(mountBars(edge, 0))).toEqual([7, 3])
 	})
 
-	it('shrinks by one day-width when the start edge moves a day', () => {
-		expect(width(mountBars('start', 1))).toBe(2 * DAY_WIDTH)
+	it('moves only the right edge when the end edge moves a day', () => {
+		expect(geometry(mountBars('end', 1))).toEqual([7, 4])
+	})
+
+	it('moves only the left edge when the start edge moves a day', () => {
+		expect(geometry(mountBars('start', 1))).toEqual([8, 2])
 	})
 })
