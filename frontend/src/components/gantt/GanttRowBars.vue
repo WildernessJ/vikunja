@@ -279,9 +279,6 @@ function computeBarWidth(bar: GanttBarModel) {
 	return width
 }
 
-const originalEndX = computed(() => props.dragState?.originalEnd 
-	? computeBarX(props.dragState.originalEnd) 
-	: 0)
 const originalStartX = computed(() => props.dragState?.originalStart 
 	? computeBarX(props.dragState.originalStart) 
 	: 0)
@@ -301,15 +298,12 @@ const getBarX = computed(() => (bar: GanttBarModel) => {
 
 const getBarWidth = computed(() => (bar: GanttBarModel) => {
 	if (props.isResizing && props.dragState?.barId === bar.id) {
-		if (props.dragState.edge === 'start') {
-			const newStart = addDays(props.dragState.originalStart, props.dragState.currentDays)
-			const newStartX = computeBarX(newStart)
-			return Math.max(0, originalEndX.value - newStartX)
-		} else {
-			const newEnd = addDays(props.dragState.originalEnd, props.dragState.currentDays)
-			const newEndX = computeBarX(newEnd)
-			return Math.max(0, newEndX - originalStartX.value)
-		}
+		// Same day-count as the static bar, so the preview doesn't jump on pointer-down:
+		// computeBarX truncates a 23:59:59.999 end a day short of where the bar is drawn.
+		const {originalStart, originalEnd, currentDays, edge} = props.dragState
+		const start = edge === 'start' ? addDays(originalStart, currentDays) : originalStart
+		const end = edge === 'end' ? addDays(originalEnd, currentDays) : originalEnd
+		return Math.max(0, getDaysDifference(start, end) * props.dayWidthPixels)
 	}
 	return computeBarWidth(bar)
 })
