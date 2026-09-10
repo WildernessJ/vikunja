@@ -115,6 +115,8 @@ function getBuildConfig(env: Record<string, string>) {
 		// https://vitest.dev/config/
 		test: {
 			environment: 'happy-dom',
+			// #99: the date-only parse guards only fail west of UTC; CI runs at UTC.
+			env: {TZ: 'America/Los_Angeles'},
 			exclude: [...configDefaults.exclude, 'e2e/**'],
 			'vitest.commandLine': 'pnpm test:unit',
 		},
