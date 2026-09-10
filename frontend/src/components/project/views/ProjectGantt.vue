@@ -121,7 +121,7 @@ const defaultTaskEndDate: DateISO = new Date(new Date(
 	today.getFullYear(),
 	today.getMonth(),
 	today.getDate() + DEFAULT_DATE_RANGE_DAYS,
-).setHours(23, 59, 0, 0)).toISOString()
+).setHours(23, 59, 59, 999)).toISOString()
 
 async function addGanttTask(title: ITask['title']) {
 	return await addTask({
