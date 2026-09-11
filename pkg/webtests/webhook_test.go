@@ -72,6 +72,15 @@ func TestWebhook(t *testing.T) {
 			assert.Equal(t, http.StatusForbidden, getHTTPErrorCode(err))
 			db.AssertMissing(t, "webhooks", map[string]interface{}{"target_url": "https://example.com/x"})
 		})
+		// The project branch now passes this cell; Create's both-set check is the
+		// only thing left refusing the row, so pin it.
+		t.Run("Foreign user_id on a writable project is rejected by Create", func(t *testing.T) {
+			_, err := testHandler.testCreateWithUser(nil, map[string]string{"project": "1"},
+				`{"target_url":"https://example.com/both","events":["task.updated"],"user_id":2}`)
+			require.Error(t, err)
+			assert.Equal(t, http.StatusPreconditionFailed, getHTTPErrorCode(err))
+			db.AssertMissing(t, "webhooks", map[string]interface{}{"target_url": "https://example.com/both"})
+		})
 		t.Run("Without user_id is forbidden as before", func(t *testing.T) {
 			_, err := testHandler.testCreateWithUser(nil, map[string]string{"project": "2"},
 				`{"target_url":"https://example.com/x","events":["task.updated"]}`)
