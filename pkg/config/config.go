@@ -146,6 +146,7 @@ const (
 	LogDatabase      Key = `log.database`
 	LogDatabaseLevel Key = `log.databaselevel`
 	LogHTTP          Key = `log.http`
+	LogHTTPLevel     Key = `log.httplevel`
 	LogPath          Key = `log.path`
 	LogEvents        Key = `log.events`
 	LogEventsLevel   Key = `log.eventslevel`
@@ -210,6 +211,7 @@ const (
 	MetricsEnabled  Key = `metrics.enabled`
 	MetricsUsername Key = `metrics.username`
 	MetricsPassword Key = `metrics.password`
+	MetricsPprof    Key = `metrics.pprof`
 
 	DefaultSettingsAvatarProvider              Key = `defaultsettings.avatar_provider`
 	DefaultSettingsAvatarFileID                Key = `defaultsettings.avatar_file_id`
@@ -324,6 +326,15 @@ func (k Key) Set(i interface{}) {
 // sets the default config value
 func (k Key) setDefault(i interface{}) {
 	viper.SetDefault(string(k), i)
+}
+
+// Per-category log levels fall back to log.level unless set explicitly.
+func applyDefaultLogLevels() {
+	for _, k := range []Key{LogDatabaseLevel, LogHTTPLevel, LogEventsLevel, LogMailLevel} {
+		if k.GetString() == "" {
+			k.Set(LogLevel.GetString())
+		}
+	}
 }
 
 // getRootpathLocation determines the default root path for Vikunja data.
@@ -462,13 +473,14 @@ func initDefaultConfig() {
 	LogLevel.setDefault("INFO")
 	LogFormat.setDefault("text")
 	LogDatabase.setDefault("off")
-	LogDatabaseLevel.setDefault("WARNING")
+	LogDatabaseLevel.setDefault("")
 	LogHTTP.setDefault("stdout")
+	LogHTTPLevel.setDefault("")
 	LogPath.setDefault(ResolvePath("logs"))
 	LogEvents.setDefault("off")
-	LogEventsLevel.setDefault("INFO")
+	LogEventsLevel.setDefault("")
 	LogMail.setDefault("off")
-	LogMailLevel.setDefault("INFO")
+	LogMailLevel.setDefault("")
 	// Rate Limit
 	RateLimitEnabled.setDefault(false)
 	RateLimitKind.setDefault("user")
@@ -515,6 +527,7 @@ func initDefaultConfig() {
 	KeyvalueType.setDefault("memory")
 	// Metrics
 	MetricsEnabled.setDefault(false)
+	MetricsPprof.setDefault(false)
 	// Settings
 	DefaultSettingsAvatarProvider.setDefault("initials")
 	DefaultSettingsOverdueTaskRemindersEnabled.setDefault(true)
@@ -783,6 +796,8 @@ func InitConfig() {
 	}
 
 	generateServiceSecretIfEmpty()
+
+	applyDefaultLogLevels()
 
 	if _, err := url.ParseRequestURI(AvatarGravatarBaseURL.GetString()); err != nil {
 		log.Fatalf("Could not parse gravatarbaseurl: %s", err)

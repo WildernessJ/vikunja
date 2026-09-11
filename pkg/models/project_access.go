@@ -41,15 +41,12 @@ func (pa *projectAccess) permission(projectID int64) (Permission, bool) {
 	return p, has
 }
 
-// One row per project and granting ancestor-or-self, so MAX over a project's rows is
-// the greatest of its own grant and everything it inherits: a grant on a descendant
-// can raise an inherited permission, never lower it. Binds the user id three times.
-// tree uses UNION, not UNION ALL: deduplicating (id, permission) terminates on a
-// parent_project_id cycle and caps the row count at three per project.
-// The recursive step's join implies parent_project_id IS NOT NULL, which is why root
-// projects store NULL: the partial index then covers real children only.
+// Joined against project_ancestors this yields one row per project and granting
+// ancestor-or-self, so MAX over a project's rows is the greatest of its own grant and
+// everything it inherits: a grant on a descendant can raise an inherited permission,
+// never lower it. Binds the user id three times.
 const projectAccessCTE = `
-WITH RECURSIVE grants (project_id, permission) AS (
+WITH grants (project_id, permission) AS (
     SELECT project_id, MAX(permission)
     FROM (
         SELECT id AS project_id, 2 AS permission FROM projects WHERE owner_id = ?
@@ -62,22 +59,18 @@ WITH RECURSIVE grants (project_id, permission) AS (
         WHERE tm.user_id = ?
     ) direct_grants
     GROUP BY project_id
-),
-tree (id, permission) AS (
-    SELECT p.id, g.permission
-    FROM projects p
-    INNER JOIN grants g ON g.project_id = p.id
-    UNION
-    SELECT p.id, t.permission
-    FROM projects p
-    INNER JOIN tree t ON p.parent_project_id = t.id
 )`
 
 const projectAccessQuery = projectAccessCTE + `
-SELECT id, MAX(permission) AS permission FROM tree GROUP BY id`
+SELECT pa.project_id AS id, MAX(g.permission) AS permission
+FROM grants g
+INNER JOIN project_ancestors pa ON pa.ancestor_id = g.project_id
+GROUP BY pa.project_id`
 
 const projectAccessIDsQuery = projectAccessCTE + `
-SELECT DISTINCT id FROM tree`
+SELECT DISTINCT pa.project_id AS id
+FROM grants g
+INNER JOIN project_ancestors pa ON pa.ancestor_id = g.project_id`
 
 type projectAccessRow struct {
 	ID         int64 `xorm:"id"`
@@ -86,34 +79,30 @@ type projectAccessRow struct {
 
 // Resolves the whole reachable tree in one query, memoized per session.
 func getProjectAccessForUser(s *xorm.Session, userID int64) (*projectAccess, error) {
-	cacheKey := "project-access-" + strconv.FormatInt(userID, 10)
-	if pa, has := db.GetCached[*projectAccess](s, cacheKey); has {
-		return pa, nil
-	}
-
-	rows := []*projectAccessRow{}
-	err := s.SQL(projectAccessQuery, userID, userID, userID).Find(&rows)
-	if err != nil {
-		return nil, err
-	}
-
-	pa := &projectAccess{
-		userID:      userID,
-		permissions: make(map[int64]Permission, len(rows)),
-		sortedIDs:   make([]int64, 0, len(rows)),
-	}
-	for _, r := range rows {
-		permission := Permission(r.Permission)
-		// A grant outside the enum (manual db edit, restored dump) is no grant at all.
-		if permission.isValid() != nil {
-			continue
+	return db.Remember(s, "project-access-"+strconv.FormatInt(userID, 10), func() (*projectAccess, error) {
+		rows := []*projectAccessRow{}
+		err := s.SQL(projectAccessQuery, userID, userID, userID).Find(&rows)
+		if err != nil {
+			return nil, err
 		}
-		pa.permissions[r.ID] = permission
-		pa.sortedIDs = append(pa.sortedIDs, r.ID)
-	}
-	sort.Slice(pa.sortedIDs, func(i, j int) bool { return pa.sortedIDs[i] < pa.sortedIDs[j] })
-	db.SetCached(s, cacheKey, pa)
-	return pa, nil
+
+		pa := &projectAccess{
+			userID:      userID,
+			permissions: make(map[int64]Permission, len(rows)),
+			sortedIDs:   make([]int64, 0, len(rows)),
+		}
+		for _, r := range rows {
+			permission := Permission(r.Permission)
+			// A grant outside the enum (manual db edit, restored dump) is no grant at all.
+			if permission.isValid() != nil {
+				continue
+			}
+			pa.permissions[r.ID] = permission
+			pa.sortedIDs = append(pa.sortedIDs, r.ID)
+		}
+		sort.Slice(pa.sortedIDs, func(i, j int) bool { return pa.sortedIDs[i] < pa.sortedIDs[j] })
+		return pa, nil
+	})
 }
 
 // Above this many ids the inlined list bloats the statement and defeats server-side
@@ -160,40 +149,26 @@ func accessibleProjectIDsCond(s *xorm.Session, a web.Auth, column string) (build
 
 // GetAllParentProjects returns the project itself and every ancestor, keyed by id.
 func GetAllParentProjects(s *xorm.Session, projectID int64) (map[int64]*Project, error) {
-	cacheKey := "parent-projects-" + strconv.FormatInt(projectID, 10)
-	chain, has := db.GetCached[map[int64]*Project](s, cacheKey)
-	if !has {
-		chain = make(map[int64]*Project)
-		err := s.SQL(`WITH RECURSIVE all_projects AS (
-		    SELECT
-		        p.*
-		    FROM
-		        projects p
-		    WHERE
-		        p.id = ?
-		    UNION ALL
-		    SELECT
-		        p.*
-		    FROM
-		        projects p
-		            INNER JOIN all_projects pc ON p.ID = pc.parent_project_id
-		)
-		SELECT DISTINCT * FROM all_projects`, projectID).Find(&chain)
+	chain, err := db.Remember(s, "parent-projects-"+strconv.FormatInt(projectID, 10), func() (map[int64]*Project, error) {
+		loaded := make(map[int64]*Project)
+		err := s.
+			Table("projects").
+			Select("projects.*").
+			Join("INNER", "project_ancestors", "project_ancestors.ancestor_id = projects.id").
+			Where(builder.Eq{"project_ancestors.project_id": projectID}).
+			Find(&loaded)
 		if err != nil {
 			return nil, err
 		}
-		db.SetCached(s, cacheKey, chain)
+		return loaded, nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	// The memo outlives this call, so hand out a copy callers cannot corrupt.
 	out := make(map[int64]*Project, len(chain))
 	for id, p := range chain {
-		project := *p
-		if p.ParentProjectID != nil {
-			parentID := *p.ParentProjectID
-			project.ParentProjectID = &parentID
-		}
-		out[id] = &project
+		out[id] = p.memoCopy()
 	}
 	return out, nil
 }

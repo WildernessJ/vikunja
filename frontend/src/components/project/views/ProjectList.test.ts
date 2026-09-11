@@ -1,167 +1,121 @@
-import {describe, it, expect, vi, beforeEach} from 'vitest'
-import {defineComponent, h} from 'vue'
-import {mount, flushPromises} from '@vue/test-utils'
+import {shallowMount, flushPromises} from '@vue/test-utils'
+import {describe, expect, it, vi, beforeEach} from 'vitest'
+import {nextTick, ref} from 'vue'
 import {createPinia, setActivePinia} from 'pinia'
-import {createRouter, createMemoryHistory, type Router} from 'vue-router'
-import {createI18n} from 'vue-i18n'
-import en from '@/i18n/lang/en.json'
+import draggable from 'zhyswan-vuedraggable'
 
-// Full-mount ProjectList (real pinia stores, real router, real useTaskList) rather than
-// unit-testing saveDefaultSort in isolation: the bug this guards against (#70) is in the
-// interaction between the SortPopup emit order and the `sortBy` URL setter in
-// useTaskList, so the seam that matters is the real reactive wiring, not the function body.
-const successMock = vi.hoisted(() => vi.fn())
-const errorMock = vi.hoisted(() => vi.fn())
-vi.mock('@/message', () => ({
-	success: successMock,
-	error: errorMock,
-}))
+import type {ITask} from '@/modelTypes/ITask'
 
-const updateMock = vi.hoisted(() => vi.fn())
-vi.mock('@/services/projectViews', () => ({
+const {updatePosition} = vi.hoisted(() => ({updatePosition: vi.fn()}))
+
+const allTasks = ref<ITask[]>([])
+
+vi.mock('@/services/taskPosition', () => ({
 	default: class {
-		update = updateMock
+		update = updatePosition
 	},
 }))
 
-const getAll = vi.fn(async (..._args: unknown[]) => [])
-vi.mock('@/services/taskCollection', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('@/services/taskCollection')>()
-	return {
-		...actual,
-		default: class {
-			loading = false
-			totalPages = 1
-			getAll = getAll
-		},
-	}
-})
+vi.mock('@/composables/useTaskList', () => ({
+	useTaskList: () => ({
+		tasks: allTasks,
+		loading: ref(false),
+		totalPages: ref(1),
+		currentPage: ref(1),
+		loadTasks: vi.fn(),
+		params: ref({}),
+		sortByParam: ref({position: 'asc'}),
+	}),
+}))
+
+vi.mock('@/composables/useTaskDragToProject', () => ({
+	useTaskDragToProject: () => ({
+		handleTaskDropToProject: async () => ({moved: false, targetProjectId: null}),
+	}),
+}))
+
+vi.mock('@/stores/base', () => ({
+	useBaseStore: () => ({
+		currentProject: {id: 1, maxPermission: 2},
+		setHasTasks: vi.fn(),
+	}),
+}))
+
+vi.mock('@/stores/tasks', () => ({
+	useTaskStore: () => ({setDraggedTask: vi.fn()}),
+}))
+
+vi.mock('@/services/savedFilter', () => ({
+	isSavedFilter: () => false,
+	useSavedFilter: () => ({filter: ref(null)}),
+}))
+
+vi.mock('vue-i18n', async importOriginal => ({
+	...await importOriginal<typeof import('vue-i18n')>(),
+	useI18n: () => ({t: (key: string) => key}),
+}))
 
 import ProjectList from './ProjectList.vue'
-import {useAuthStore} from '@/stores/auth'
-import {useProjectStore} from '@/stores/projects'
-import {useBaseStore} from '@/stores/base'
-import {PERMISSIONS as Permissions} from '@/constants/permissions'
-import ProjectModel from '@/models/project'
-import ProjectViewModel from '@/models/projectView'
 
-const VIEW = new ProjectViewModel({
-	id: 1,
-	projectId: 1,
-	title: 'List',
-	viewKind: 'list',
-	defaultSortBy: ['priority'],
-	defaultOrderBy: ['desc'],
-})
-
-const PROJECT = new ProjectModel({
-	id: 1,
-	title: 'Test project',
-	maxPermission: Permissions.ADMIN,
-	views: [VIEW],
-})
-
-const i18n = createI18n({legacy: false, locale: 'en', messages: {en}})
-
-// A minimal stand-in for the real SortPopup: emits update:modelValue then saveDefault,
-// matching SortPopup.saveAsDefault's actual emit order (the order the bug depends on).
-const SortPopupStub = {
-	props: ['modelValue', 'canSaveDefault'],
-	emits: ['update:modelValue', 'saveDefault'],
-	template: '<button class="save-default-sort" @click="$emit(\'update:modelValue\', {title: \'asc\'}); $emit(\'saveDefault\', {title: \'asc\'})" />',
+function makeTask(id: number, position: number): ITask {
+	return {id, title: `Task ${id}`, position} as ITask
 }
 
-async function mountProjectList(query: Record<string, string> = {}): Promise<{wrapper: ReturnType<typeof mount>, router: Router}> {
-	const router = createRouter({
-		history: createMemoryHistory(),
-		routes: [{path: '/', name: 'home', component: {render: () => null}}],
-	})
-	await router.push({path: '/', query})
-	await router.isReady()
-
-	// useBaseStore/useProjectStore call useI18n() at store-setup time, which needs an
-	// active component instance — seed them from a wrapper's setup (runs before the
-	// child's) rather than calling the store composables at the top level of the test.
-	const Harness = defineComponent({
-		setup() {
-			useProjectStore().setProject(new ProjectModel(PROJECT))
-			useBaseStore().setCurrentProject(new ProjectModel(PROJECT))
-			return () => h(ProjectList, {
-				isLoadingProject: false,
-				projectId: 1,
-				viewId: 1,
-			})
+async function mountList() {
+	const wrapper = shallowMount(ProjectList, {
+		props: {
+			isLoadingProject: false,
+			projectId: 1,
+			viewId: 10,
 		},
-	})
-
-	const wrapper = mount(Harness, {
 		global: {
-			plugins: [router, i18n],
+			mocks: {$t: (key: string) => key},
 			stubs: {
-				ProjectWrapper: {template: '<div><slot name="header" /><slot name="default" /></div>'},
-				SortPopup: SortPopupStub,
-				AddTask: true,
-				FilterPopup: true,
-				SubprojectRollupPopup: true,
-				Nothing: true,
-				Pagination: true,
+				ProjectWrapper: {template: '<div><slot name="default"/></div>'},
 			},
 		},
 	})
-	await flushTwice()
-	return {wrapper, router}
+
+	allTasks.value = [makeTask(1, 100), makeTask(2, 200), makeTask(3, 300)]
+	await nextTick()
+
+	return wrapper
 }
 
-// Two drains settle the mocked async mount (initial load + the follow-up watcher tick).
-async function flushTwice() {
-	await flushPromises()
-	await flushPromises()
+function dragEndEvent(taskId: string, newIndex: number) {
+	const item = document.createElement('li')
+	item.dataset.taskId = taskId
+	const list = document.createElement('ul')
+	return {item, to: list, from: list, newIndex}
 }
 
-describe('ProjectList saveDefaultSort (#69, #70)', () => {
+describe('ProjectList', () => {
 	beforeEach(() => {
 		setActivePinia(createPinia())
-		useAuthStore().setAuthenticated(true)
-		getAll.mockClear()
-		updateMock.mockReset()
-		successMock.mockClear()
-		errorMock.mockClear()
+		allTasks.value = []
+		updatePosition.mockReset()
+		updatePosition.mockResolvedValue(undefined)
 	})
 
-	it('persists the new default, updates the store, toasts success, and clears the redundant ?sort= param', async () => {
-		const updatedView = new ProjectViewModel({...VIEW, defaultSortBy: ['title'], defaultOrderBy: ['asc']})
-		updateMock.mockResolvedValue(updatedView)
+	it('saves the position of the dropped task', async () => {
+		const wrapper = await mountList()
 
-		const {wrapper, router} = await mountProjectList()
-
-		await wrapper.find('.save-default-sort').trigger('click')
+		// The DOM index sortable reports can point past the last task
+		wrapper.findComponent(draggable).vm.$emit('end', dragEndEvent('2', 42))
 		await flushPromises()
 
-		expect(updateMock).toHaveBeenCalledOnce()
-		const sentView = updateMock.mock.calls[0][0]
-		expect(sentView.defaultSortBy).toEqual(['title'])
-		expect(sentView.defaultOrderBy).toEqual(['asc'])
-
-		expect(useProjectStore().projects[1].views[0].defaultSortBy).toEqual(['title'])
-		expect(successMock).toHaveBeenCalledOnce()
-		expect(errorMock).not.toHaveBeenCalled()
-
-		// The setter re-ran now that the persisted default matches the applied sort,
-		// so serializeSortBy dropped the now-redundant `?sort=` param.
-		expect(router.currentRoute.value.query.sort).toBeUndefined()
+		expect(updatePosition).toHaveBeenCalledWith(expect.objectContaining({
+			taskId: 2,
+			position: 200,
+		}))
 	})
 
-	it('toasts an error and does not update the store when the persist call rejects', async () => {
-		updateMock.mockRejectedValue(new Error('nope'))
+	it('does nothing when the dropped task is gone', async () => {
+		const wrapper = await mountList()
 
-		const {wrapper} = await mountProjectList()
-
-		await wrapper.find('.save-default-sort').trigger('click')
+		wrapper.findComponent(draggable).vm.$emit('end', dragEndEvent('404', 0))
 		await flushPromises()
 
-		expect(updateMock).toHaveBeenCalledOnce()
-		expect(errorMock).toHaveBeenCalledOnce()
-		expect(successMock).not.toHaveBeenCalled()
-		expect(useProjectStore().projects[1].views[0].defaultSortBy).toEqual(['priority'])
+		expect(updatePosition).not.toHaveBeenCalled()
 	})
 })

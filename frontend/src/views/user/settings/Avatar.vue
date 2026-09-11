@@ -128,7 +128,7 @@ avatarStatus()
 async function updateAvatarStatus() {
 	await avatarService.update(new AvatarModel({avatarProvider: avatarProvider.value as AvatarProvider}))
 	success({message: t('user.settings.avatar.statusUpdateSuccess')})
-	authStore.reloadAvatar()
+	authStore.invalidateAvatar()
 }
 
 const cropper = ref()
@@ -150,7 +150,7 @@ async function uploadAvatar() {
 		}
 		await avatarService.create(blob)
 		success({message: t('user.settings.avatar.setSuccess')})
-		authStore.reloadAvatar()
+		authStore.invalidateAvatar()
 	} finally {
 		loading.value = false
 		isCropAvatar.value = false

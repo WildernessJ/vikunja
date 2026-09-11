@@ -52,8 +52,7 @@ func mustInsertStatsTask(t *testing.T, s *xorm.Session, projectID, index, create
 func mustInsertStatsProject(t *testing.T, s *xorm.Session, title string, ownerID int64) *Project {
 	t.Helper()
 	project := &Project{Title: title, OwnerID: ownerID}
-	_, err := s.Insert(project)
-	require.NoError(t, err)
+	insertTestProject(t, s, project)
 	return project
 }
 

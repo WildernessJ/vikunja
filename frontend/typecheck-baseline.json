@@ -1,7 +1,5 @@
 {
 	"src/client/queries/labels.ts": 1,
-	"src/components/input/filter/FilterAutocomplete.ts": 1,
-	"src/components/input/filter/highlighter.ts": 1,
 	"src/components/misc/CreateEdit.vue": 1,
 	"src/services/task.test.ts": 4
 }

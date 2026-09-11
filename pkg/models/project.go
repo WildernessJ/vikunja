@@ -449,21 +449,39 @@ func (p *Project) ReadOne(s *xorm.Session, a web.Auth) (err error) {
 	return
 }
 
+func projectMemoKey(id int64) string { return "project-" + strconv.FormatInt(id, 10) }
+
+// Detaches a copy from the memo: ParentProjectID is the only DB-backed pointer field.
+func (p *Project) memoCopy() *Project {
+	copied := *p
+	if p.ParentProjectID != nil {
+		parentID := *p.ParentProjectID
+		copied.ParentProjectID = &parentID
+	}
+	return &copied
+}
+
 // GetProjectSimpleByID gets a project with only the basic items, aka no tasks or user objects. Returns an error if the project does not exist.
 func GetProjectSimpleByID(s *xorm.Session, projectID int64) (project *Project, err error) {
 	if projectID < 1 {
 		return nil, ErrProjectDoesNotExist{ID: projectID}
 	}
 
-	project, exists, err := getProjectSimple(s, builder.Eq{"id": projectID})
+	p, err := db.Remember(s, projectMemoKey(projectID), func() (*Project, error) {
+		loaded, exists, err := getProjectSimple(s, builder.Eq{"id": projectID})
+		if err != nil {
+			return nil, err
+		}
+		if !exists {
+			return nil, ErrProjectDoesNotExist{ID: projectID}
+		}
+		return loaded, nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	if !exists {
-		return nil, ErrProjectDoesNotExist{ID: projectID}
-	}
 
-	return
+	return p.memoCopy(), nil
 }
 
 // GetProjectSimpleByIdentifier gets a project by its textual identifier (e.g. "PROJ").
@@ -538,25 +556,20 @@ func GetProjectsSimpleByTaskIDs(s *xorm.Session, taskIDs []int64) (ps []*Project
 
 // GetProjectsMapByIDs returns a map of projects from a slice with project ids
 func GetProjectsMapByIDs(s *xorm.Session, projectIDs []int64) (projects map[int64]*Project, err error) {
-	projects = make(map[int64]*Project, len(projectIDs))
-
-	if len(projectIDs) == 0 {
-		return
+	loaded, err := db.RememberEach(s, projectIDs, projectMemoKey, func(missing []int64) (map[int64]*Project, error) {
+		found := map[int64]*Project{}
+		err := s.In("id", missing).Find(&found)
+		return found, err
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	err = s.In("id", projectIDs).Find(&projects)
-	return
-}
-
-func GetProjectsByIDs(s *xorm.Session, projectIDs []int64) (projects []*Project, err error) {
-	projects = make([]*Project, 0, len(projectIDs))
-
-	if len(projectIDs) == 0 {
-		return
+	projects = make(map[int64]*Project, len(loaded))
+	for id, p := range loaded {
+		projects[id] = p.memoCopy()
 	}
-
-	err = s.In("id", projectIDs).Find(&projects)
-	return
+	return projects, nil
 }
 
 type projectOptions struct {
@@ -991,6 +1004,11 @@ func CreateProject(s *xorm.Session, project *Project, auth web.Auth, createBackl
 		}
 	}
 
+	err = insertProjectAncestors(s, project.ID, project.parentID())
+	if err != nil {
+		return err
+	}
+
 	project.Position = calculateDefaultPosition(project.ID, project.Position)
 	_, err = s.Where("id = ?", project.ID).Nullable("parent_project_id").Update(project)
 	if err != nil {
@@ -1061,20 +1079,24 @@ func effectiveParentID(project, storedProject *Project) int64 {
 	return storedProject.parentID()
 }
 
+func isReparent(project, storedProject *Project) bool {
+	return project.ParentProjectID != nil && project.parentID() != storedProject.parentID()
+}
+
 // checkProjectParentBeforeUpdate gates reparenting and un-archiving. Both are
 // enforced here and not in CanUpdate: that short-circuits for instance admins
 // and is bypassed entirely by direct UpdateProject callers.
 //
 // GHSA-2vq4-854f-5c72 / CVE-2026-35595 and GHSA-44v6-7fxq-vgf4 /
-// CVE-2026-55064: the recursive permission CTE cascades Admin from any
+// CVE-2026-55064: permission resolution cascades Admin from any
 // owned ancestor, so moving a shared child under an attacker-owned root
 // grants Admin on the child, and detaching a child to the top level
 // severs an owner's inherited-permission chain. Both are reparent
 // operations that must require Admin on the moved project.
 func checkProjectParentBeforeUpdate(s *xorm.Session, project, storedProject *Project, auth web.Auth) (err error) {
-	isReparent := project.ParentProjectID != nil && *project.ParentProjectID != storedProject.parentID()
+	reparenting := isReparent(project, storedProject)
 	isUnarchive := storedProject.IsArchived && !project.IsArchived
-	if !isReparent && !isUnarchive {
+	if !reparenting && !isUnarchive {
 		return nil
 	}
 
@@ -1085,7 +1107,7 @@ func checkProjectParentBeforeUpdate(s *xorm.Session, project, storedProject *Pro
 		parent, err = GetProjectSimpleByID(s, parentID)
 		// An orphaned stored parent must not block un-archiving; a missing
 		// ancestor is no ancestor. A request-supplied target stays strict.
-		if IsErrProjectDoesNotExist(err) && !isReparent {
+		if IsErrProjectDoesNotExist(err) && !reparenting {
 			parent, err = nil, nil
 		}
 		if err != nil {
@@ -1093,7 +1115,7 @@ func checkProjectParentBeforeUpdate(s *xorm.Session, project, storedProject *Pro
 		}
 	}
 
-	if isReparent {
+	if reparenting {
 		canAdminMoved, err := project.IsAdmin(s, auth)
 		if err != nil {
 			return err
@@ -1172,8 +1194,10 @@ func UpdateProject(s *xorm.Session, project *Project, auth web.Auth, updateProje
 	}
 	// Only touch parent_project_id when it was actually sent, otherwise a
 	// partial update (nil) would silently detach the project to the top level.
+	parentChanged := false
 	if project.ParentProjectID != nil {
 		colsToUpdate = append(colsToUpdate, "parent_project_id")
+		parentChanged = isReparent(project, storedProject)
 	}
 	if project.Description != "" {
 		colsToUpdate = append(colsToUpdate, "description")
@@ -1208,6 +1232,13 @@ func UpdateProject(s *xorm.Session, project *Project, auth web.Auth, updateProje
 		Update(project)
 	if err != nil {
 		return err
+	}
+
+	if parentChanged {
+		err = moveProjectAncestors(s, project.ID, project.parentID())
+		if err != nil {
+			return err
+		}
 	}
 
 	// Respread sibling positions only after the moved row is persisted, so the
@@ -1479,6 +1510,11 @@ func (p *Project) Delete(s *xorm.Session, a web.Auth) (err error) {
 		return
 	}
 
+	err = deleteProjectAncestors(s, p.ID)
+	if err != nil {
+		return
+	}
+
 	// Delete the project
 	_, err = s.ID(p.ID).Delete(&Project{})
 	if err != nil {
@@ -1547,23 +1583,13 @@ func ClearProjectBackground(s *xorm.Session, projectID int64) (err error) {
 
 const archiveStateUpdateBatch = 500
 
-// SetArchiveStateForProjectDescendants uses a recursive CTE to find and set the archived status of all descendant projects.
 func SetArchiveStateForProjectDescendants(s *xorm.Session, parentProjectID int64, shouldBeArchived bool) error {
 	var descendantIDs []int64
-	err := s.SQL(
-		`
-WITH RECURSIVE descendant_ids (id) AS (
-    SELECT id
-    FROM projects
-    WHERE parent_project_id = ?
-    UNION ALL
-    SELECT p.id
-    FROM projects p
-    INNER JOIN descendant_ids di ON p.parent_project_id = di.id
-)
-SELECT id FROM descendant_ids`,
-		parentProjectID,
-	).Find(&descendantIDs)
+	err := s.
+		Table(&ProjectAncestor{}).
+		Where(builder.Eq{"ancestor_id": parentProjectID}.And(builder.Gt{"depth": 0})).
+		Cols("project_id").
+		Find(&descendantIDs)
 	if err != nil {
 		log.Errorf("Error finding descendant projects for parent ID %d: %v", parentProjectID, err)
 		return fmt.Errorf("failed to find descendant projects for parent ID %d: %w", parentProjectID, err)
