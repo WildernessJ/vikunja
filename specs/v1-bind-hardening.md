@@ -300,3 +300,10 @@ changed.
   matched `TestWebhook_Permissions`, and its `-short` failure stopped mage before the
   `pkg/webtests` re-run. So the handler tests were run red separately, with
   `'TestWebhook$|TestProjectViewV1|TestHumaWebhook$'`.
+
+**Build-session verifier loop (requested by Jason; capped at 3 rounds, same-class stop).**
+This loop does not replace `/flow review`. Round 1 (verifier, HEAD `23503e900`): SURVIVES,
+no findings on either axis. The verifier reverted each fix in turn and re-ran the tests.
+Only the matching new tests failed, so no new test is tautological. It also confirmed that
+`invalidModelErr` is the same mapping as the removed inline blocks, and that no `param` tag
+is outside int64/string kind (121 hits). The loop ended at round 1 with no code change.
