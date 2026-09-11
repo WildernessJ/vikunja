@@ -17,9 +17,11 @@
     (`webhooks.go:171-177`) stops the row being written.
 - **Not exploitable today** (both issues' verifiers attacked every route): every read model
   re-scopes to the URL parent downstream or authorizes against the stored row, and `Create`
-  rejects the both-set webhook. The fix closes the class **for the five generic v1 handlers
-  and for `Webhook.CanCreate` on both API versions**, so a refactor of one of those
-  downstream checks cannot silently open it there.
+  rejects the both-set webhook. The fix closes the class **for `param`-tagged fields on the
+  five generic v1 handlers, and for `Webhook.CanCreate` on both API versions**, so a
+  refactor of one of those downstream checks cannot silently open it there. Fields without
+  a `param` tag (e.g. `Webhook.UserID`) are still body-settable on reads; `Webhook.ReadAll`'s
+  own `UserID`-first branch is the one such case found, filed as **#104**.
 - **Issues:** #89, #90.
 - **Out of scope:**
   - Custom v1 handlers that hand-bind. Two of them carry the #90 shape: `UpdateUserWebhook`
@@ -80,6 +82,7 @@ names a project is authorized by that project":
 | **me** | **>0** | **true (the #89 bypass)** | **`Project.CanWrite`** |
 | **other** | **>0** | **false** | **`Project.CanWrite`** — visible only as a status change: a project writer sending a foreign `user_id` now gets `Create`'s both-set 412 instead of 403. Both reject; no row. |
 | 0 | <0 | `Project.CanWrite` → false (`project_permissions.go:31-33`, `ID < 1`) | same |
+| other | <0 | false (`other == me`) | false (`CanWrite`, `ID < 1`) |
 | **me** | **<0** | **true** (`UserID > 0` wins, `CanWrite` never reached) | **false** — `!= 0` sends it to `CanWrite`; `> 0` would fall through and keep the old allow |
 
 The stored-row reload above it (`if w.ID > 0 { … w.UserID = existing.UserID; w.ProjectID =
@@ -96,7 +99,8 @@ project first.
 first) but is unreachable: `DoReadAll` never calls `CanRead`, and neither API has a webhook
 `ReadOne` route. The reachable equivalent is `Webhook.ReadAll`'s own branch
 (`webhooks.go:243-246`): a body `user_id` on the project `ReadAll` route selects the user-level
-list, and a foreign `user_id` there returns `ErrGenericForbidden`. Not a leak; not touched.
+list, and a foreign `user_id` there returns `ErrGenericForbidden`. Not a leak; not touched
+here — tracked as #104 (same branch-order shape, same file).
 
 No ADR: bugfix, no alternatives with lasting consequences.
 
@@ -110,8 +114,9 @@ Backend only, four files plus tests.
 2. `pkg/web/handler/read_all.go` — same swap at lines 46-53. `log` stays (used at lines 62
    and 77); drop `errors`, `fmt`, `models` if unused.
 3. `pkg/models/webhooks_permissions.go` — reorder `canDoWebhook` as above.
-4. `pkg/web/handler/helper.go` — update the helper's doc comment: it now says the read
-   handlers "can reuse it"; make it say all five generic handlers do.
+4. `pkg/web/handler/helper.go` — update the helper's doc comment: it says the read handlers
+   "can reuse it" and "a fourth time" (line 50); make it say all five generic handlers call
+   it.
 
 Edge cases the executor must hold:
 - `ReadAllWeb` structs bind query params (`page`, `per_page`, `s`, filter fields) via
@@ -192,8 +197,10 @@ is owned by user3 and not shared to user1; view 4 is in project 1; webhook 1 is 
 3. `webhook_test.go` → new `Create` group. Add the `RegisterEventForWebhook` call at the
    top of `TestWebhook` first (see Global registry above); without it *"Normal"* fails
    standalone under `mage test:filter TestWebhook`.
-   - **guard** *"Normal"*: user1, URL `project=1`, body `{"target_url":"https://example.com/x",
-     "events":["task.updated"]}` → no error, row exists.
+   - **guard** *"Normal"*: user1, URL `project=1`, body `{"target_url":"https://example.com/ok",
+     "events":["task.updated"]}` → no error, row exists. (Distinct URL from the bypass case
+     so `AssertMissing` below cannot be tripped by this row if fixture reload is ever
+     hoisted out of the per-request path.)
    - **red-first** *"Body user_id cannot bypass the project permission"*: user1, URL
      `project=2`, body `{"target_url":"https://example.com/x","events":["task.updated"],
      "user_id":1}`. **Red on main:** `canDoWebhook` takes the user branch, `Create` then
@@ -202,8 +209,9 @@ is owned by user3 and not shared to user1; view 4 is in project 1; webhook 1 is 
      with 412). `db.AssertMissing(t, "webhooks", map[string]interface{}{"target_url":
      "https://example.com/x"})`.
    - **guard** *"Without user_id is forbidden as before"*: same minus `user_id` → 403.
-4. **red-first** — `pkg/models/webhooks_permissions_test.go` (does not exist; no model test
-   covers webhook `Can*` today). Table over `CanCreate(s, &user1)` with `db.LoadAndAssertFixtures`
+4. **red-first** — `pkg/models/webhooks_permissions_test.go` (does not exist; the only
+   model-level `Webhook.Can*` call today is `link_sharing_test.go:466`, `CanRead`'s
+   link-share early return). Table over `CanCreate(s, &user1)` with `db.LoadAndAssertFixtures`
    and a session: `{ProjectID: 2, UserID: 1}` → false (red on main: true);
    `{ProjectID: 1, UserID: 1}` → true (project writable; both-set is `Create`'s job);
    `{UserID: 1}` → true; `{UserID: 2}` → false; `{ProjectID: -1}` → false (green on main;
@@ -249,7 +257,8 @@ so the reorder cannot reach them.
   is wrong and #86 needs revisiting, not this branch.
 - The `canDoWebhook` reorder breaks any existing test in `huma_webhook_test.go` /
   `huma_user_webhook_test.go` (run via `mage test:web`, not `test:feature`) → halt; the
-  truth table in Design is wrong.
+  truth table in Design is wrong. (Weak signal — no existing test sends a webhook
+  `user_id`, so only the new tests exercise the changed cells; kept as a tripwire.)
 - Any fix that wants a new file outside `pkg/web/handler`, `pkg/models/webhooks*`, or
   `pkg/webtests` → halt.
 - Any change to a v2 route file → halt; the model fix is supposed to cover v2 without one.
