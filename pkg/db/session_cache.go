@@ -18,7 +18,6 @@ package db
 
 import (
 	"context"
-	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -103,26 +102,77 @@ func invalidateAllSessionCaches() {
 	})
 }
 
-// GetCached returns a value memoized for the lifetime of s. It always misses
-// once s has written anything, so a memo can never outlive the data it derives from.
-func GetCached[T any](s *xorm.Session, key string) (value T, found bool) {
+// Remember returns the value memoized under key for the lifetime of s, running fetch on a miss.
+// The memo misses for good once s has written anything and stores nothing when fetch fails.
+// Reference-typed fields stay shared with the memo, so pointer-returning callers copy on the way out.
+func Remember[T any](s *xorm.Session, key string, fetch func() (T, error)) (T, error) {
 	c, ok := cacheForSession(s)
 	if !ok {
-		return value, false
+		return fetch()
 	}
-	v, has := c.get(key)
-	if !has {
-		return value, false
+
+	if v, has := c.get(key); has {
+		if value, is := v.(T); is {
+			return value, nil
+		}
 	}
-	value, found = v.(T)
-	return value, found
+
+	value, err := fetch()
+	if err != nil {
+		var zero T
+		return zero, err
+	}
+	c.set(key, value)
+	return value, nil
 }
 
-// SetCached memoizes value under key for the lifetime of s.
-func SetCached[T any](s *xorm.Session, key string, value T) {
-	if c, ok := cacheForSession(s); ok {
-		c.set(key, value)
+// RememberEach is Remember for id-keyed batch loads: memoized ids are served and fetch runs once
+// for the rest, deduplicated. Ids fetch does not return stay absent from both the memo and the result.
+// Reference-typed fields stay shared with the memo, so pointer-returning callers copy on the way out.
+func RememberEach[T any](s *xorm.Session, ids []int64, key func(int64) string, fetch func(missing []int64) (map[int64]T, error)) (map[int64]T, error) {
+	if len(ids) == 0 {
+		return map[int64]T{}, nil
 	}
+
+	unique := make([]int64, 0, len(ids))
+	seen := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+
+	c, ok := cacheForSession(s)
+	if !ok {
+		return fetch(unique)
+	}
+
+	values := make(map[int64]T, len(unique))
+	missing := make([]int64, 0, len(unique))
+	for _, id := range unique {
+		if v, has := c.get(key(id)); has {
+			if value, is := v.(T); is {
+				values[id] = value
+				continue
+			}
+		}
+		missing = append(missing, id)
+	}
+	if len(missing) == 0 {
+		return values, nil
+	}
+
+	loaded, err := fetch(missing)
+	if err != nil {
+		return nil, err
+	}
+	for id, value := range loaded {
+		c.set(key(id), value)
+		values[id] = value
+	}
+	return values, nil
 }
 
 type writeInvalidationHook struct{}
@@ -138,23 +188,71 @@ func (writeInvalidationHook) BeforeProcess(c *contexts.ContextHook) (context.Con
 
 func (writeInvalidationHook) AfterProcess(*contexts.ContextHook) error { return nil }
 
-// A WITH statement can modify data, so one naming a write verb counts as a write.
-var writeVerbInCTE = regexp.MustCompile(`(?i)\b(insert|update|delete|merge|replace|create|drop|alter|truncate)\b`)
+func isWordByte(b byte) bool {
+	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || b == '_'
+}
 
-var leadingKeyword = regexp.MustCompile(`^[\s(]*([a-zA-Z]+)`)
+func isWriteVerb(word string) bool {
+	if len(word) < 4 || len(word) > 8 {
+		return false
+	}
+	switch strings.ToLower(word) {
+	case "insert", "update", "delete", "merge", "replace", "create", "drop", "alter", "truncate":
+		return true
+	}
+	return false
+}
+
+// A WITH statement can modify data, so one naming a write verb as a whole word counts as a write.
+// The CTE texts are kilobytes and every execution passes through here, so a word scan, not a regexp.
+func containsWriteVerb(sqlStr string) bool {
+	for i := 0; i < len(sqlStr); {
+		if !isWordByte(sqlStr[i]) {
+			i++
+			continue
+		}
+		j := i + 1
+		for j < len(sqlStr) && isWordByte(sqlStr[j]) {
+			j++
+		}
+		if isWriteVerb(sqlStr[i:j]) {
+			return true
+		}
+		i = j
+	}
+	return false
+}
+
+// The hook sees every statement, so it has to be a plain byte scan.
+func leadingKeyword(sqlStr string) string {
+	i := 0
+	for i < len(sqlStr) {
+		switch sqlStr[i] {
+		case ' ', '\t', '\n', '\r', '\f', '\v', '(':
+			i++
+			continue
+		}
+		break
+	}
+	j := i
+	for j < len(sqlStr) && (sqlStr[j] >= 'a' && sqlStr[j] <= 'z' || sqlStr[j] >= 'A' && sqlStr[j] <= 'Z') {
+		j++
+	}
+	return sqlStr[i:j]
+}
 
 // Anything not recognizable as a pure read counts as a write.
 func isWriteStatement(sqlStr string) bool {
-	m := leadingKeyword.FindStringSubmatch(sqlStr)
-	if m == nil {
+	keyword := leadingKeyword(sqlStr)
+	if keyword == "" {
 		return true
 	}
-	switch strings.ToLower(m[1]) {
+	switch strings.ToLower(keyword) {
 	case "select", "show", "pragma", "describe", "desc",
 		"begin", "commit", "rollback", "savepoint", "release", "prepare", "deallocate":
 		return false
 	case "with":
-		return writeVerbInCTE.MatchString(sqlStr)
+		return containsWriteVerb(sqlStr)
 	}
 	return true
 }

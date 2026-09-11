@@ -5,7 +5,7 @@ import {acceptHMRUpdate, defineStore} from 'pinia'
 import {AuthenticatedHTTPFactory, HTTPFactory} from '@/helpers/fetcher'
 import {getBrowserLanguage, i18n, setLanguage} from '@/i18n'
 import {objectToSnakeCase} from '@/helpers/case'
-import UserModel, {getDisplayName, fetchAvatarBlobUrl, invalidateAvatarCache} from '@/models/user'
+import UserModel, {getDisplayName, invalidateAvatarCache} from '@/models/user'
 import AvatarService from '@/services/avatar'
 import UserSettingsService from '@/services/userSettings'
 import {getToken, refreshToken, removeToken, saveToken} from '@/helpers/auth'
@@ -122,7 +122,6 @@ export const useAuthStore = defineStore('auth', () => {
 	const needsTotpPasscode = ref(false)
 	
 	const info = ref<IUser | null>(null)
-	const avatarUrl = ref<string>()
 	const settings = ref<IUserSettings>(new UserSettingsModel())
 	
 	const currentSessionId = ref<string | null>(null)
@@ -165,9 +164,13 @@ export const useAuthStore = defineStore('auth', () => {
 	}
 
 	function setUser(newUser: IUser | null, saveSettings = true) {
+		// checkAuth() calls this on every navigation; only drop the avatar cache on an actual account change.
+		const userChanged = info.value?.username !== newUser?.username
 		info.value = newUser
 		if (newUser !== null && !isLinkShareAuth.value) {
-			reloadAvatar()
+			if (userChanged) {
+				invalidateAvatar()
+			}
 
 			if (saveSettings && newUser.settings) {
 				loadSettings(newUser.settings)
@@ -232,12 +235,11 @@ export const useAuthStore = defineStore('auth', () => {
 		needsTotpPasscode.value = newNeedsTotpPasscode
 	}
 
-	async function reloadAvatar() {
+	function invalidateAvatar() {
 		if (!info.value || !info.value.username) {
 			return
 		}
 		invalidateAvatarCache(info.value)
-		avatarUrl.value = await fetchAvatarBlobUrl(info.value, 40)
 	}
 
 	function updateLastUserRefresh() {
@@ -558,7 +560,7 @@ export const useAuthStore = defineStore('auth', () => {
 			if (oldName !== undefined && oldName !== settingsUpdate.name) {
 				const {avatarProvider} = await (new AvatarService()).get({} as IAvatar)
 				if (avatarProvider === 'initials') {
-					await reloadAvatar()
+					invalidateAvatar()
 				}
 			}
 			if (showMessage) {
@@ -668,7 +670,6 @@ export const useAuthStore = defineStore('auth', () => {
 		// read-only consumers can pass it to IUser-typed helpers without a
 		// DeepReadonly mismatch.
 		info: readonly(info) as unknown as Ref<IUser | null>,
-		avatarUrl: readonly(avatarUrl),
 		settings: readonly(settings),
 
 		currentSessionId: readonly(currentSessionId),
@@ -690,7 +691,7 @@ export const useAuthStore = defineStore('auth', () => {
 		setAuthenticated,
 		setNeedsTotpPasscode,
 
-		reloadAvatar,
+		invalidateAvatar,
 		updateLastUserRefresh,
 
 		login,

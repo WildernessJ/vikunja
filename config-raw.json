@@ -422,13 +422,18 @@
                 },
                 {
                     "key": "databaselevel",
-                    "default_value": "WARNING",
-                    "comment": "The log level for database log messages. Possible values (case-insensitive) are CRITICAL, ERROR, WARNING, NOTICE, INFO, DEBUG."
+                    "default_value": "",
+                    "comment": "The log level for database log messages. Possible values (case-insensitive) are CRITICAL, ERROR, WARNING, NOTICE, INFO, DEBUG. Defaults to the value of `log.level`."
                 },
                 {
                     "key": "http",
                     "default_value": "stdout",
                     "comment": "Whether to log http requests or not. Possible values are stdout, stderr, file or off to disable http logging."
+                },
+                {
+                    "key": "httplevel",
+                    "default_value": "",
+                    "comment": "The log level for http request log messages. Requests are logged at INFO, requests failing with a 4xx status at WARNING and requests failing with a 5xx status at ERROR. Possible values (case-insensitive) are CRITICAL, ERROR, WARNING, NOTICE, INFO, DEBUG. Defaults to the value of `log.level`."
                 },
                 {
                     "key": "events",
@@ -437,8 +442,8 @@
                 },
                 {
                     "key": "eventslevel",
-                    "default_value": "info",
-                    "comment": "The log level for event log messages. Possible values (case-insensitive) are ERROR, INFO, DEBUG."
+                    "default_value": "",
+                    "comment": "The log level for event log messages. Possible values (case-insensitive) are ERROR, INFO, DEBUG. Defaults to the value of `log.level`."
                 },
                 {
                     "key": "mail",
@@ -447,8 +452,8 @@
                 },
                 {
                     "key": "maillevel",
-                    "default_value": "info",
-                    "comment": "The log level for mail log messages. Possible values (case-insensitive) are ERROR, WARNING, INFO, DEBUG."
+                    "default_value": "",
+                    "comment": "The log level for mail log messages. Possible values (case-insensitive) are ERROR, WARNING, INFO, DEBUG. Defaults to the value of `log.level`."
                 }
             ]
         },
@@ -953,6 +958,11 @@
                     "key": "password",
                     "default_value": "",
                     "comment": "If set to a non-empty value the /metrics endpoint will require this as a password via basic auth in combination with the username below."
+                },
+                {
+                    "key": "pprof",
+                    "default_value": "false",
+                    "comment": "If set to true (and metrics are enabled), exposes the Go runtime profiler at `/debug/pprof/`, protected by the same basic auth as the metrics endpoint when username and password are set. Profiles reveal internals of the running process; only enable it on instances that are not reachable from the internet."
                 }
             ]
         },

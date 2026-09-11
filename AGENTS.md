@@ -71,6 +71,7 @@ You only need to run the lint for the backend when changing backend code, and th
 
 - Always test both positive and negative authorization scenarios.
 - Use test fixtures in `pkg/db/fixtures/` for consistent test data.
+- Before adding a frontend component test, check `frontend/tests/e2e/` for the same scenario and assertions. Do not add a component test when an existing E2E test already covers the behavior or can cover it with a small extension; extend the E2E test when needed. Reserve component tests for distinct cases that would be difficult to exercise reliably through E2E tests.
 
 ## Swagger API Documentation
 
@@ -100,6 +101,7 @@ After adjusting the source string, you need to call the respective translation l
 - Wrap errors with `fmt.Errorf("...: %w", err)`.
 - **No raw SQL.** Use XORM's query builder (`s.Where(...)`, `builder.In`, `.Cols().Update()`, etc.) — never hand-rolled SQL strings via `s.Exec`/`s.Query`/`builder.Expr`, in migrations, tests, or anywhere else. Gotcha when converting: an argument-less `builder.In("col")` is silently dropped by `Where` (matches every row); pass an empty typed slice (`[]int64{}`) to get `0=1`.
 - Never log secrets.
+- High-entropy random tokens are stored as plain SHA-256 (`utils.Sha256Hex`), never a slow KDF — see `sessions.go`. User passwords stay bcrypt.
 - **Comments: document the *why*, not the *what* — default to no comment.** Don't write comments that restate the code, a function/struct/field name, or a signature; they're noise the reader skips past (a comment that takes longer to read than the code it describes should be deleted). Only comment a genuinely non-obvious *why* — a gotcha, an invariant, a rejected alternative, a cross-file constraint — in one tight line. Be aggressive about cutting on the first pass, not just when asked.
 - Before creating a new file, function, or helper, search the codebase (`grep` / `rg`) for existing code that does the same thing. Prefer extending an existing helper over duplicating it. If logic overlaps an existing function significantly, reuse it.
 - API endpoints: kebab-case in URLs, snake_case in JSON.

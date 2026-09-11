@@ -31,7 +31,7 @@ describe('model construction defaults', () => {
 // epoch sentinel `new Date(0)` AND convert an incoming API string to a Date in
 // the constructor. Auto-enumerates the model directory so a new (or edited)
 // model cannot silently opt out — the failure mode a hand-maintained list has.
-const modelModules = import.meta.glob('./*.ts', {eager: true}) as Record<string, {default?: unknown}>
+const modelModules = import.meta.glob(['./*.ts', '!./*.test.ts'], {eager: true}) as Record<string, {default?: unknown}>
 
 type ModelClass = new (data: Record<string, unknown>) => Record<string, unknown>
 
