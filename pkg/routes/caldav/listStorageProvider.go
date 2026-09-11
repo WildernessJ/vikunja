@@ -764,44 +764,7 @@ func (vcls *VikunjaCaldavProjectStorage) UpdateResource(rpath, content string) (
 
 	// Overlay only what the VTODO expressed; everything else keeps its stored value.
 	base := *stored
-	if props.Title {
-		base.Title = vTask.Title
-	}
-	if props.Description {
-		base.Description = vTask.Description
-	}
-	if props.Done {
-		base.Done = vTask.Done
-	}
-	if props.Priority {
-		base.Priority = vTask.Priority
-	}
-	if props.DueDate {
-		base.DueDate = vTask.DueDate
-	}
-	if props.StartDate {
-		base.StartDate = vTask.StartDate
-	}
-	if props.EndDate {
-		base.EndDate = vTask.EndDate
-	}
-	if props.Color {
-		base.HexColor = vTask.HexColor
-	}
-	if props.Deadline {
-		base.Deadline = vTask.Deadline
-	}
-	if props.EstimatedDuration {
-		base.EstimatedDuration = vTask.EstimatedDuration
-	}
-	if props.Repeat {
-		base.RepeatMode = vTask.RepeatMode
-		base.RepeatRRule = vTask.RepeatRRule
-		base.RepeatFromCompletion = vTask.RepeatFromCompletion
-		// An incoming RRULE owns the recurrence: clear a stale interval-based
-		// repeat_after so the row doesn't carry two contradictory rules.
-		base.RepeatAfter = vTask.RepeatAfter
-	}
+	overlayParsedProps(&base, vTask, props)
 	// nil = no VALARM, keep stored reminders; non-nil (even empty) = client owns the alarm set.
 	if vTask.Reminders != nil {
 		base.Reminders = vTask.Reminders
@@ -854,6 +817,48 @@ func (vcls *VikunjaCaldavProjectStorage) UpdateResource(rpath, content string) (
 	}
 	r := data.NewResource(rpath, &rr)
 	return &r, nil
+}
+
+// overlayParsedProps copies onto base only the fields the VTODO carried.
+func overlayParsedProps(base, vTask *models.Task, props caldav.ParsedVTODOProperties) {
+	if props.Title {
+		base.Title = vTask.Title
+	}
+	if props.Description {
+		base.Description = vTask.Description
+	}
+	if props.Done {
+		base.Done = vTask.Done
+	}
+	if props.Priority {
+		base.Priority = vTask.Priority
+	}
+	if props.DueDate {
+		base.DueDate = vTask.DueDate
+	}
+	if props.StartDate {
+		base.StartDate = vTask.StartDate
+	}
+	if props.EndDate {
+		base.EndDate = vTask.EndDate
+	}
+	if props.Color {
+		base.HexColor = vTask.HexColor
+	}
+	if props.Deadline {
+		base.Deadline = vTask.Deadline
+	}
+	if props.EstimatedDuration {
+		base.EstimatedDuration = vTask.EstimatedDuration
+	}
+	if props.Repeat {
+		base.RepeatMode = vTask.RepeatMode
+		base.RepeatRRule = vTask.RepeatRRule
+		base.RepeatFromCompletion = vTask.RepeatFromCompletion
+		// An incoming RRULE owns the recurrence: clear a stale interval-based
+		// repeat_after so the row doesn't carry two contradictory rules.
+		base.RepeatAfter = vTask.RepeatAfter
+	}
 }
 
 // DeleteResource deletes a resource
