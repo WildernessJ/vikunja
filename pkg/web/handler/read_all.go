@@ -17,8 +17,6 @@
 package handler
 
 import (
-	"errors"
-	"fmt"
 	"math"
 	"net/http"
 	"reflect"
@@ -26,7 +24,6 @@ import (
 
 	vconfig "code.vikunja.io/api/pkg/config"
 	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/models"
 	"code.vikunja.io/api/pkg/modules/auth"
 
 	"github.com/labstack/echo/v5"
@@ -43,13 +40,8 @@ func (c *WebHandler) ReadAllWeb(ctx *echo.Context) error {
 	}
 
 	// Get the object & bind params to struct
-	if err := ctx.Bind(currentStruct); err != nil {
-		log.Debugf("Invalid model error. Internal error was: %s", err.Error())
-		var he *echo.HTTPError
-		if errors.As(err, &he) {
-			return models.ErrInvalidModel{Message: fmt.Sprintf("%v", he.Message), Err: err}
-		}
-		return models.ErrInvalidModel{Err: err}
+	if err := bindAndForcePathValues(ctx, currentStruct); err != nil {
+		return err
 	}
 
 	// Pagination
