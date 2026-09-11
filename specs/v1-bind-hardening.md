@@ -28,7 +28,7 @@
     then authorize against the stored row's owner, so no escalation — the URL is silently
     ignored within the caller's own webhooks. `GetTaskAttachment` (`task_attachment.go:113-116`)
     bare-binds on a GET and is saved by `TaskAttachment.ReadOne` re-scoping on `task_id`.
-    Filed as a follow-up issue (see Execution Log for the number); not this branch.
+    Filed as **#102**; not this branch.
   - `ProjectView.CanRead`'s missing `GetProjectViewByIDAndProject` scope (noted by #90 as
     fragile; a separate model change).
   - v2 code changes. The model-level #89 fix covers v2 — `pkg/routes/api/v2/webhooks.go:112`
