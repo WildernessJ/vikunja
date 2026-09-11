@@ -46,8 +46,8 @@ type CObject interface {
 // Relies on every param-tagged field being of int64 or string kind (named
 // string types like RelationKind included): a BindUnmarshaler carrying state
 // would not survive being bound twice.
-// Takes any, not CObject, so the read handlers and custom v1 handlers can
-// reuse it rather than hand-copy the precedence a fourth time.
+// All five generic handlers call it. Takes any, not CObject, so custom v1
+// handlers can reuse it rather than hand-copy the precedence.
 func bindAndForcePathValues(ctx *echo.Context, currentStruct any) error {
 	if err := ctx.Bind(currentStruct); err != nil {
 		return invalidModelErr(err)

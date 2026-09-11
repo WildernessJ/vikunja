@@ -265,4 +265,38 @@ so the reorder cannot reach them.
 
 ## Execution Log
 
-_(build phase appends: assumptions, deviations, red/green evidence per test)_
+Build session 2026-09-11 (Opus 5, driver-run, no dispatch; `crudable` loaded before the
+permission edit).
+
+**Red on `main` code (tests added, fix not yet applied):**
+
+1. `TestWebhook/ReadAll/Body_cannot_re-target_the_URL's_project`: `Error is nil`. The read
+   returned 200 under project 2's URL.
+2. `TestProjectViewV1/ReadOne/Body_cannot_re-target_the_URL's_project`: `An error is expected
+   but got nil`. View 4 was returned under project 2's URL. The guard *Normal* sub-test passed.
+3. `TestWebhook/Create/Body_user_id_cannot_bypass_the_project_permission`: `expected: 403,
+   actual: 412`. The gate was passed and `Create`'s both-set check rejected. The guards
+   *Normal* and *Without user_id is forbidden as before* passed.
+4. `TestWebhook_Permissions`: exactly two cells failed, `{ProjectID: 2, UserID: 1}` and
+   `{ProjectID: -1, UserID: 1}` (`expected: false, actual: true`). The other four cells
+   passed, `{ProjectID: -1}` included.
+5. `TestHumaWebhook/Create/Body_user_id_cannot_bypass_the_project_permission`: `expected:
+   403, actual: 422`.
+
+**Green after the fix:** `mage test:filter TestWebhook_Permissions` ok; `mage test:web` ok
+(the full `pkg/webtests` package, not `-short`, which includes all four handler tests and the
+untouched v2 webhook and user-webhook matrices); `TZ=UTC mage test:feature` ok with 0 FAIL;
+`mage lint` reported 0 issues.
+
+**Deviations:** none from the implementation plan. `read_all.go` keeps `log` (it is still
+used). No stop criterion was hit: no existing read-route test went red, and no v2 route file
+changed.
+
+**Notes for review:**
+
+- The *Normal* create guard asserts the row with `db.AssertExists(…, "project_id": 1)`. This
+  pins the URL-derived parent, not only that the row exists.
+- The two red runs used different `mage test:filter` expressions. The first pass also
+  matched `TestWebhook_Permissions`, and its `-short` failure stopped mage before the
+  `pkg/webtests` re-run. So the handler tests were run red separately, with
+  `'TestWebhook$|TestProjectViewV1|TestHumaWebhook$'`.

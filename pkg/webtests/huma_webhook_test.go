@@ -149,6 +149,11 @@ func TestHumaWebhook(t *testing.T) {
 			require.Error(t, err)
 			assert.Equal(t, http.StatusForbidden, getHTTPErrorCode(err))
 		})
+		t.Run("Body user_id cannot bypass the project permission", func(t *testing.T) {
+			_, err := forbidden.testCreateWithUser(nil, nil, `{"target_url":"https://example.com/nope","events":["task.updated"],"user_id":1}`)
+			require.Error(t, err)
+			assert.Equal(t, http.StatusForbidden, getHTTPErrorCode(err))
+		})
 		t.Run("Invalid event", func(t *testing.T) {
 			// An unregistered event name → InvalidFieldError, which v2 surfaces as
 			// 422 Unprocessable Entity (v1 returns 412; v2 standardises on 422).

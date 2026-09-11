@@ -17,8 +17,10 @@
 package webtests
 
 import (
+	"net/http"
 	"testing"
 
+	"code.vikunja.io/api/pkg/db"
 	"code.vikunja.io/api/pkg/models"
 	"code.vikunja.io/api/pkg/web/handler"
 
@@ -27,6 +29,9 @@ import (
 )
 
 func TestWebhook(t *testing.T) {
+	// availableWebhookEvents is filled by RegisterListeners, which this harness never calls.
+	models.RegisterEventForWebhook(&models.TaskUpdatedEvent{})
+
 	testHandler := webHandlerTest{
 		user: &testuser1,
 		strFunc: func() handler.CObject {
@@ -42,6 +47,36 @@ func TestWebhook(t *testing.T) {
 			assert.NotContains(t, rec.Body.String(), `webhook-user`)
 			assert.NotContains(t, rec.Body.String(), `webhook-password`)
 			assert.NotContains(t, rec.Body.String(), `webhook-secret-fixture`)
+		})
+		t.Run("Body cannot re-target the URL's project", func(t *testing.T) {
+			hndl := testHandler.getHandler()
+			_, err := newTestRequestWithUser(t, http.MethodGet, hndl.ReadAllWeb, &testuser1,
+				`{"project_id":1}`, nil, map[string]string{"project": "2"})
+			assertHandlerErrorCode(t, err, models.ErrorCodeGenericForbidden)
+		})
+	})
+	t.Run("Create", func(t *testing.T) {
+		t.Run("Normal", func(t *testing.T) {
+			_, err := testHandler.testCreateWithUser(nil, map[string]string{"project": "1"},
+				`{"target_url":"https://example.com/ok","events":["task.updated"]}`)
+			require.NoError(t, err)
+			db.AssertExists(t, "webhooks", map[string]interface{}{
+				"target_url": "https://example.com/ok",
+				"project_id": 1,
+			}, false)
+		})
+		t.Run("Body user_id cannot bypass the project permission", func(t *testing.T) {
+			_, err := testHandler.testCreateWithUser(nil, map[string]string{"project": "2"},
+				`{"target_url":"https://example.com/x","events":["task.updated"],"user_id":1}`)
+			require.Error(t, err)
+			assert.Equal(t, http.StatusForbidden, getHTTPErrorCode(err))
+			db.AssertMissing(t, "webhooks", map[string]interface{}{"target_url": "https://example.com/x"})
+		})
+		t.Run("Without user_id is forbidden as before", func(t *testing.T) {
+			_, err := testHandler.testCreateWithUser(nil, map[string]string{"project": "2"},
+				`{"target_url":"https://example.com/x","events":["task.updated"]}`)
+			require.Error(t, err)
+			assert.Equal(t, http.StatusForbidden, getHTTPErrorCode(err))
 		})
 	})
 }

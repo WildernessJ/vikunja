@@ -68,12 +68,14 @@ func (w *Webhook) canDoWebhook(s *xorm.Session, a web.Auth) (bool, error) {
 		w.ProjectID = existing.ProjectID
 	}
 
-	// User-level webhook: user owns it or is creating new
-	if w.UserID > 0 || w.ProjectID == 0 {
-		return w.UserID == 0 || w.UserID == a.GetID(), nil
+	// Project branch first so a body user_id cannot pull a project webhook onto the
+	// owner-only branch (#89). `!= 0`, not `> 0`: a negative (saved-filter) project id
+	// must reach Project.CanWrite, which denies it.
+	if w.ProjectID != 0 {
+		p := &Project{ID: w.ProjectID}
+		return p.CanWrite(s, a)
 	}
 
-	// Project-level webhook: delegate to project
-	p := &Project{ID: w.ProjectID}
-	return p.CanWrite(s, a)
+	// User-level webhook: user owns it or is creating new
+	return w.UserID == 0 || w.UserID == a.GetID(), nil
 }
