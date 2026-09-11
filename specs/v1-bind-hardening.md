@@ -30,10 +30,10 @@
     bare-binds on a GET and is saved by `TaskAttachment.ReadOne` re-scoping on `task_id`.
     Filed as **#102**; not this branch.
   - `ProjectView.CanRead`'s missing `GetProjectViewByIDAndProject` scope (noted by #90 as
-    fragile; a separate model change).
-  - v2 code changes. The model-level #89 fix covers v2 — `pkg/routes/api/v2/webhooks.go:112`
-    forces `ProjectID` from the URL but does **not** clear `Body.UserID`, so v2 carries the
-    identical vector today. v2 gets a regression test (Tests, item 5), no route change.
+    fragile; a separate model change). Filed as **#103**.
+  - v2 code changes. The model-level #89 fix covers v2 — `pkg/routes/api/v2/webhooks.go:115`
+    forces `ProjectID` from the URL but does **not** clear `Body.UserID` (huma is permissive
+    about `readOnly` on input), so v2 carries the identical vector today. v2 gets a regression test (Tests, item 5), no route change.
 
 ## Design (settled)
 
@@ -66,8 +66,10 @@ if w.ProjectID != 0 {
 return w.UserID == 0 || w.UserID == a.GetID(), nil
 ```
 
-Truth table over `(UserID, ProjectID)`, old vs new — the only cell that changes is the
-intended one:
+Truth table over `(UserID, ProjectID)` for a non-link-share caller with `w.ID == 0` (the
+`w.ID > 0` reload replaces both fields from the stored row first, so update/delete land in
+the same cells with stored values). Three cells change, all in the direction "a webhook that
+names a project is authorized by that project":
 
 | UserID | ProjectID | old | new |
 |---|---|---|---|
@@ -76,8 +78,9 @@ intended one:
 | other | 0 | false | false |
 | 0 | >0 | `Project.CanWrite` | `Project.CanWrite` |
 | **me** | **>0** | **true (the #89 bypass)** | **`Project.CanWrite`** |
-| other | >0 | false | `Project.CanWrite` (then `Create` rejects both-set) |
-| any | <0 | `Project.CanWrite` → false (`project_permissions.go:31-33`, `ID < 1`) | same — this is why `!= 0` |
+| **other** | **>0** | **false** | **`Project.CanWrite`** — visible only as a status change: a project writer sending a foreign `user_id` now gets `Create`'s both-set 412 instead of 403. Both reject; no row. |
+| 0 | <0 | `Project.CanWrite` → false (`project_permissions.go:31-33`, `ID < 1`) | same |
+| **me** | **<0** | **true** (`UserID > 0` wins, `CanWrite` never reached) | **false** — `!= 0` sends it to `CanWrite`; `> 0` would fall through and keep the old allow |
 
 The stored-row reload above it (`if w.ID > 0 { … w.UserID = existing.UserID; w.ProjectID =
 existing.ProjectID }`) is unchanged: update/delete already authorize against the row. The
@@ -116,10 +119,10 @@ Edge cases the executor must hold:
   unaffected. If a test that passes a query param to a read route goes red, that is the
   stop criterion, not something to work around.
 - The helper's documented invariant (every `param`-tagged field is int64 or string kind)
-  holds for the read-only structs too: `TaskCollection` is registered for `ReadAllWeb` only
-  (`routes.go:656-662`) and was outside #86's write-handler audit, so the plan-phase verifier
-  re-audited every `param` tag in `pkg/models` and `pkg/user` — all int64, string, or a
-  named string type. `echo@v5.3.1 bind.go:274-284` only recurses into untagged non-pointer
+  holds for the read-only structs too. `TaskCollection` (`ReadAllWeb` on `routes.go:661,
+  662, 689`), `AdminProjectList` and `adminapi.UserList` (`:954-971`, no path params) were
+  outside #86's write-handler audit, so the plan-phase verifier re-audited every `param` tag
+  repo-wide — 112 `int64`, 8 `string`, 1 `RelationKind` (named string). `echo@v5.3.1 bind.go:274-284` only recurses into untagged non-pointer
   struct fields, so `ProjectView.Filter *TaskCollection` is not re-bound by the second pass.
   No further audit needed.
 
@@ -143,8 +146,15 @@ Handler tests in `pkg/webtests/`, model test in `pkg/models/`. Run with `mage te
 `main` for the stated reason before their fix lands and pass after; record both runs in the
 Execution Log. Tests marked **guard** are green on `main` and stay green.
 
+**Global registry:** `availableWebhookEvents` is populated only by `RegisterListeners`,
+which the webtests harness never calls. Any test that creates a webhook must first call
+`models.RegisterEventForWebhook(&models.TaskUpdatedEvent{})` at the top of its `Test*`
+function, as `huma_webhook_test.go:49-52` does — otherwise `Create` rejects the event with
+412 and the test only passes when another file happened to run first.
+
 Error assertions: the two `Project.CanRead` / `CanCreate` denials surface differently.
-`Webhook.ReadAll` returns `models.ErrGenericForbidden` (`webhooks.go:236,245`) → assert
+`Webhook.ReadAll` returns `models.ErrGenericForbidden` (`webhooks.go:255`, the project
+branch's `CanRead` failure) → assert
 `assertHandlerErrorCode(t, err, models.ErrorCodeGenericForbidden)`. The generic handlers'
 `DoReadOne` / `DoCreate` return `handler.ErrGenericForbidden` (`core.go:49,89`), whose
 `web.HTTPError` has `HTTPCode: 403` and **no** `Code` (`handler/error.go:49-55`) → assert
@@ -155,24 +165,33 @@ a code of 0 (tautological). `models.ErrCodeForbidden` does not exist.
 is owned by user3 and not shared to user1; view 4 is in project 1; webhook 1 is in project 1.
 
 1. **red-first** — `webhook_test.go` `ReadAll` → new sub-test *"Body cannot re-target the
-   URL's project"*: user1, URL `project=2`, body `{"project_id":1}`, via
-   `newTestRequestWithUser(t, http.MethodGet, testHandler.getHandler().ReadAllWeb,
-   &testuser1, body, nil, params)` (the `testReadAllWithUser` helper hard-codes an empty
-   payload). **Red on main:** 200 listing project 1's webhook under project 2's URL (bound
+   URL's project"*: user1, URL `project=2`, body `{"project_id":1}`. The read helpers
+   (`testReadAllWithUser`, `testReadOneWithUser`) hard-code an empty payload, so build the
+   request by hand and assign the handler first — `ReadAllWeb` has a pointer receiver and
+   `getHandler()` returns a value, so `testHandler.getHandler().ReadAllWeb` does not compile:
+   ```go
+   hndl := testHandler.getHandler()
+   _, err := newTestRequestWithUser(t, http.MethodGet, hndl.ReadAllWeb, &testuser1,
+       `{"project_id":1}`, nil, map[string]string{"project": "2"})
+   ``` **Red on main:** 200 listing project 1's webhook under project 2's URL (bound
    `ProjectID` is 1, `Project.CanRead` passes). **Green:**
    `assertHandlerErrorCode(t, err, models.ErrorCodeGenericForbidden)`.
 2. **red-first** — new `pkg/webtests/project_view_v1_test.go`, function
    **`TestProjectViewV1`** (`TestProjectView` is taken by `huma_project_view_test.go:47`),
    harness `webHandlerTest{user: &testuser1, strFunc: func() handler.CObject { return
    &models.ProjectView{} }, t: t}`. `ReadOne` → *"Body cannot re-target the URL's project"*:
-   URL `project=2, view=4`, body `{"project_id":1}`. **Red on main:** 200 with view 4 (bound
+   URL `project=2, view=4`, body `{"project_id":1}`, built the same way as test 1 (`hndl :=
+   …; hndl.ReadOneWeb`) — `testReadOneWithUser` sends no body and would be green on `main`.
+   **Red on main:** 200 with view 4 (bound
    `ProjectID`=1, `CanRead` passes, `GetProjectViewByIDAndProject(4, 1)` finds it).
    **Green:** `getHTTPErrorCode(err) == 403`. Plus a **guard** *"Normal"* sub-test (URL
    `project=1, view=4`, no body → 200, body contains `"title":"Kanban"`).
 
 **#89 — body `user_id` cannot short-circuit `CanCreate`.**
 
-3. `webhook_test.go` → new `Create` group:
+3. `webhook_test.go` → new `Create` group. Add the `RegisterEventForWebhook` call at the
+   top of `TestWebhook` first (see Global registry above); without it *"Normal"* fails
+   standalone under `mage test:filter TestWebhook`.
    - **guard** *"Normal"*: user1, URL `project=1`, body `{"target_url":"https://example.com/x",
      "events":["task.updated"]}` → no error, row exists.
    - **red-first** *"Body user_id cannot bypass the project permission"*: user1, URL
@@ -187,21 +206,24 @@ is owned by user3 and not shared to user1; view 4 is in project 1; webhook 1 is 
    covers webhook `Can*` today). Table over `CanCreate(s, &user1)` with `db.LoadAndAssertFixtures`
    and a session: `{ProjectID: 2, UserID: 1}` → false (red on main: true);
    `{ProjectID: 1, UserID: 1}` → true (project writable; both-set is `Create`'s job);
-   `{UserID: 1}` → true; `{UserID: 2}` → false; `{ProjectID: -1}` → false and
-   `{ProjectID: -1, UserID: 1}` → false (the `!= 0` guard; a `> 0` implementation fails the
-   first of these). The v2 permission matrix in `huma_webhook_test.go` (webhooks 2–5) and
+   `{UserID: 1}` → true; `{UserID: 2}` → false; `{ProjectID: -1}` → false (green on main;
+   a `> 0` implementation turns it true); `{ProjectID: -1, UserID: 1}` → false (red on main:
+   true, the `UserID > 0` short-circuit; also true under `> 0`). Name the function
+   `TestWebhook_Permissions` so `mage test:filter TestWebhook_Permissions` runs it alone. The v2 permission matrix in `huma_webhook_test.go` (webhooks 2–5) and
    `huma_user_webhook_test.go` must stay green untouched.
 5. **red-first** — `huma_webhook_test.go` `Create` group → *"Body user_id cannot bypass the
-   project permission"*: `forProject("2")` harness (already defined at `:64-70`),
-   `testCreateWithUser(nil, nil, body-with-user_id-1)`. **Red on main:** v2 forces
-   `Body.ProjectID` (`webhooks.go:112`) but not `Body.UserID`, so the same short-circuit
-   passes and `Create` returns 412. **Green:** 403 (follow the file's existing forbidden
-   assertion idiom for `newV2Error`).
+   project permission"*: the `forbidden` harness already bound at `:75` (`on("2")`),
+   `forbidden.testCreateWithUser(nil, nil, body-with-user_id-1)`. **Red on main:** v2 forces
+   `Body.ProjectID` (`webhooks.go:115`) but not `Body.UserID`, so the same short-circuit
+   passes and `Create`'s `InvalidFieldError` surfaces as **422** (v2 maps
+   `ValidationHTTPError` to 422, see `:152-155`). **Green:** `assert.Equal(t,
+   http.StatusForbidden, getHTTPErrorCode(err))`, the file's idiom at `:148-150`.
 
 ## Verification
 
-From the worktree root (`.worktrees/v1-bind-hardening`). `docs/context/PITFALLS.md` is
-gitignored and lives only in the main checkout (`../../docs/context/PITFALLS.md`).
+From the worktree root (`.worktrees/v1-bind-hardening`). `docs/context/PITFALLS.md` and
+`.workflow.yaml` (source of `test_command`) are git-excluded and live only in the main
+checkout (`../../`).
 
 ```bash
 mage test:filter TestWebhook_Permissions 2>&1 | tee /tmp/whp.log   # the new model table (name it so)
@@ -215,7 +237,9 @@ the branch (record the failing output for each in the Execution Log); `mage test
 `TZ=UTC mage test:feature` green; `mage lint` 0 issues; `git status --porcelain
 --untracked-files=all` empty. No frontend change, so no typecheck / build step. Live-verify:
 the classifier will mark this `non-live` (backend-only); a curl differential against dev is
-optional evidence, not a gate.
+optional evidence, not a gate. `pkg/e2etests` and `pkg/caldavtests` skip under `-short` and
+are not run here; their webhook tests insert rows directly and never send a body `user_id`,
+so the reorder cannot reach them.
 
 ## Stop criteria
 
