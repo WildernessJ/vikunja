@@ -24,6 +24,7 @@ import (
 	"code.vikunja.io/api/pkg/models"
 	auth2 "code.vikunja.io/api/pkg/modules/auth"
 	webfiles "code.vikunja.io/api/pkg/web/files"
+	"code.vikunja.io/api/pkg/web/handler"
 
 	"github.com/labstack/echo/v5"
 )
@@ -45,8 +46,8 @@ import (
 func UploadTaskAttachment(c *echo.Context) error {
 
 	var taskAttachment models.TaskAttachment
-	if err := c.Bind(&taskAttachment); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "No task ID provided").Wrap(err)
+	if err := handler.BindAndForcePathValues(c, &taskAttachment); err != nil {
+		return err
 	}
 
 	auth, err := auth2.GetAuthFromClaims(c)
@@ -111,8 +112,8 @@ func UploadTaskAttachment(c *echo.Context) error {
 func GetTaskAttachment(c *echo.Context) error {
 
 	var taskAttachment models.TaskAttachment
-	if err := c.Bind(&taskAttachment); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "No task ID provided").Wrap(err)
+	if err := handler.BindAndForcePathValues(c, &taskAttachment); err != nil {
+		return err
 	}
 
 	auth, err := auth2.GetAuthFromClaims(c)

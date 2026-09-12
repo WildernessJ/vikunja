@@ -53,3 +53,31 @@ func TestWebhook_Permissions(t *testing.T) {
 		})
 	}
 }
+
+func TestWebhook_CanRead(t *testing.T) {
+	doer := &user.User{ID: 1}
+	cases := []struct {
+		name    string
+		webhook Webhook
+		want    bool
+	}{
+		{"body user_id on a foreign project", Webhook{ProjectID: 2, UserID: 1}, false},
+		{"body user_id on an own project", Webhook{ProjectID: 1, UserID: 1}, true},
+		{"own user-level", Webhook{UserID: 1}, true},
+		{"foreign user-level", Webhook{UserID: 2}, false},
+		// Favorites is always readable; pinned so nobody narrows the branch to `> 0`.
+		{"foreign user_id on the favorites pseudo project", Webhook{ProjectID: -1, UserID: 2}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			db.LoadAndAssertFixtures(t)
+			s := db.NewSession()
+			defer s.Close()
+
+			w := tc.webhook
+			can, _, err := w.CanRead(s, doer)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, can)
+		})
+	}
+}

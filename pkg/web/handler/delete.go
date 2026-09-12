@@ -35,7 +35,7 @@ func (c *WebHandler) DeleteWeb(ctx *echo.Context) error {
 	currentStruct := c.EmptyStruct()
 
 	// Bind params to struct
-	if err := bindAndForcePathValues(ctx, currentStruct); err != nil {
+	if err := BindAndForcePathValues(ctx, currentStruct); err != nil {
 		return err
 	}
 

@@ -22,6 +22,7 @@ import (
 	"code.vikunja.io/api/pkg/db"
 	"code.vikunja.io/api/pkg/models"
 	"code.vikunja.io/api/pkg/user"
+	"code.vikunja.io/api/pkg/web/handler"
 
 	"github.com/labstack/echo/v5"
 )
@@ -140,7 +141,7 @@ func UpdateUserWebhook(c *echo.Context) error {
 	}
 
 	w := &models.Webhook{}
-	if err := c.Bind(w); err != nil {
+	if err := handler.BindAndForcePathValues(c, w); err != nil {
 		return err
 	}
 
@@ -192,7 +193,7 @@ func DeleteUserWebhook(c *echo.Context) error {
 	}
 
 	w := &models.Webhook{}
-	if err := c.Bind(w); err != nil {
+	if err := handler.BindAndForcePathValues(c, w); err != nil {
 		return err
 	}
 
