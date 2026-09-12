@@ -238,3 +238,23 @@ Reviewer, look first at: site A's new error return inside the done branch
 the named return `err`. The build session checked that every later read of `err` in
 `updateTaskBucket` comes after a reassignment, so a nil from the helper cannot leak a
 stale error.
+
+### Review session — 2026-09-12 (Fable, `/flow review` auto)
+
+Verifier: SURVIVES, no BLOCKER. Session audit (cold Opus verifier): stands behind it, no
+blocker. Two corrections to the record:
+
+- **#87 reachability.** The Intent says the stale default is "reachable via the kanban→list
+  kind switch". On current code it is not: buckets survive the kind switch
+  (`project_view.go:741-742`), `Bucket.Delete` zeroes a matching default before deleting,
+  and the importer zeroes both ids on view create. A dangling `default_bucket_id` is a
+  legacy row from before #85, or a raw DB write. #87 is hardening against that state; #93
+  is live. The live verify for #87 therefore plants the value with a direct DB update, as the
+  tests do.
+- **Forward fragility for #93.** `TaskDuplicate.Create` hand-enumerates the copied fields;
+  the next persisted `Task` column reintroduces this bug class. `duplicateTasks`
+  (`project_duplicate.go:395-404`) reuses the loaded struct and is immune. Not changed here.
+
+Found in passing, pre-existing, out of scope: reopening a repeating task that sits in a done
+bucket never moves it out (`tasks.go:1551` gates on `!isRepeating`, `:1561` on
+`!ot.Done && t.Done`). Filed as its own issue.
