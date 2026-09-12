@@ -173,6 +173,16 @@ func repeatingTaskPassesThroughDoneBucket(view *ProjectView, task *Task, request
 		view.DefaultBucketID != view.DoneBucketID
 }
 
+// rerouteDoneRepeatingTask validates the default bucket because a kind switch
+// can leave it stale or on another view; the caller's upsert does not check.
+func rerouteDoneRepeatingTask(s *xorm.Session, view *ProjectView, fallback int64) (int64, error) {
+	target, err := existingBucketID(s, view.ID, view.DefaultBucketID)
+	if err != nil || target != 0 {
+		return target, err
+	}
+	return fallback, nil
+}
+
 // updateTaskBucket is internally used to actually do the update.
 func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 	oldTaskBucket := &TaskBucket{}
@@ -242,10 +252,9 @@ func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 				// A repeating task doesn't stay in the done bucket; route
 				// it back to the view's default bucket so the user sees
 				// the next iteration waiting in the "To-Do" column.
-				if view.DefaultBucketID != 0 {
-					b.BucketID = view.DefaultBucketID
-				} else {
-					b.BucketID = oldTaskBucket.BucketID
+				b.BucketID, err = rerouteDoneRepeatingTask(s, view, oldTaskBucket.BucketID)
+				if err != nil {
+					return err
 				}
 				// The task is already in the correct bucket, so there is
 				// nothing to move and no count to bump.
