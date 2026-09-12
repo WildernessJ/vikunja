@@ -54,6 +54,12 @@ func TestWebhook(t *testing.T) {
 				`{"project_id":1}`, nil, map[string]string{"project": "2"})
 			assertHandlerErrorCode(t, err, models.ErrorCodeGenericForbidden)
 		})
+		t.Run("Body user_id cannot select the user-level list under a project URL", func(t *testing.T) {
+			hndl := testHandler.getHandler()
+			_, err := newTestRequestWithUser(t, http.MethodGet, hndl.ReadAllWeb, &testuser1,
+				`{"user_id":1}`, nil, map[string]string{"project": "2"})
+			assertHandlerErrorCode(t, err, models.ErrorCodeGenericForbidden)
+		})
 	})
 	t.Run("Create", func(t *testing.T) {
 		t.Run("Normal", func(t *testing.T) {
