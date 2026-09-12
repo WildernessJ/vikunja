@@ -68,3 +68,5 @@ docs/context/
 # Local-only symlink into jason-claude-skills on the external SSD — would
 # dangle on clone and publish a local path in this public repo.
 .agents/skills/pb
+# Added by code-review-graph
+.code-review-graph/
