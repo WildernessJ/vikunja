@@ -20,9 +20,12 @@ happens to re-check what the permission layer should have. Same class as #89/#90
 Three commits on one branch, in the order #104 → #103 → #102, each with its own red-first
 tests. Backend only. No v2 route changes.
 
+Verifier loop (plan phase): round 1 (Opus) REFUTED — guard placement, the `-1` table row,
+the `CanRead` caller list, `(0,0)` outcome, line cites, `UploadTaskAttachment`; all folded in.
+
 ## Design (settled)
 
-**#104 — reorder, mirror of #89.** In `Webhook.ReadAll` (`pkg/models/webhooks.go:243-259`)
+**#104 — reorder, mirror of #89.** In `Webhook.ReadAll` (`pkg/models/webhooks.go:243-258`)
 and `Webhook.CanRead` (`pkg/models/webhooks_permissions.go:24-37`): a webhook that names a
 project is a project webhook, so the project branch wins.
 
@@ -34,11 +37,18 @@ if w.ProjectID != 0 {
 }
 ```
 
-`!= 0`, not `> 0`, for the reason the #89 table gives: a negative id (saved-filter pseudo
-project) must reach `Project.CanRead`, which denies it. Cells that change, non-link-share
+`!= 0`, not `> 0`, so a negative id (favorites `-1`, saved filters `< -1`) reaches
+`Project.CanRead` instead of falling into the user branch, where a body `user_id` would
+select the caller's own list under a pseudo-project URL — the #104 shape again. Unlike #89's
+`CanWrite`, `Project.CanRead` **allows** pseudo projects the caller owns
+(`project_permissions.go:96-110`, favorites always; a saved filter if the caller can read it),
+so the cell `(UserID=me, ProjectID<0)` becomes "200, empty list" — the same answer that URL
+gives with no body today (no webhook row can carry a negative `project_id`; `Create` gates on
+`CanWrite`). Accepted: no data, no new reachable state. Cells that change, non-link-share
 caller: `(UserID=me, ProjectID≠0)` was "own user list / true", becomes `Project.CanRead`.
-`(0, 0)` is unchanged in outcome: today `Project.CanRead(0)` → false; after, `0 == a.GetID()`
-→ false. The two callers that set `UserID` never set `ProjectID` (v2 `userWebhooksList`,
+`(0, 0)` (`GET /projects/0/webhooks`): today `Project.CanRead(0)` returns
+`ErrProjectDoesNotExist` (404, `project_permissions.go:184-187`); after, the user branch
+returns `ErrGenericForbidden` (403). Both deny. The two callers that set `UserID` never set `ProjectID` (v2 `userWebhooksList`,
 `user_webhooks.go:107`; v1 `GetUserWebhooks` does not call `ReadAll` at all), so the
 user-level lists are untouched. The v2 project list (`webhooks.go:96`) sets only
 `ProjectID`; Huma binds no body there.
@@ -47,21 +57,37 @@ user-level lists are untouched. The v2 project list (`webhooks.go:96`) sets only
 it is the same two lines, in the same file, with the same wrong shape, and the review filed it
 under #104.
 
-**#103 — add the scope guard `CanUpdate` already has.** In `ProjectView.CanRead`
-(`pkg/models/project_view_permissions.go:24-36`), after the saved-filter early return and
-before `pp.CanRead`:
+**#103 — add the scope guard `CanUpdate` already has, but after the project check.** In
+`ProjectView.CanRead` (`pkg/models/project_view_permissions.go:24-36`), replace the final
+`return pp.CanRead(s, a)` with:
 
 ```go
+can, maxPerm, err := pp.CanRead(s, a)
+if err != nil || !can {
+    return can, maxPerm, err
+}
+// Project readable — now refuse a view that is not in that project, so the
+// permission layer holds without leaning on ReadOne's scoped lookup (#103).
 if _, err := GetProjectViewByIDAndProject(s, pv.ID, pv.ProjectID); err != nil {
     return false, 0, err
 }
+return true, maxPerm, nil
 ```
 
-Verbatim mirror of `CanUpdate` (`:65-67`), no `pv.ID == 0` skip: `DoReadAll` never calls
-`CanRead`, and the three other callers (`kanban.go:128`, `task_position.go:111`,
-`bot_users_test.go:95`) pass a view they just fetched by id + project, so `ID` is never 0
-on any reachable path. A skip would be a silent bypass waiting for a caller that sets only
-`ProjectID`. The favorites pseudo-project (negative view ids under
+**Guard after `CanRead`, not before as `CanUpdate`/`CanDelete` do** (`:48`, `:66-69`).
+Before it, a caller with no access to the path project gets 404 for a view outside it and
+403 for a view inside it — a view→project membership oracle across a permission boundary,
+and it flips `project_view_v1_test.go:44-50` (user1, URL `project=2, view=4`, asserts 403)
+to 404. After it, non-readers keep 403 and readers get the 404 `ReadOne` already gave them.
+The oracle shape already exists in `CanUpdate`/`CanDelete`; not touched here (out of scope,
+filed as a follow-up only if review wants it).
+
+No `pv.ID == 0` skip (issue #103 suggests one): the callers are `DoReadOne`
+(`pkg/web/handler/core.go:79`, via v1 `routes.go:938` and v2 `project_views.go:126`, both
+with a `:view` path param), `Bucket.ReadAll` (`kanban.go:128`, view fetched by id + project)
+and `TaskPosition` (`task_position.go:111`, view fetched by id; its own `project_id` is what
+is checked). `DoReadAll` never calls `CanRead`. `ID` is never 0 on a reachable path; a skip
+would be a silent bypass waiting for a caller that sets only `ProjectID`. The favorites pseudo-project (negative view ids under
 `FavoritesPseudoProjectID`) is handled inside `GetProjectViewByIDAndProject` (`project_view.go`,
 first branch), same as for `CanUpdate`.
 
@@ -69,8 +95,9 @@ Accepted cost: `Bucket.ReadAll` and `TaskPosition` permission paths now run one 
 `SELECT … WHERE id = ? AND project_id = ?` per call, on a view they already hold. Same cost
 `CanUpdate` already pays. Not worth a second code path.
 
-HTTP surface is unchanged: `ReadOne` already returned `ErrProjectViewDoesNotExist` (404) for a
-mismatched pair; now `CanRead` returns it first. The model test is the meaningful one.
+HTTP surface is unchanged for every caller: non-readers still get 403 from `CanRead`;
+readers with a mismatched pair still get 404, now from `CanRead` instead of `ReadOne`. The
+model test is the meaningful one.
 
 **#102 — export the helper, call it from the three handlers.** Rename
 `bindAndForcePathValues` → `BindAndForcePathValues` (`pkg/web/handler/helper.go:51`, five
@@ -129,11 +156,17 @@ Backend only. Three commits, in this order so each is reviewable alone.
 9. `pkg/routes/api/v1/task_attachment.go` `GetTaskAttachment`: replace the `c.Bind` block
    (`:113-116`) with the helper call; drop the `http.StatusBadRequest` wrap. Check whether
    `net/http` is still imported elsewhere in the file before removing it.
+   Also `UploadTaskAttachment` (`:48`): same bare `c.Bind(&taskAttachment)`, same
+   one-line swap. Not exploitable today (multipart binds only tagged fields, so `TaskID`
+   never comes from the form; a JSON body fails at `c.MultipartForm()` first), so no
+   red-first test exists for it — it is the fourth bare bind in a file this commit already
+   edits, and leaving it would keep the "saved by a downstream check" shape #102 removes.
+   Guard: the existing `task_attachment_upload_test.go` stays green.
 10. Tests: items 4–6 below.
 
 Edge cases the executor must hold:
 - `Webhook.ID` carries `param:"webhook"` and `TaskAttachment.ID` / `TaskID` carry
-  `param:"attachment"` / `param:"task"` (`webhooks.go:53`, `task_attachment.go:43-44`), all
+  `param:"attachment"` / `param:"task"` (`webhooks.go:54`, `task_attachment.go:43-44`), all
   `int64` — the helper's kind invariant holds; nothing to re-audit.
 - `readOnly:"true"` on those fields does not stop the body from binding (the prior spec
   verified this; it is why #102 exists).
@@ -181,7 +214,9 @@ user1's. `testuser6` exists in `integrations.go:78`.
    file, `TestWebhook_CanRead`, doer `&user.User{ID: 1}`:
    `{ProjectID: 2, UserID: 1}` → false (red on main: true);
    `{ProjectID: 1, UserID: 1}` → true; `{UserID: 1}` → true; `{UserID: 2}` → false;
-   `{ProjectID: -1, UserID: 1}` → false (red on main: true).
+   `{ProjectID: -1, UserID: 2}` → true (red on main: false, the `2 != 1` user-branch denial;
+   green because favorites `CanRead` is always true — the cell Design accepts, pinned so
+   nobody "fixes" it to `> 0` and reopens the user branch for pseudo projects).
    **guard:** `huma_user_webhook_test.go` `ReadAll` and `huma_webhook_test.go` stay green
    (run via `mage test:web`).
 
@@ -255,9 +290,11 @@ under `-short`; their webhook tests insert rows directly and send no body `user_
 ## Stop criteria
 
 - Any existing test in `huma_webhook_test.go`, `huma_user_webhook_test.go`,
-  `webhook_test.go`, `huma_project_view_test.go`, `project_view_v1_test.go`, or the kanban /
-  task-position tests goes red after a reorder or the `CanRead` guard → halt; the Design
-  section's "unchanged cells" claim is wrong.
+  `webhook_test.go`, `huma_project_view_test.go`, `project_view_v1_test.go`,
+  `task_attachment_upload_test.go`, `link_sharing_test.go`, or the kanban / task-position
+  tests goes red after a reorder or the `CanRead` guard → halt; the Design section's
+  "unchanged cells" claim is wrong. In particular `project_view_v1_test.go:44-50` must stay
+  at 403 — if it reads 404, the guard landed before `CanRead`.
 - The favorites guard case (test 3, third sub-test) behaves differently on `main` and on the
   branch → halt; `GetProjectViewByIDAndProject`'s pseudo-project branch does not cover
   `CanRead`'s callers the way Design assumes.
