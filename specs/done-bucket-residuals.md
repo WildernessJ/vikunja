@@ -1,0 +1,205 @@
+# Spec: done-bucket residuals (#106, #107)
+
+## Intent
+
+Two pre-existing defects in done-bucket routing, both in `pkg/models/`, both residue of the
+#87/#93 cycle (`specs/repeating-task-residuals.md`):
+
+- **#106** — four sites route a task by `view.DoneBucketID` read raw. #85 validated
+  `DefaultBucketID` inside `getDefaultBucketID`; #87 validated the two sites that bypass it.
+  No site validates `DoneBucketID`. With a stale nonzero done id, two sites fail loudly
+  (`updateTaskBucket` → `getBucketByID` → `ErrBucketDoesNotExist`: a non-repeating task cannot
+  be completed on that view, a done task cannot be moved into that project) and two write a
+  `task_buckets` row at a dead bucket id with no existence check (silent corruption).
+- **#107** — `updateSingleTask` gates `moveTaskToDoneBuckets` on `!t.isRepeating()` and
+  `moveTaskToDefaultBuckets` on `!ot.Done && t.Done`. For a repeating task that is done and
+  sits in a done bucket, reopening it fires neither: the task stays in the done bucket.
+  Reachable today: mark a task done (it moves to the done bucket), add `repeat_after`, reopen.
+
+**Reachability of #106, stated honestly:** the #87 audit established that on current code a
+dangling bucket id is not producible by the kind switch, `Bucket.Delete`, or the importer.
+A stale `done_bucket_id` is a legacy row from before #85 or a raw DB write. #106 is
+hardening against that state, in the same shape as #87. #107 is live.
+
+Both below the v3 floor individually; run as one cycle because both are done-bucket residue
+and Jason picked `/flow`.
+
+**Out of scope:** the three `DoneBucketID` *comparisons* in `updateTaskBucket`
+(`kanban_task_bucket.go:240-267`) and `repeatingTaskPassesThroughDoneBucket` (`:170-173`).
+They compare a requested or stored bucket id against the done id; with a stale done id no
+live bucket can match it, so they are inert. The one case where they fire — a row already
+sitting at the dead id, which site 2 below used to create — makes a move out of it mark the
+task undone, which is the right reading of that row. Not changed. The `DefaultBucketID`
+sibling in `setTasksInBucketInViews` goes through `getDefaultBucketID` already.
+
+## Design (settled)
+
+**#106 — resolve through `existingBucketID`, stale means "no done bucket".**
+`existingBucketID(s, view.ID, view.DoneBucketID)` (`project_view.go:809`) returns the id when
+the bucket exists on this view, else 0. Every site already has a `DoneBucketID == 0` branch
+that means "this view has no done bucket"; the fix feeds the validated id into that branch.
+No new fallback policy is introduced. `getDefaultBucketID`'s leftmost fallback is not a fit:
+a done bucket has no "any bucket will do" substitute.
+
+Site 1 — `tasks.go:1797-1830` `moveTaskToDoneBuckets`. Resolve once at the top of the view
+loop into `doneBucketID`; replace the four `view.DoneBucketID` reads with it. Control flow
+is otherwise unchanged (the `Done && doneBucketID == 0 → continue` branch already exists).
+
+Site 2 — `kanban_task_bucket.go:135-158` `syncTaskIntoOtherDoneBuckets`. The query keeps its
+`done_bucket_id != 0` filter; inside the loop, resolve, `continue` on 0, upsert the resolved id.
+
+Site 3 — `tasks.go:1221-1305` `setTasksInBucketInViews` (task create, incl. bulk import).
+Resolve **once per view before the task loop** into a `map[int64]int64` keyed by view id,
+mirroring the existing `defaultBucketIDs` cache and its reason (bulk import is tasks × views);
+a plain loop over `views`, no closure. Inside the kanban branch, `doneBucketID :=
+doneBucketIDs[view.ID]` replaces the three `view.DoneBucketID` reads. Gocyclo: 23 → 25
+(limit 30, measured with golangci-lint v2.13.0 at the spec commit).
+
+Site 4 — `tasks.go:1507-1526` `updateSingleTask`, project-move branch. Resolve into the
+existing `bucketID` variable in place of the raw read; the `bucketID == 0 || !t.Done`
+default fallback already follows. `updateSingleTask` carries `//nolint:gocyclo`.
+
+`err` handling at sites 3 and 4: both functions have an `err` in scope (`var err error` /
+named return); assign with `=`, not `:=`, so no shadow.
+
+**#107 — one gate, two movers.** Replace the two `if` blocks at `tasks.go:1550-1565` with:
+
+```go
+if t.ProjectID == ot.ProjectID && t.Done != ot.Done {
+    if t.isRepeating() && t.Done {
+        err = t.moveTaskToDefaultBuckets(s, a, views)
+    } else {
+        err = t.moveTaskToDoneBuckets(s, a, views)
+    }
+    if err != nil {
+        return
+    }
+}
+```
+
+The repeating-done branch is the old second block verbatim (`t.Done != ot.Done && t.Done`
+is `!ot.Done && t.Done`). The else branch now also covers `isRepeating && ot.Done && !t.Done`,
+which `moveTaskToDoneBuckets` already handles for non-repeating tasks: currently in the done
+bucket → `getDefaultBucketID`; not in it → no-op. A repeating reopen therefore behaves
+exactly like a non-repeating reopen. The #2573 comment moves with the branch.
+
+No ADR: bug fixes, no design alternative worth recording.
+
+## Implementation plan
+
+Three fix commits, each with its tests:
+
+1. `fix(tasks): resolve done buckets through existingBucketID before routing (#106)` —
+   `pkg/models/tasks.go` sites 1, 3, 4 + tests 1, 3, 4 in `tasks_test.go`.
+2. `fix(kanban): syncTaskIntoOtherDoneBuckets skips a stale done bucket (#106)` —
+   `pkg/models/kanban_task_bucket.go` site 2 + test 2 in `kanban_task_bucket_test.go`.
+3. `fix(tasks): reopening a repeating task moves it out of the done bucket (#107)` —
+   `pkg/models/tasks.go` gate + test 5 in `tasks_test.go`.
+
+Then `spec(done-bucket-residuals): log the build session` for the Execution Log.
+
+No new files, no new helpers, no frontend, no migration, no i18n. Files outside
+`pkg/models/` and `specs/` must not change.
+
+## Execution routing
+
+Driver-run in the build session (Opus). No subagent dispatch: five call-site edits and five
+fixture-driven tests. `security` not warranted: no auth surface; the only writes that change
+get stricter. `crudable` not needed (no `Can*` change).
+
+## Tests (red-first)
+
+Fixtures: view 4 (project 1, manual kanban, `default_bucket_id: 1`, `done_bucket_id: 3`;
+buckets 1, 2, 3). Task 1: open, non-repeating, in bucket 1 on view 4. Task 2: `done: true`,
+non-repeating, in bucket 3 on view 4. View 8 (project 2, manual kanban, `default_bucket_id:
+40`, `done_bucket_id: 4`). Plant a stale done id the way the #87 tests plant a default:
+`s.Where("id = ?", 4).Cols("done_bucket_id").Update(&ProjectView{DoneBucketID: 9999})`.
+
+1. **`TestTask_Update` "marking a task done with a stale done bucket leaves it in place"**
+   (`tasks_test.go`, next to "marking a task as done should move it to the done bucket" at
+   `:314`). Plant done 9999 on view 4; `Task{ID: 1, Done: true}.Update(s, u)`; commit.
+   **Red today:** `Bucket does not exist [BucketID: 9999]`. **Green:** no error; `tasks` row 1
+   `done: true`; `task_buckets` (1, view 4) at bucket 1; missing at 3 and 9999.
+2. **`TestTaskBucket_Update` "done sync skips another view's stale done bucket"**
+   (`kanban_task_bucket_test.go`, next to "done task already in another view's done bucket"
+   at `:333`, which it mirrors). Create a second manual kanban view on project 1 via
+   `ProjectView.Create` (auto-creates buckets, backfills existing tasks); plant done 9999 on
+   it raw; read task 1's `task_buckets` row on the second view and keep its `bucket_id`;
+   `TaskBucket{TaskID: 1, BucketID: 3, ProjectViewID: 4, ProjectID: 1}.Update(s, u)`; commit.
+   **Red today:** the `AssertMissing` on (1, secondView, 9999) fails — the upsert wrote the
+   row. **Green:** no error; `tb.Task.Done`; (1, view 4) at 3; (1, secondView) still at the
+   recorded bucket; no row at 9999.
+3. **`TestTask_Create` "done task created with a stale done bucket lands in the default"**
+   (`tasks_test.go`, next to "normal" at `:43`). Plant done 9999 on view 4;
+   `Task{Title: "done on create", ProjectID: 1, Done: true}.Create(s, usr)`; commit.
+   **Red today:** `AssertMissing` on (task.ID, view 4, 9999) fails — `createTasks` inserted the
+   row (`tasks.go:1168`, no FK). **Green:** (task.ID, view 4) at bucket 1; none at 9999.
+4. **`TestTask_Update` "move done task to another project with a stale done bucket"** (next
+   to `:383`, which it mirrors). Plant done 9999 on view 8; `Task{ID: 2, Done: true,
+   ProjectID: 2}.Update(s, u)`; commit. **Red today:** `Bucket does not exist [BucketID:
+   9999]`. **Green:** `tasks` row 2 `project_id: 2, done: true`; `task_buckets` (2, view 8) at
+   bucket 40; none at 4 or 9999.
+5. **`TestTask_Update` "reopening a repeating task in the done bucket moves it to the
+   default"** (next to the "repeating tasks …" subtests at `:408-640`). Raw update task 2
+   `Cols("repeat_after")` to 3600 (it stays done, in bucket 3); `Task{ID: 2, Done: false,
+   RepeatAfter: 3600}.Update(s, u)`; commit. **Red today:** `task_buckets` (2, view 4) still
+   at 3 — the assertion for bucket 1 fails. **Green:** `tasks` row 2 `done: false`; (2, view 4)
+   at bucket 1; missing at 3.
+
+Run each test once before its fix and record the red in the Execution Log (test name +
+error or failed assertion). Existing tests that pin the touched sites and must stay green:
+`TestTask_Update` "marking a task as done should move it to the done bucket" (`:314`), "move
+done task to another project with a done bucket" (`:383`), the "repeating tasks …" subtests
+(`:408-640`); `TestTaskBucket_Update` "done task already in another view's done bucket"
+(`:333`) and the #87 subtest (`:284`); `TestTaskBucket_Update_RRuleRepeatingTask`
+(`task_repeat_rrule_test.go:367`); `TestTask_Create`.
+
+No webtest: every site is reached through `Task.Create`/`Task.Update`/`TaskBucket.Update`,
+which the model tests call directly; the router adds nothing these fixes change (#108 noted
+the same gap for #87 as advisory, not a defect).
+
+## Verification
+
+From the worktree root, output to a file, read the file:
+
+```bash
+mage test:filter 'TestTask_Create|TestTask_Update|TestTaskBucket_Update' 2>&1 | tee /tmp/flow-filter.log
+TZ=UTC mage test:feature 2>&1 | tee /tmp/flow-suite.log   # 0 FAIL (two upstream tests need TZ=UTC)
+mage lint 2>&1 | tee /tmp/flow-lint.log                    # 0 issues; locally built golangci-lint v2.13.0
+git status --porcelain --untracked-files=all               # empty
+```
+
+`cd frontend && pnpm typecheck` skipped: `pkg/models/` only. Gotchas cited here (TZ,
+golangci-lint build) are in the main checkout's gitignored `docs/context/PITFALLS.md`.
+
+Done looks like: five new subtests green, the listed existing tests green, suite 0 FAIL,
+lint 0 issues, four commits on `fix/done-bucket-residuals`. At review, after the merge: the
+`FORK-CHANGES.md` entry for #106 + #107 on `main`.
+
+Live verify (review phase, `live_verify_mode: browser`; classifier will say `live`):
+dev servers up (API built from the worktree, `VIKUNJA_DATABASE_PATH` per PITFALLS).
+**#107:** on a kanban view, mark a plain task done from the detail pane (it moves to Done),
+set `repeat_after` on it, reopen it from the detail pane; it must move back to the default
+column. **#106:** plant `done_bucket_id = 9999` on that view with a direct DB write (the
+auto-mode classifier refused the sqlite3 write last cycle; Jason runs it via `!`), then mark
+a plain task done from the detail pane (no error, stays in its column, shows done) and drag
+a task into another kanban view's Done on the same project (no error, no row at 9999).
+Restore the view's done id afterwards. Red at live verify → `flow-blocked` issue with
+evidence, no merge.
+
+## Stop criteria
+
+Halt, log, and report if any of these hit:
+
+- A new subtest is **green before its fix**.
+- A site needs a file outside `pkg/models/` (the Execution Log commit excepted), a new
+  helper, or a `//nolint`.
+- `mage lint` reports `gocyclo` on `setTasksInBucketInViews` (expected 25 of 30) or on
+  `moveTaskToDoneBuckets`.
+- An existing test in the Tests list goes red and the cause is not a wrong expectation of
+  the new "stale done id = no done bucket" behaviour.
+- Test 5 stays red after the gate change: the reopen reached `moveTaskToDoneBuckets` but the
+  task did not move. That means `getDefaultBucketID` or `updateTaskBucket` refuse the move
+  for a done repeating task, which is a design question, not a build fix.
+
+## Execution Log
