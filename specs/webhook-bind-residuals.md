@@ -21,7 +21,11 @@ Three commits on one branch, in the order #104 → #103 → #102, each with its 
 tests. Backend only. No v2 route changes.
 
 Verifier loop (plan phase): round 1 (Opus) REFUTED — guard placement, the `-1` table row,
-the `CanRead` caller list, `(0,0)` outcome, line cites, `UploadTaskAttachment`; all folded in.
+the `CanRead` caller list, `(0,0)` outcome, line cites, `UploadTaskAttachment`. Round 2
+(Opus) REFUTED — the round-1 placement fix had not reached step 4 or the commit subject;
+`UploadTaskAttachment` missing from the table and error-surface list; the `(other, ≠0)`
+cell; the guard comment over-claimed past the admin/saved-filter returns; test 4 pinned a
+non-user-directed event. All folded in.
 
 ## Design (settled)
 
@@ -41,11 +45,14 @@ if w.ProjectID != 0 {
 `Project.CanRead` instead of falling into the user branch, where a body `user_id` would
 select the caller's own list under a pseudo-project URL — the #104 shape again. Unlike #89's
 `CanWrite`, `Project.CanRead` **allows** pseudo projects the caller owns
-(`project_permissions.go:96-110`, favorites always; a saved filter if the caller can read it),
+(`project_permissions.go:96-121`, favorites always; a saved filter if the caller can read it),
 so the cell `(UserID=me, ProjectID<0)` becomes "200, empty list" — the same answer that URL
 gives with no body today (no webhook row can carry a negative `project_id`; `Create` gates on
 `CanWrite`). Accepted: no data, no new reachable state. Cells that change, non-link-share
-caller: `(UserID=me, ProjectID≠0)` was "own user list / true", becomes `Project.CanRead`.
+caller: `(UserID=me, ProjectID≠0)` was "own user list / true", becomes `Project.CanRead`;
+`(UserID=other, ProjectID≠0)` was 403 (`other != me`), becomes `Project.CanRead` — on a
+readable project that is 200 with the project list, the same list the URL returns with no
+body, so nothing new is exposed.
 `(0, 0)` (`GET /projects/0/webhooks`): today `Project.CanRead(0)` returns
 `ErrProjectDoesNotExist` (404, `project_permissions.go:184-187`); after, the user branch
 returns `ErrGenericForbidden` (403). Both deny. The two callers that set `UserID` never set `ProjectID` (v2 `userWebhooksList`,
@@ -66,8 +73,9 @@ can, maxPerm, err := pp.CanRead(s, a)
 if err != nil || !can {
     return can, maxPerm, err
 }
-// Project readable — now refuse a view that is not in that project, so the
-// permission layer holds without leaning on ReadOne's scoped lookup (#103).
+// Project readable — now refuse a view that is not in that project, so this
+// branch does not lean on ReadOne's scoped lookup (#103). The admin and
+// saved-filter returns above still do; same as CanUpdate/CanDelete.
 if _, err := GetProjectViewByIDAndProject(s, pv.ID, pv.ProjectID); err != nil {
     return false, 0, err
 }
@@ -99,10 +107,10 @@ HTTP surface is unchanged for every caller: non-readers still get 403 from `CanR
 readers with a mismatched pair still get 404, now from `CanRead` instead of `ReadOne`. The
 model test is the meaningful one.
 
-**#102 — export the helper, call it from the three handlers.** Rename
+**#102 — export the helper, call it from the four bare-binding handlers.** Rename
 `bindAndForcePathValues` → `BindAndForcePathValues` (`pkg/web/handler/helper.go:51`, five
-callers in the same package). The three custom handlers replace their `c.Bind(x)` block with
-`handler.BindAndForcePathValues(c, x)`.
+callers in the same package). The three handlers #102 names, plus `UploadTaskAttachment` in the same file (see step 9),
+replace their `c.Bind(x)` block with `handler.BindAndForcePathValues(c, x)`.
 
 Rejected alternative: inline `echo.BindPathValues(c, w)` after each existing `c.Bind`. Zero
 cross-package churn, but a sixth copy of the bind-then-force pair, and the helper's doc
@@ -110,9 +118,10 @@ comment already says an export is the intended route. One place all callers rout
 
 Error-surface change, accepted: a malformed path param now returns `ErrInvalidModel`
 (400, `ErrCodeInvalidModel`) instead of echo's raw bind error (`UpdateUserWebhook`,
-`DeleteUserWebhook`) or the hand-written `"No task ID provided"` 400 (`GetTaskAttachment`).
-Same status; the generic handlers already answer this way. `GetTaskAttachment` drops its
-`echo.NewHTTPError(...).Wrap(err)` line.
+`DeleteUserWebhook`) or the hand-written `"No task ID provided"` 400 (`GetTaskAttachment`
+`:113-116`, `UploadTaskAttachment` `:47-49`). Same status; the generic handlers already
+answer this way. Both attachment handlers drop their `echo.NewHTTPError(...).Wrap(err)`
+line.
 
 What the fix does and does not change per handler:
 
@@ -121,6 +130,7 @@ What the fix does and does not change per handler:
 | `UpdateUserWebhook` | `ID` (`:webhook`) | stored row owner via `CanUpdate` reload | body `id` picks the row, URL ignored | URL picks the row |
 | `DeleteUserWebhook` | `ID` (`:webhook`) | same | same | same |
 | `GetTaskAttachment` | `ID` (`:attachment`), `TaskID` (`:task`) | `Task.CanRead(TaskID)` then `ReadOne` scope | body `task_id` picks the task the permission check runs against | URL picks it |
+| `UploadTaskAttachment` | `TaskID` (`:task`) | `CanCreate` inside `UploadTaskAttachments` | multipart cannot set `TaskID` (no `form` tags); a JSON body can, but then `c.MultipartForm()` fails first | no reachable change; the bare-bind shape is gone |
 
 `CreateUserWebhook` (`user_webhooks.go`) already forces `UserID`/`ProjectID` by hand on a
 route with no path params; untouched.
@@ -140,15 +150,17 @@ Backend only. Three commits, in this order so each is reviewable alone.
    Project-level" what-comments.
 3. Tests: items 1–2 below.
 
-**Commit 2 — `fix(project-views): scope CanRead to the path project like CanUpdate (#103)`**
-4. `pkg/models/project_view_permissions.go` `CanRead`: insert the guard after the
-   saved-filter branch. Reuse `CanUpdate`'s one-line comment.
+**Commit 2 — `fix(project-views): refuse a view outside the path project in CanRead (#103)`**
+4. `pkg/models/project_view_permissions.go` `CanRead`: replace the final
+   `return pp.CanRead(s, a)` with the block in Design — the guard runs **after**
+   `pp.CanRead` returns true, never before it. Use the two-line comment from the Design
+   block, not `CanUpdate`'s ("…before authorizing against it" is false at this position).
 5. Tests: item 3 below.
 
 **Commit 3 — `fix(api): force path params in the custom v1 webhook and attachment handlers (#102)`**
 6. `pkg/web/handler/helper.go`: rename to `BindAndForcePathValues`; update the doc comment's
    last sentence (it currently says "unexported, so a custom v1 handler (#102) needs an export
-   before it can reuse it") to name the three v1 callers.
+   before it can reuse it") to name the four v1 callers.
 7. `pkg/web/handler/{create,update,delete,read_one,read_all}.go`: rename call sites.
 8. `pkg/routes/api/v1/user_webhooks.go` `UpdateUserWebhook`, `DeleteUserWebhook`: replace
    `c.Bind(w)` with `handler.BindAndForcePathValues(c, w)`. Add the
@@ -175,8 +187,8 @@ Edge cases the executor must hold:
 
 ## Execution routing
 
-- **Driver-run** (Opus build session), no dispatch: ~40 lines net across nine files, no design
-  latitude. `executor` tier is overhead.
+- **Driver-run** (Opus build session), no dispatch: ~40 lines net across eleven source files
+  (five of them a mechanical rename) plus four test files, no design latitude. `executor` tier is overhead.
 - **Invoke `crudable` before editing `webhooks_permissions.go` and
   `project_view_permissions.go`** (AGENTS.md: any changed `Can*` method).
 - **`security` agent: not at build.** Three permission-surface narrowings; the review session
@@ -240,13 +252,17 @@ user1's. `testuser6` exists in `integrations.go:78`.
 4. **red-first** — new `pkg/webtests/user_webhook_v1_test.go`, `TestUserWebhookV1`, calling
    the custom handlers directly with `newTestRequestWithUser` (`integrations.go:170`; the
    `apiv1` import pattern is `link_share_avatar_test.go:25`). Call
-   `models.RegisterEventForWebhook(&models.TaskUpdatedEvent{})` at the top (Global-registry
-   rule from the prior spec; `Update` validates events against it).
+   `models.RegisterUserDirectedEventForWebhook(&models.TaskOverdueEvent{})` at the top
+   (Global-registry rule from the prior spec; `Update` validates events against it). A
+   user-directed event, not `task.updated`: `Create` refuses non-user-directed events on a
+   user webhook (`huma_user_webhook_test.go:107-113` pins that), so pinning `task.updated`
+   on row 7 would assert a state `Create` cannot produce and go red the day `Update` gains
+   the same check.
    - *"Update: body id cannot re-target the URL's webhook"*: `apiv1.UpdateUserWebhook`,
-     `testuser6`, URL `webhook=7`, body `{"id":6,"events":["task.updated"]}`. **Red on
+     `testuser6`, URL `webhook=7`, body `{"id":6,"events":["task.overdue"]}`. **Red on
      main:** 200 with `"id":6` in the body. **Green:** 200 with `"id":7`, and
      `db.AssertExists(t, "webhooks", map[string]interface{}{"id": 7, "events":
-     `["task.updated"]`}, false)` (match the argument shape other webtests use for
+     `["task.overdue"]`}, false)` (match the argument shape other webtests use for
      `AssertExists`). Also `db.AssertExists` on `{"id": 6, "events":
      `["task.reminder.fired"]`}` — the fixture literal — so the row the body named is
      untouched.
