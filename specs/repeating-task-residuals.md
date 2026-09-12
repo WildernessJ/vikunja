@@ -203,4 +203,38 @@ Halt, log, and report if any of these hit:
 
 ## Execution Log
 
-_(empty — the build phase appends)_
+### Build session — 2026-09-12 (Opus, driver-run)
+
+Three fix commits as planned: `c783af520` (site A + `rerouteDoneRepeatingTask`),
+`d183b9018` (site B), `b1bf67326` (#93). No subagent dispatch, no stop criterion hit.
+
+Red-first evidence (each run alone with `mage test:filter`, before its fix):
+
+1. `TestTaskBucket_Update/repeating_task_done_with_a_stale_default_bucket_stays_in_its_bucket`
+   — `Bucket does not exist [BucketID: 9999]`.
+2. `TestTask_Update/repeating_tasks_marked_done_with_a_stale_default_bucket_stay_in_their_bucket`
+   — `Bucket does not exist [BucketID: 9999]`.
+3. `TestTaskDuplicate/copies_rrule_recurrence` — `Invalid task repeat rrule. [RRule: ]`.
+   After the fix it also passes alone, so the `InitTestFileFixtures` call is in place.
+
+Results: spec filter set green (`pkg/models`, `pkg/webtests`); `mage lint` 0 issues
+(`golangci-lint` v2.13.0), so `updateTaskBucket` stays under the gocyclo limit with no `//nolint`;
+`TZ=UTC mage test:feature` exit 0, 0 `--- FAIL`; tree clean after the log commit. Frontend
+typecheck skipped as the spec allows (no frontend file changed).
+
+Deviations, all small:
+
+- Test 2 asserts its three `AssertMissing` rows (buckets 1, 3, 9999) in one loop.
+- Test 3 commits the session before its assertions (`db.AssertExists` reads through a
+  separate session). The spec's sibling subtest does not commit, because it reads through `s`.
+- The `newTask` literal in `task_duplicate.go` was re-aligned by `gofmt`, because the two new
+  field names are longer than any existing one. The diff therefore shows 12 changed lines for 2
+  added fields. The first `mage lint` failed on this, and commit 3 was amended.
+- The comment on `rerouteDoneRepeatingTask` gives the why: a stale or cross-view default, and
+  the caller's upsert does not check.
+
+Reviewer, look first at: site A's new error return inside the done branch
+(`kanban_task_bucket.go`, `b.BucketID, err = rerouteDoneRepeatingTask(...)`). It assigns
+the named return `err`. The build session checked that every later read of `err` in
+`updateTaskBucket` comes after a reassignment, so a nil from the helper cannot leak a
+stale error.
