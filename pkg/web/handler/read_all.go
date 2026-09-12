@@ -40,7 +40,7 @@ func (c *WebHandler) ReadAllWeb(ctx *echo.Context) error {
 	}
 
 	// Get the object & bind params to struct
-	if err := bindAndForcePathValues(ctx, currentStruct); err != nil {
+	if err := BindAndForcePathValues(ctx, currentStruct); err != nil {
 		return err
 	}
 

@@ -30,7 +30,7 @@ func (c *WebHandler) CreateWeb(ctx *echo.Context) error {
 	currentStruct := c.EmptyStruct()
 
 	// Get the object & bind params to struct
-	if err := bindAndForcePathValues(ctx, currentStruct); err != nil {
+	if err := BindAndForcePathValues(ctx, currentStruct); err != nil {
 		return err
 	}
 

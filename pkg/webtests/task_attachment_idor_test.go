@@ -17,9 +17,11 @@
 package webtests
 
 import (
+	"net/http"
 	"testing"
 
 	"code.vikunja.io/api/pkg/models"
+	apiv1 "code.vikunja.io/api/pkg/routes/api/v1"
 	"code.vikunja.io/api/pkg/web/handler"
 
 	"github.com/stretchr/testify/require"
@@ -43,6 +45,14 @@ func TestTaskAttachmentIDOR(t *testing.T) {
 			"task":       "1", // task accessible to testuser1
 			"attachment": "4", // attachment belonging to task 34, NOT accessible to testuser1
 		})
+		require.Error(t, err)
+		assertHandlerErrorCode(t, err, models.ErrCodeTaskAttachmentDoesNotExist)
+	})
+	t.Run("Body task_id cannot re-target the URL's task", func(t *testing.T) {
+		// On main the body's task 34 wins and CanRead denies with 403, so asserting
+		// the not-found code is what fails there.
+		_, err := newTestRequestWithUser(t, http.MethodGet, apiv1.GetTaskAttachment, &testuser1,
+			`{"task_id":34}`, nil, map[string]string{"task": "1", "attachment": "4"})
 		require.Error(t, err)
 		assertHandlerErrorCode(t, err, models.ErrCodeTaskAttachmentDoesNotExist)
 	})

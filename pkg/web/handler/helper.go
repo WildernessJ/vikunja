@@ -39,16 +39,16 @@ type CObject interface {
 	web.Permissions
 }
 
-// bindAndForcePathValues binds the request, then re-applies the URL's path params
+// BindAndForcePathValues binds the request, then re-applies the URL's path params
 // so the body cannot override a value the route already names — echo binds the
 // body last, and permission checks compare against the bound value. This is the
 // same precedence /api/v2 implements per handler. See issue #86.
 // Relies on every param-tagged field being of int64 or string kind (named
 // string types like RelationKind included): a BindUnmarshaler carrying state
 // would not survive being bound twice.
-// All five generic handlers call it. Takes any, not CObject; unexported, so a
-// custom v1 handler (#102) needs an export before it can reuse it.
-func bindAndForcePathValues(ctx *echo.Context, currentStruct any) error {
+// Callers: the five generic handlers and the four custom v1 handlers in
+// user_webhooks.go and task_attachment.go (#102).
+func BindAndForcePathValues(ctx *echo.Context, currentStruct any) error {
 	if err := ctx.Bind(currentStruct); err != nil {
 		return invalidModelErr(err)
 	}
