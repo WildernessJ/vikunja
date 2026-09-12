@@ -25,12 +25,14 @@ the `CanRead` caller list, `(0,0)` outcome, line cites, `UploadTaskAttachment`. 
 (Opus) REFUTED — the round-1 placement fix had not reached step 4 or the commit subject;
 `UploadTaskAttachment` missing from the table and error-surface list; the `(other, ≠0)`
 cell; the guard comment over-claimed past the admin/saved-filter returns; test 4 pinned a
-non-user-directed event. All folded in.
+non-user-directed event. Round 3 (Opus) **SURVIVES** — six cosmetic items (comment length
+and count, test-file count, a reversed cite pair, two cite drifts, the helper doc-comment
+rename), folded in here.
 
 ## Design (settled)
 
 **#104 — reorder, mirror of #89.** In `Webhook.ReadAll` (`pkg/models/webhooks.go:243-258`)
-and `Webhook.CanRead` (`pkg/models/webhooks_permissions.go:24-37`): a webhook that names a
+and `Webhook.CanRead` (`pkg/models/webhooks_permissions.go:24-36`): a webhook that names a
 project is a project webhook, so the project branch wins.
 
 ```go
@@ -54,7 +56,7 @@ caller: `(UserID=me, ProjectID≠0)` was "own user list / true", becomes `Projec
 readable project that is 200 with the project list, the same list the URL returns with no
 body, so nothing new is exposed.
 `(0, 0)` (`GET /projects/0/webhooks`): today `Project.CanRead(0)` returns
-`ErrProjectDoesNotExist` (404, `project_permissions.go:184-187`); after, the user branch
+`ErrProjectDoesNotExist` (404, `project_permissions.go:191-192`); after, the user branch
 returns `ErrGenericForbidden` (403). Both deny. The two callers that set `UserID` never set `ProjectID` (v2 `userWebhooksList`,
 `user_webhooks.go:107`; v1 `GetUserWebhooks` does not call `ReadAll` at all), so the
 user-level lists are untouched. The v2 project list (`webhooks.go:96`) sets only
@@ -73,16 +75,14 @@ can, maxPerm, err := pp.CanRead(s, a)
 if err != nil || !can {
     return can, maxPerm, err
 }
-// Project readable — now refuse a view that is not in that project, so this
-// branch does not lean on ReadOne's scoped lookup (#103). The admin and
-// saved-filter returns above still do; same as CanUpdate/CanDelete.
+// Project readable — now refuse a view outside it, so this branch does not lean on ReadOne's scope (#103).
 if _, err := GetProjectViewByIDAndProject(s, pv.ID, pv.ProjectID); err != nil {
     return false, 0, err
 }
 return true, maxPerm, nil
 ```
 
-**Guard after `CanRead`, not before as `CanUpdate`/`CanDelete` do** (`:48`, `:66-69`).
+**Guard after `CanRead`, not before as `CanDelete`/`CanUpdate` do** (`:48`, `:66-69`).
 Before it, a caller with no access to the path project gets 404 for a view outside it and
 403 for a view inside it — a view→project membership oracle across a permission boundary,
 and it flips `project_view_v1_test.go:44-50` (user1, URL `project=2, view=4`, asserts 403)
@@ -109,7 +109,7 @@ model test is the meaningful one.
 
 **#102 — export the helper, call it from the four bare-binding handlers.** Rename
 `bindAndForcePathValues` → `BindAndForcePathValues` (`pkg/web/handler/helper.go:51`, five
-callers in the same package). The three handlers #102 names, plus `UploadTaskAttachment` in the same file (see step 9),
+callers in the same package). The three handlers #102 names, plus `UploadTaskAttachment` in `task_attachment.go` (see step 9),
 replace their `c.Bind(x)` block with `handler.BindAndForcePathValues(c, x)`.
 
 Rejected alternative: inline `echo.BindPathValues(c, w)` after each existing `c.Bind`. Zero
@@ -153,14 +153,17 @@ Backend only. Three commits, in this order so each is reviewable alone.
 **Commit 2 — `fix(project-views): refuse a view outside the path project in CanRead (#103)`**
 4. `pkg/models/project_view_permissions.go` `CanRead`: replace the final
    `return pp.CanRead(s, a)` with the block in Design — the guard runs **after**
-   `pp.CanRead` returns true, never before it. Use the two-line comment from the Design
+   `pp.CanRead` returns true, never before it. Use the one-line comment from the Design
    block, not `CanUpdate`'s ("…before authorizing against it" is false at this position).
 5. Tests: item 3 below.
 
 **Commit 3 — `fix(api): force path params in the custom v1 webhook and attachment handlers (#102)`**
-6. `pkg/web/handler/helper.go`: rename to `BindAndForcePathValues`; update the doc comment's
-   last sentence (it currently says "unexported, so a custom v1 handler (#102) needs an export
-   before it can reuse it") to name the four v1 callers.
+6. `pkg/web/handler/helper.go`: rename to `BindAndForcePathValues`, including the identifier
+   at the start of the doc comment (`:42`); replace the comment's last two sentences ("All five
+   generic handlers call it … needs an export before it can reuse it", `:50-51`) with one
+   naming the callers: the five generic handlers and the four custom v1 handlers in
+   `user_webhooks.go` / `task_attachment.go`. Lint will not catch a stale comment here
+   (`.golangci.yml` disables the exported-comment rules).
 7. `pkg/web/handler/{create,update,delete,read_one,read_all}.go`: rename call sites.
 8. `pkg/routes/api/v1/user_webhooks.go` `UpdateUserWebhook`, `DeleteUserWebhook`: replace
    `c.Bind(w)` with `handler.BindAndForcePathValues(c, w)`. Add the
@@ -188,7 +191,7 @@ Edge cases the executor must hold:
 ## Execution routing
 
 - **Driver-run** (Opus build session), no dispatch: ~40 lines net across eleven source files
-  (five of them a mechanical rename) plus four test files, no design latitude. `executor` tier is overhead.
+  (five of them a mechanical rename) plus five test files, no design latitude. `executor` tier is overhead.
 - **Invoke `crudable` before editing `webhooks_permissions.go` and
   `project_view_permissions.go`** (AGENTS.md: any changed `Can*` method).
 - **`security` agent: not at build.** Three permission-surface narrowings; the review session
