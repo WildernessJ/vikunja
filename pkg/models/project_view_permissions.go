@@ -32,7 +32,15 @@ func (pv *ProjectView) CanRead(s *xorm.Session, a web.Auth) (bool, int, error) {
 	}
 
 	pp := pv.getProject()
-	return pp.CanRead(s, a)
+	can, maxPerm, err := pp.CanRead(s, a)
+	if err != nil || !can {
+		return can, maxPerm, err
+	}
+	// Project readable — now refuse a view outside it, so this branch does not lean on ReadOne's scope (#103).
+	if _, err := GetProjectViewByIDAndProject(s, pv.ID, pv.ProjectID); err != nil {
+		return false, 0, err
+	}
+	return true, maxPerm, nil
 }
 
 func (pv *ProjectView) CanDelete(s *xorm.Session, a web.Auth) (bool, error) {
