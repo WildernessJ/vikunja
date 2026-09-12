@@ -31,8 +31,8 @@ at another view's bucket), the third #85 test.
 
 Site A — `kanban_task_bucket.go:245-249` (`updateTaskBucket`, done-bucket branch).
 `updateTaskBucket` has cyclomatic complexity exactly 30 today, the `gocyclo` threshold
-(`.golangci.yml` has no override; the package's four `//nolint:gocyclo` functions are all
-above it). An inline fix needs one extra `if` for the error and trips lint. So the
+(`.golangci.yml` has no override; the package's `//nolint:gocyclo` functions measure 33-100,
+except a stale one on `ProjectDuplicate.Create`). An inline fix needs one extra `if` for the error and trips lint. So the
 `if/else` is replaced by one call to a small helper, which nets the count back to 30:
 
 ```go
@@ -69,12 +69,12 @@ if target != 0 {
 ```
 
 Site A's reroute ends in `b.upsert` (`kanban_task_bucket.go:76-91`), a raw insert with no
-view-scope check, and the consistency guard at 203-208 ran against the pre-reroute bucket.
+view-scope check, and the consistency guard at 202-207 ran against the pre-reroute bucket.
 `existingBucketID`'s view check is therefore what keeps the rerouted row on this view, not
 only a staleness check. The change only tightens.
 
 **Reviewed and left alone:** `repeatingTaskPassesThroughDoneBucket`
-(`kanban_task_bucket.go:169-175`) also reads `DefaultBucketID` raw. With a stale default it
+(`kanban_task_bucket.go:168-174`) also reads `DefaultBucketID` raw. With a stale default it
 returns true (default ≠ 0, ≠ done), so the done bucket's limit is skipped; the reroute then
 lands the task back in its old bucket (`updateBucket = false`, then
 `resolveDestinationBucket(..., isMove=false)` runs no limit check), so it never occupies a
@@ -142,9 +142,9 @@ view 4); view 4 (kanban, project 1, `default_bucket_id: 1`, `done_bucket_id: 3`;
 1, 2, 3); task 1 (project 1, non-repeating). The stale default is planted the way
 `kanban_test.go:237-266` does: `s.Where("id = ?", 4).Cols("default_bucket_id").Update(&ProjectView{DefaultBucketID: 9999})`.
 
-1. **`TestTaskBucket_Update` subtest "repeating task done with a stale default bucket stays in its bucket"** (`kanban_task_bucket_test.go`). Plant default 9999 on view 4; pre-position task 28 in bucket 2 with a raw `task_buckets` update (as `tasks_test.go:504-513` does, bypasses limits); `TaskBucket{TaskID: 28, BucketID: 3, ProjectViewID: 4, ProjectID: 1}.Update(s, u)`; commit. **Red today:** `ErrBucketDoesNotExist{BucketID: 9999}`. **Green:** no error; `tb.Task.Done == false`; `tb.BucketID == 2`; `task_buckets` row for (28, view 4) has `bucket_id: 2`; no row at bucket 3 or 9999.
-2. **`TestTask_Update` subtest "repeating tasks marked done with a stale default bucket stay in their bucket"** (`tasks_test.go`, next to the existing default-bucket subtests at ~504-560). Plant default 9999 on view 4; pre-position task 28 in bucket 2; `Task{ID: 28, Done: true, RepeatAfter: 3600}.Update(s, u)`; commit. **Red today:** `ErrBucketDoesNotExist`. **Green:** no error; `task.Done == false`; `task_buckets` (28, view 4) at bucket 2; missing at 1, 3, 9999.
-3. **`TestTaskDuplicate` subtest "copies rrule recurrence"** (`task_duplicate_test.go`). Start with `files.InitTestFileFixtures(t)` like the sibling subtests at lines 33 and 76 — task 1 has attachment fixtures and `Create` copies their bytes; the storage is process-wide, so the subtest passes in a full-package run without it but fails inside the attachment loop when run alone (`-run TestTaskDuplicate/copies_rrule_recurrence`, which is how the red-first evidence is taken) and looks like a failed fix. Task 1 has no `due_date` in the fixtures, so set one: raw update `Cols("repeat_mode", "repeat_rrule", "repeat_from_completion", "due_date")` to mode `TaskRepeatModeRRule`, rule `FREQ=WEEKLY;BYDAY=MO`, from-completion `true`, due `2026-07-06 09:00 UTC` (a Monday, as `task_repeat_rrule_test.go:374` uses); `TaskDuplicate{TaskID: 1}.Create(s, u)`; commit. **Red today:** `ErrInvalidTaskRepeatRRule` (`createTask` unwraps the bulk error, `tasks.go:1011-1015`). **Green:** no error; `db.AssertExists("tasks", {id: td.Task.ID, repeat_mode: 3, repeat_rrule: "FREQ=WEEKLY;BYDAY=MO", repeat_from_completion: true})`; `assert.True(t, due.Equal(td.Task.DueDate))` — anchoring did not fire. Not `assert.Equal`: `td.Task` is re-read from the DB (`task_duplicate.go:172-173`) and comes back in the engine's `GMT` location, so `reflect.DeepEqual` against a `time.UTC` literal is false for the same instant (the sibling at `task_duplicate_test.go:95` uses `.Equal` for this reason).
+1. **`TestTaskBucket_Update` subtest "repeating task done with a stale default bucket stays in its bucket"** (`kanban_task_bucket_test.go`). Plant default 9999 on view 4; pre-position task 28 in bucket 2 with a raw `task_buckets` update (as `tasks_test.go:504-513` does, bypasses limits); `TaskBucket{TaskID: 28, BucketID: 3, ProjectViewID: 4, ProjectID: 1}.Update(s, u)`; commit. **Red today:** `ErrBucketDoesNotExist{BucketID: 9999}`. **Green:** no error; `tb.Task.Done == false`; `tb.Task.DueDate` after the fixture's `2018-12-02 22:25:24` (the recurrence advanced); `tb.BucketID == 2`; `task_buckets` row for (28, view 4) has `bucket_id: 2`; no row at bucket 3 or 9999.
+2. **`TestTask_Update` subtest "repeating tasks marked done with a stale default bucket stay in their bucket"** (`tasks_test.go`, next to the existing default-bucket subtests at ~504-560). Plant default 9999 on view 4; pre-position task 28 in bucket 2; `Task{ID: 28, Done: true, RepeatAfter: 3600}.Update(s, u)`; commit. **Red today:** `ErrBucketDoesNotExist`. **Green:** no error; `task.Done == false`; `task.DueDate` after the fixture's `2018-12-02 22:25:24`; `task_buckets` (28, view 4) at bucket 2; missing at 1, 3, 9999.
+3. **`TestTaskDuplicate` subtest "copies rrule recurrence"** (`task_duplicate_test.go`). Start with `files.InitTestFileFixtures(t)` like the sibling subtests at lines 33 and 76 — task 1 has attachment fixtures and `Create` copies their bytes; the storage is process-wide, so the subtest passes in a full-package run without it but fails inside the attachment loop when run alone (`-run TestTaskDuplicate/copies_rrule_recurrence`, which is how the red-first evidence is taken) and looks like a failed fix. Task 1 has no `due_date` in the fixtures, so set one: raw update `Cols("repeat_mode", "repeat_rrule", "repeat_from_completion", "due_date")` to mode `TaskRepeatModeRRule`, rule `FREQ=WEEKLY;BYDAY=MO`, from-completion `true`, due `2026-07-06 09:00 UTC` (a Monday, as `task_repeat_rrule_test.go:374` uses); `TaskDuplicate{TaskID: 1}.Create(s, u)`; commit. **Red today:** `ErrInvalidTaskRepeatRRule` (`createTask` unwraps the bulk error, `tasks.go:1011-1015`). **Green:** no error; `db.AssertExists("tasks", {id: td.Task.ID, repeat_mode: 3, repeat_rrule: "FREQ=WEEKLY;BYDAY=MO", repeat_from_completion: true})`; `assert.True(t, due.Equal(td.Task.DueDate))` — anchoring did not fire. Not `assert.Equal`: `td.Task` is re-read from the DB (`task_duplicate.go:173-174`) and comes back in the engine's `GMT` location, so `reflect.DeepEqual` against a `time.UTC` literal is false for the same instant (the sibling at `task_duplicate_test.go:95` uses `.Equal` for this reason).
 
 Run each test once before its fix and record the red in the Execution Log (test name +
 error string). Existing tests that pin the fixed sites and must stay green:
@@ -169,8 +169,9 @@ Gotchas cited here (TZ, classifier, golangci-lint) are recorded in the main chec
 gitignored `docs/context/PITFALLS.md`, which a worktree does not have.
 
 Done looks like: the three new subtests green, the listed existing tests green, suite
-0 FAIL, lint 0 issues, three commits on `fix/repeating-task-residuals`, Execution Log
-appended.
+0 FAIL, lint 0 issues, four commits on `fix/repeating-task-residuals` (three fixes + the
+Execution Log). At review, after the merge: the `FORK-CHANGES.md` entry for #87 + #93 on
+`main`, as every fix cycle since 2026-08 has done.
 
 Live verify (review phase, `live_verify_mode: browser`): dev servers up; on a kanban view,
 plant a stale default with a direct DB update, mark a repeating task done from the board
@@ -195,8 +196,9 @@ Halt, log, and report if any of these hit:
   signature change (it is in the same package; this should be impossible).
 - An existing test in the Tests list goes red and the cause is not a wrong expectation of
   the new stay-put behaviour.
-- Test 3 stays red after the two fields are copied with `ErrInvalidTaskRepeatRRule` (a
-  repeat field this spec missed). A failure inside the attachment copy is the missing
+- Test 3 stays red after the two fields are copied with `ErrInvalidTaskRepeatRRule` (the
+  rule reaching `createTask` is not the one planted; find out why before touching
+  validation). A failure inside the attachment copy is the missing
   `InitTestFileFixtures` call, not a stop.
 
 ## Execution Log
