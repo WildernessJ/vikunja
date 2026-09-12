@@ -1,0 +1,147 @@
+# Spec: repeating-task residuals (#87, #93)
+
+## Intent
+
+Two pre-existing defects on repeating tasks, both in `pkg/models/`, both one-line fixes:
+
+- **#87** — marking a repeating task done routes it to `view.DefaultBucketID` at two sites
+  that read the stored id raw. With a stale nonzero default (reachable via the kanban→list
+  kind switch that #85 documented), `updateTaskBucket` gets a dead bucket id and returns
+  `ErrBucketDoesNotExist`: the task cannot be completed on that view at all. The #85 fix
+  validated the id inside `getDefaultBucketID`; these two sites never call it.
+- **#93** — `TaskDuplicate.Create` copies `RepeatMode` but not `RepeatRRule` or
+  `RepeatFromCompletion`. A `repeat_mode=3` copy lands with an empty rule and `createTask`
+  rejects it with `ErrInvalidTaskRepeatRRule`. Duplicating any RRULE task fails.
+
+Below the v3 floor individually; run as one cycle because both are repeating-task residue
+and Jason picked `/flow`.
+
+## Design (settled)
+
+**#87 — resolve through `existingBucketID`, keep the stay-put fallback.** Both sites keep
+their current semantics ("no usable default → the task stays where it is"); only the
+staleness check is added. `existingBucketID(s, view.ID, view.DefaultBucketID)`
+(`project_view.go:809`) returns the id when the bucket exists *on this view*, else 0. It is
+the same helper `getDefaultBucketID` uses first (`kanban.go:89`).
+
+Not `getDefaultBucketID`: that falls back to the leftmost bucket, which would change
+behaviour for views with no default (today: stay put), and the issue asks to keep the
+stay-put semantics. `existingBucketID` also covers the cross-view case (default pointing
+at another view's bucket), the third #85 test.
+
+Site A — `kanban_task_bucket.go:245-249` (`updateTaskBucket`, done-bucket branch):
+
+```go
+target, err := existingBucketID(s, view.ID, view.DefaultBucketID)
+if err != nil {
+    return err
+}
+if target != 0 {
+    b.BucketID = target
+} else {
+    b.BucketID = oldTaskBucket.BucketID
+}
+```
+
+Site B — `tasks.go:1864` (`moveTaskToDefaultBuckets`):
+
+```go
+target, err := existingBucketID(s, view.ID, view.DefaultBucketID)
+if err != nil {
+    return err
+}
+if target != 0 {
+    tb := &TaskBucket{BucketID: target, ...}
+    updateTaskBucket(...)
+}
+```
+
+**Reviewed and left alone:** `repeatingTaskPassesThroughDoneBucket`
+(`kanban_task_bucket.go:169-175`) also reads `DefaultBucketID` raw. With a stale default it
+returns true (default ≠ 0, ≠ done), so the done bucket's limit is skipped; the reroute then
+lands the task back in its old bucket, so it never occupies a done slot. That is the
+correct answer for that predicate, no change.
+
+**#93 — copy the two fields.** Add `RepeatRRule` and `RepeatFromCompletion` to the
+`newTask` literal in `task_duplicate.go:76-92`. `createTask` then validates a real rule.
+The original's `DueDate` is already copied, so the RRULE anchoring path in `createTask`
+(only anchors when the due date is zero) does not fire. Nothing else on the model carries
+repeat state.
+
+No ADR: bug fixes, no design alternative worth recording.
+
+## Implementation plan
+
+Three commits, one per site group, each with its test in the same commit:
+
+1. `fix(kanban): route a done repeating task through existingBucketID (#87)` —
+   `pkg/models/kanban_task_bucket.go` site A + test in `kanban_task_bucket_test.go`.
+2. `fix(tasks): moveTaskToDefaultBuckets skips a stale default bucket (#87)` —
+   `pkg/models/tasks.go` site B + test in `tasks_test.go`.
+3. `fix(tasks): duplicate copies repeat_rrule and repeat_from_completion (#93)` —
+   `pkg/models/task_duplicate.go` + test in `task_duplicate_test.go`.
+
+No new files, no new helpers, no frontend, no migration, no i18n. Files outside
+`pkg/models/` must not change.
+
+## Execution routing
+
+Driver-run in the build session (Opus). No subagent dispatch: three call-site edits and
+three fixture-driven tests. `security` not warranted (no permission or auth surface).
+Invoke `crudable` only if the build finds it needs a `Can*` change (it should not).
+
+## Tests (red-first)
+
+Fixtures used: task 28 (repeating, `repeat_after: 3600`, project 1, sits in bucket 1 on
+view 4); view 4 (kanban, project 1, `default_bucket_id: 1`, `done_bucket_id: 3`; buckets
+1, 2, 3); task 1 (project 1, non-repeating). The stale default is planted the way
+`kanban_test.go:237-266` does: `s.Where("id = ?", 4).Cols("default_bucket_id").Update(&ProjectView{DefaultBucketID: 9999})`.
+
+1. **`TestTaskBucket_Update` subtest "repeating task done with a stale default bucket stays in its bucket"** (`kanban_task_bucket_test.go`). Plant default 9999 on view 4; pre-position task 28 in bucket 2 with a raw `task_buckets` update (as `tasks_test.go:504-513` does, bypasses limits); `TaskBucket{TaskID: 28, BucketID: 3, ProjectViewID: 4, ProjectID: 1}.Update(s, u)`; commit. **Red today:** `ErrBucketDoesNotExist{BucketID: 9999}`. **Green:** no error; `tb.Task.Done == false`; `tb.BucketID == 2`; `task_buckets` row for (28, view 4) has `bucket_id: 2`; no row at bucket 3 or 9999.
+2. **`TestTask_Update` subtest "repeating tasks marked done with a stale default bucket stay in their bucket"** (`tasks_test.go`, next to the existing default-bucket subtests at ~504-560). Plant default 9999 on view 4; pre-position task 28 in bucket 2; `Task{ID: 28, Done: true, RepeatAfter: 3600}.Update(s, u)`; commit. **Red today:** `ErrBucketDoesNotExist`. **Green:** no error; `task.Done == false`; `task_buckets` (28, view 4) at bucket 2; missing at 1, 3, 9999.
+3. **`TestTaskDuplicate` subtest "copies rrule recurrence"** (`task_duplicate_test.go`). Set task 1 via raw update `Cols("repeat_mode", "repeat_rrule", "repeat_from_completion")` to mode `TaskRepeatModeRRule`, rule `FREQ=WEEKLY;BYDAY=MO`, from-completion `true`; `TaskDuplicate{TaskID: 1}.Create(s, u)`; commit. **Red today:** `ErrInvalidTaskRepeatRRule`. **Green:** no error; `db.AssertExists("tasks", {id: td.Task.ID, repeat_mode: 3, repeat_rrule: "FREQ=WEEKLY;BYDAY=MO", repeat_from_completion: true})`.
+
+Run each test once before its fix and record the red in the Execution Log (test name +
+error string). Existing tests that pin the fixed sites and must stay green:
+`TestTaskBucket_Update_RRuleRepeatingTask` (`task_repeat_rrule_test.go:367`), the
+`TestTask_Update` "repeating tasks marked done …" subtests (`tasks_test.go:504-560`), and
+`TestTaskDuplicate`.
+
+## Verification
+
+From the worktree root, output to a file, read the file:
+
+```bash
+mage test:filter 'TestTaskBucket_Update|TestTask_Update|TestTaskDuplicate|TestGetDefaultBucketID|TestBucket_Delete' 2>&1 | tee /tmp/flow-filter.log
+TZ=UTC mage test:feature 2>&1 | tee /tmp/flow-suite.log   # 0 FAIL (two upstream tests need TZ=UTC, PITFALLS)
+mage lint 2>&1 | tee /tmp/flow-lint.log                    # 0 issues; needs the locally built golangci-lint v2.13.0
+git status --porcelain --untracked-files=all               # empty
+```
+
+Done looks like: the three new subtests green, the listed existing tests green, suite
+0 FAIL, lint 0 issues, three commits on `fix/repeating-task-residuals`, Execution Log
+appended.
+
+Live verify (review phase, `live_verify_mode: browser`): dev servers up; on a kanban view,
+plant a stale default with a direct DB update, mark a repeating task done from the board
+and from the detail pane, confirm it lands back in its column and the next occurrence is
+set; duplicate a task with a weekly RRULE from the task detail menu and confirm the copy
+shows the same recurrence. The classifier will say `live` (any `pkg/` Go file, PITFALLS).
+
+## Stop criteria
+
+Halt, log, and report if any of these hit:
+
+- A new subtest is **green before its fix** (the red is the repro; a green red means the
+  test does not exercise the site).
+- Fixing a site requires touching a file outside `pkg/models/`, or adding a helper.
+- `existingBucketID` cannot be called from `updateTaskBucket` without an import cycle or
+  signature change (it is in the same package; this should be impossible).
+- An existing test in the Tests list goes red and the cause is not a wrong expectation of
+  the new stay-put behaviour.
+- Test 3 stays red after the two fields are copied (a third repeat field exists that this
+  spec missed).
+
+## Execution Log
+
+_(empty — the build phase appends)_
