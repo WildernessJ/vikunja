@@ -96,6 +96,36 @@ func TestTaskDuplicate(t *testing.T) {
 		assert.True(t, deadline.Equal(dup.Deadline), "deadline should carry to the duplicate")
 	})
 
+	t.Run("copies rrule recurrence", func(t *testing.T) {
+		files.InitTestFileFixtures(t)
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		u := &user.User{ID: 1}
+
+		due := time.Date(2026, 7, 6, 9, 0, 0, 0, time.UTC)
+		_, err := s.ID(1).Cols("repeat_mode", "repeat_rrule", "repeat_from_completion", "due_date").Update(&Task{
+			RepeatMode:           TaskRepeatModeRRule,
+			RepeatRRule:          "FREQ=WEEKLY;BYDAY=MO",
+			RepeatFromCompletion: true,
+			DueDate:              due,
+		})
+		require.NoError(t, err)
+
+		td := &TaskDuplicate{TaskID: 1}
+		require.NoError(t, td.Create(s, u))
+		require.NoError(t, s.Commit())
+
+		db.AssertExists(t, "tasks", map[string]interface{}{
+			"id":                     td.Task.ID,
+			"repeat_mode":            TaskRepeatModeRRule,
+			"repeat_rrule":           "FREQ=WEEKLY;BYDAY=MO",
+			"repeat_from_completion": true,
+		}, false)
+		assert.True(t, due.Equal(td.Task.DueDate), "an rrule duplicate keeps the original due date")
+	})
+
 	t.Run("no permission", func(t *testing.T) {
 		db.LoadAndAssertFixtures(t)
 		s := db.NewSession()
