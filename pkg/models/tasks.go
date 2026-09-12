@@ -1861,9 +1861,13 @@ func (t *Task) moveTaskToDoneBuckets(s *xorm.Session, a web.Auth, views []*Proje
 // current bucket — no update needed.
 func (t *Task) moveTaskToDefaultBuckets(s *xorm.Session, a web.Auth, views []*ProjectView) error {
 	for _, view := range views {
-		if view.DefaultBucketID != 0 {
+		target, err := existingBucketID(s, view.ID, view.DefaultBucketID)
+		if err != nil {
+			return err
+		}
+		if target != 0 {
 			tb := &TaskBucket{
-				BucketID:      view.DefaultBucketID,
+				BucketID:      target,
 				TaskID:        t.ID,
 				ProjectViewID: view.ID,
 				ProjectID:     t.ProjectID,

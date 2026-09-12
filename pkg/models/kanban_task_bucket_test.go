@@ -281,6 +281,55 @@ func TestTaskBucket_Update(t *testing.T) {
 		})
 	})
 
+	t.Run("repeating task done with a stale default bucket stays in its bucket", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		u := &user.User{ID: 1}
+
+		// A kanban→list→kanban kind switch can leave default_bucket_id
+		// pointing at a bucket that no longer exists (#87).
+		_, err := s.Where("id = ?", 4).
+			Cols("default_bucket_id").
+			Update(&ProjectView{DefaultBucketID: 9999})
+		require.NoError(t, err)
+
+		_, err = s.Where("task_id = ? AND project_view_id = ?", 28, 4).
+			Cols("bucket_id").
+			Update(&TaskBucket{BucketID: 2})
+		require.NoError(t, err)
+
+		tb := &TaskBucket{
+			TaskID:        28,
+			BucketID:      3,
+			ProjectViewID: 4,
+			ProjectID:     1,
+		}
+		err = tb.Update(s, u)
+		require.NoError(t, err)
+		err = s.Commit()
+		require.NoError(t, err)
+
+		assert.False(t, tb.Task.Done)
+		assert.True(t, tb.Task.DueDate.After(time.Date(2018, 12, 2, 22, 25, 24, 0, time.UTC)))
+		assert.Equal(t, int64(2), tb.BucketID)
+
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":         28,
+			"project_view_id": 4,
+			"bucket_id":       2,
+		}, false)
+		db.AssertMissing(t, "task_buckets", map[string]interface{}{
+			"task_id":   28,
+			"bucket_id": 3,
+		})
+		db.AssertMissing(t, "task_buckets", map[string]interface{}{
+			"task_id":   28,
+			"bucket_id": 9999,
+		})
+	})
+
 	t.Run("done task already in another view's done bucket", func(t *testing.T) {
 		// Regression test: marking a task done syncs it into the done bucket
 		// of every kanban view in the project. When the task already sits in
