@@ -324,4 +324,47 @@ under `-short`; their webhook tests insert rows directly and send no body `user_
 
 ## Execution Log
 
-(empty — the build phase appends.)
+### Build session (Opus, 2026-09-12)
+
+Commits: `507a542fa` (#104), `107b636e4` (#103), `912cc9c3e` (#102). Driver-run, no dispatch;
+`crudable` invoked before the `Can*` edits.
+
+**Red run on unfixed code** (all six new tests written first, run before any source change):
+
+- Test 1, `TestWebhook/ReadAll` new sub-test: `Error is nil` (200, user branch taken).
+- Test 2, `TestWebhook_CanRead`: `body user_id on a foreign project` expected false, got true;
+  `foreign user_id on the favorites pseudo project` expected true, got false. Other three rows
+  green on main, as the spec predicts.
+- Test 3, `TestProjectView_CanRead/view outside…`: `Should be false`, and `An error is
+  expected but got nil`. Favorites guard sub-test: **`true, nil` on main**, and the same on the
+  branch. No stop criterion hit.
+- Test 4: Update returned `"id":6`, row 7 not updated, row 6 events changed. Delete removed
+  row 6 and left row 7.
+- Test 6: `expected: 4011, actual: 1` (403 `ErrGenericForbidden` from `Task.CanRead(34)`).
+
+The model failures stopped `mage test:filter` before its `pkg/webtests` re-run, so the
+handler red run was a second filter (`TestWebhook$|TestUserWebhookV1|TestTaskAttachmentIDOR`).
+
+**Green:** each commit's targeted filter passed at that commit, guards included —
+commit 1: `TestWebhook|TestHumaWebhook|TestHumaUserWebhook`; commit 2:
+`ProjectView|Kanban|Bucket|TaskPosition|LinkShar` (covers `TestProjectViewV1`, so `:44-50`
+stays 403); commit 3: `TaskAttachment|UserWebhook` (covers `TestTaskAttachmentUploadSize`).
+`mage lint` 0 issues before each commit. At HEAD: `mage test:web` ok, `TZ=UTC mage
+test:feature` ok. The full suite ran at HEAD only, not at commits 1 and 2.
+
+**Deviations:**
+
+- Test 5 assertion. The spec says `getHTTPErrorCode(err) == 404`. echo v5's `ErrNotFound` is
+  a private `*httpError`, not `*echo.HTTPError`, so the helper returns 0 for it; the test
+  failed on main with `expected 404, actual 0` although the handler returned
+  `echo.ErrNotFound`. Changed to `require.ErrorIs(t, err, echo.ErrNotFound)`, with a one-line
+  comment. The shared helper is unchanged (out of scope). The new assertion was not re-run
+  on main.
+- `user_webhook_v1_test.go` does not call `db.LoadAndAssertFixtures`: `setupTestEnv`
+  reloads fixtures on every request, as in the other webtests.
+- `Webhook.CanRead` cell `(UserID=0, ProjectID=0)`: was `Project.CanRead(0)` →
+  `ErrProjectDoesNotExist`; is now `false, nil`. Both deny; `CanRead` has no route caller.
+  No test pins it.
+
+**Look at first:** the #103 guard placement (after `pp.CanRead`), and the `ReadAll` reorder
+(`webhooks.go`), whose user branch is now the `else` for `ProjectID == 0`.
