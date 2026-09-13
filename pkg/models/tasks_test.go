@@ -553,29 +553,13 @@ func TestTask_Update(t *testing.T) {
 		s := db.NewSession()
 		defer s.Close()
 
+		// Fixture task 2 is done and sits in view 4's done bucket 3.
 		task := &Task{
-			ID:          2,
-			Done:        true,
-			RepeatAfter: 3600,
-		}
-		err := task.Update(s, u)
-		require.NoError(t, err)
-		err = s.Commit()
-		require.NoError(t, err)
-		db.AssertExists(t, "task_buckets", map[string]interface{}{
-			"task_id":         2,
-			"project_view_id": 4,
-			"bucket_id":       3,
-		}, false)
-
-		s = db.NewSession()
-		defer s.Close()
-		task = &Task{
 			ID:          2,
 			Done:        false,
 			RepeatAfter: 3600,
 		}
-		err = task.Update(s, u)
+		err := task.Update(s, u)
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
@@ -593,6 +577,36 @@ func TestTask_Update(t *testing.T) {
 			"task_id":   2,
 			"bucket_id": 3,
 		})
+	})
+	t.Run("reopening a repeating task outside the done bucket leaves it in place", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		_, err := s.Where("task_id = ? AND project_view_id = ?", 2, 4).
+			Cols("bucket_id").
+			Update(&TaskBucket{BucketID: 2})
+		require.NoError(t, err)
+
+		task := &Task{
+			ID:          2,
+			Done:        false,
+			RepeatAfter: 3600,
+		}
+		err = task.Update(s, u)
+		require.NoError(t, err)
+		err = s.Commit()
+		require.NoError(t, err)
+
+		db.AssertExists(t, "tasks", map[string]interface{}{
+			"id":   2,
+			"done": false,
+		}, false)
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":         2,
+			"project_view_id": 4,
+			"bucket_id":       2,
+		}, false)
 	})
 	t.Run("repeating tasks should not be moved to the done bucket", func(t *testing.T) {
 		db.LoadAndAssertFixtures(t)
