@@ -1562,18 +1562,15 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 	}
 
 	// When a task changed its done status, make sure it is in the correct bucket
-	if t.ProjectID == ot.ProjectID && !t.isRepeating() && t.Done != ot.Done {
-		err = t.moveTaskToDoneBuckets(s, a, views)
-		if err != nil {
-			return
+	if t.ProjectID == ot.ProjectID && t.Done != ot.Done {
+		if t.isRepeating() && t.Done {
+			// Repeating tasks don't stay in the done bucket — route them back
+			// to the default bucket so the next iteration shows up in the
+			// "To-Do" column. See #2573.
+			err = t.moveTaskToDefaultBuckets(s, a, views)
+		} else {
+			err = t.moveTaskToDoneBuckets(s, a, views)
 		}
-	}
-
-	// Repeating tasks don't stay in the done bucket — route them back
-	// to the default bucket so the next iteration shows up in the
-	// "To-Do" column. See #2573.
-	if t.ProjectID == ot.ProjectID && t.isRepeating() && !ot.Done && t.Done {
-		err = t.moveTaskToDefaultBuckets(s, a, views)
 		if err != nil {
 			return
 		}

@@ -548,6 +548,52 @@ func TestTask_Update(t *testing.T) {
 			"bucket_id": 9999,
 		})
 	})
+	t.Run("reopening a repeating task in the done bucket moves it to the default", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		task := &Task{
+			ID:          2,
+			Done:        true,
+			RepeatAfter: 3600,
+		}
+		err := task.Update(s, u)
+		require.NoError(t, err)
+		err = s.Commit()
+		require.NoError(t, err)
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":         2,
+			"project_view_id": 4,
+			"bucket_id":       3,
+		}, false)
+
+		s = db.NewSession()
+		defer s.Close()
+		task = &Task{
+			ID:          2,
+			Done:        false,
+			RepeatAfter: 3600,
+		}
+		err = task.Update(s, u)
+		require.NoError(t, err)
+		err = s.Commit()
+		require.NoError(t, err)
+
+		db.AssertExists(t, "tasks", map[string]interface{}{
+			"id":   2,
+			"done": false,
+		}, false)
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":         2,
+			"project_view_id": 4,
+			"bucket_id":       1,
+		}, false)
+		db.AssertMissing(t, "task_buckets", map[string]interface{}{
+			"task_id":   2,
+			"bucket_id": 3,
+		})
+	})
 	t.Run("repeating tasks should not be moved to the done bucket", func(t *testing.T) {
 		db.LoadAndAssertFixtures(t)
 		s := db.NewSession()
