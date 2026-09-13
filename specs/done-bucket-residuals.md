@@ -262,3 +262,38 @@ The spec predicted that tests 2 and 3 fail on the `AssertMissing` at 9999. They 
 - Test 5 commits after the first `Update` and does the reopen in a new session. `db.AssertExists` reads through the engine, not the test transaction. Without the commit, the "still at 3" check saw only the fixture row and proved nothing about the first update. The spec did not state this; the test now does what the spec asked.
 - Commit 1 carries tests 1, 3, 4 and 6 only. Test 5 was held out of `tasks_test.go` until commit 3, so no commit carries a red test.
 - No stop criterion hit. No file outside `pkg/models/` and `specs/` changed. No new helper and no `//nolint`.
+
+### Review session (2026-09-13, Fable, `--auto`)
+
+Verifier (Opus): SURVIVES, no BLOCKER, no SHOULD-FIX. Cold audit (Opus, `.flow-audit.md`): ship.
+Live verify in Chrome on the branch build (`.flow-verify/`): #107 done → repeat → reopen from the
+detail pane lands back in To-Do; #106 with `done_bucket_id = 9999` planted by sqlite3: done-on-create
+lands in the default, pane done stays in place with no error, a move into a second view's Done leaves
+the stale view's row alone, zero `task_buckets` rows at 9999. Site 4 is suite-only.
+
+Fixed in review (tests only): test 5's first `Update` was a no-op (fixture task 2 is already done in
+bucket 3, so `t.Done != ot.Done` was false); removed. Added "reopening a repeating task outside the
+done bucket leaves it in place", which fails if the gate is simplified to `if t.isRepeating()`
+(mutation-checked).
+
+Two corrections to this spec's claims, from the audit:
+
+- **Out of scope, corrected.** There are six raw `DoneBucketID`/`DefaultBucketID` comparisons in
+  `updateTaskBucket` and `repeatingTaskPassesThroughDoneBucket`, not three, and "no live bucket can
+  match a stale id" is the wrong reason for two of them. `kanban_task_bucket.go:275` compares
+  `oldTaskBucket.BucketID`, which is read raw from `task_buckets` and does match a row stranded at
+  the dead id — that is the same heal site 1 keeps. `:180-181` are raw *default* reads; a stale
+  default makes `repeatingTaskPassesThroughDoneBucket` return true, and it is
+  `rerouteDoneRepeatingTask`'s resolve-and-fall-back that keeps the outcome safe, not inertness.
+  Anyone refactoring that helper must re-derive this.
+- **Residual: TOCTOU at site 2.** `syncTaskIntoOtherDoneBuckets` goes from `existingBucketID` to a
+  raw upsert with no re-validation, and `Bucket.Delete` does not take the view lock, so a concurrent
+  bucket delete can still strand a row there. Sites 1, 3 and 4 are protected because
+  `updateTaskBucket` re-fetches through `getBucketByID`. Pre-existing shape; #106 closes the class
+  against already-stale state, not concurrently-becoming-stale state.
+
+Pre-existing, filed separately: creating a repeating task directly into a done bucket keeps it there
+(`setTasksInBucketInViews` forces `Done` and calls `moveTaskToDoneBuckets` with no `isRepeating`
+check), which contradicts the #2573 rule the `updateSingleTask` gate now enforces.
+
+`TestGetUserBadgeCount` was red again in this session (00:41 UTC) and reproduced on clean `main`.
