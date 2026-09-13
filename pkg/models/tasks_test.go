@@ -80,6 +80,36 @@ func TestTask_Create(t *testing.T) {
 		events.DispatchPending(context.Background(), s)
 		events.AssertDispatched(t, &TaskCreatedEvent{})
 	})
+	t.Run("done task created with a stale done bucket lands in the default", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		_, err := s.Where("id = ?", 4).
+			Cols("done_bucket_id").
+			Update(&ProjectView{DoneBucketID: 9999})
+		require.NoError(t, err)
+
+		task := &Task{
+			Title:     "done on create",
+			ProjectID: 1,
+			Done:      true,
+		}
+		err = task.Create(s, usr)
+		require.NoError(t, err)
+		err = s.Commit()
+		require.NoError(t, err)
+
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":         task.ID,
+			"project_view_id": 4,
+			"bucket_id":       1,
+		}, false)
+		db.AssertMissing(t, "task_buckets", map[string]interface{}{
+			"task_id":   task.ID,
+			"bucket_id": 9999,
+		})
+	})
 	t.Run("already subscribed to the project", func(t *testing.T) {
 		db.LoadAndAssertFixtures(t)
 		s := db.NewSession()
@@ -335,6 +365,80 @@ func TestTask_Update(t *testing.T) {
 			"bucket_id": 3,
 		}, false)
 	})
+	t.Run("marking a task done with a stale done bucket leaves it in place", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		_, err := s.Where("id = ?", 4).
+			Cols("done_bucket_id").
+			Update(&ProjectView{DoneBucketID: 9999})
+		require.NoError(t, err)
+
+		task := &Task{
+			ID:   1,
+			Done: true,
+		}
+		err = task.Update(s, u)
+		require.NoError(t, err)
+		err = s.Commit()
+		require.NoError(t, err)
+
+		db.AssertExists(t, "tasks", map[string]interface{}{
+			"id":   1,
+			"done": true,
+		}, false)
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":         1,
+			"project_view_id": 4,
+			"bucket_id":       1,
+		}, false)
+		db.AssertMissing(t, "task_buckets", map[string]interface{}{
+			"task_id":   1,
+			"bucket_id": 3,
+		})
+		db.AssertMissing(t, "task_buckets", map[string]interface{}{
+			"task_id":   1,
+			"bucket_id": 9999,
+		})
+	})
+	t.Run("reopening a task stranded at a stale done bucket heals it to the default", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		_, err := s.Where("id = ?", 4).
+			Cols("done_bucket_id").
+			Update(&ProjectView{DoneBucketID: 9999})
+		require.NoError(t, err)
+		_, err = s.Where("task_id = ? AND project_view_id = ?", 2, 4).
+			Cols("bucket_id").
+			Update(&TaskBucket{BucketID: 9999})
+		require.NoError(t, err)
+
+		task := &Task{
+			ID:   2,
+			Done: false,
+		}
+		err = task.Update(s, u)
+		require.NoError(t, err)
+		err = s.Commit()
+		require.NoError(t, err)
+
+		db.AssertExists(t, "tasks", map[string]interface{}{
+			"id":   2,
+			"done": false,
+		}, false)
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":         2,
+			"project_view_id": 4,
+			"bucket_id":       1,
+		}, false)
+		db.AssertMissing(t, "task_buckets", map[string]interface{}{
+			"task_id":   2,
+			"bucket_id": 9999,
+		})
+	})
 	t.Run("marking a task as done should fire exactly ONE task.updated event", func(t *testing.T) {
 		db.LoadAndAssertFixtures(t)
 		s := db.NewSession()
@@ -403,6 +507,105 @@ func TestTask_Update(t *testing.T) {
 		db.AssertExists(t, "task_buckets", map[string]interface{}{
 			"task_id":   task.ID,
 			"bucket_id": 4, // 4 is the done bucket
+		}, false)
+	})
+	t.Run("move done task to another project with a stale done bucket", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		_, err := s.Where("id = ?", 8).
+			Cols("done_bucket_id").
+			Update(&ProjectView{DoneBucketID: 9999})
+		require.NoError(t, err)
+
+		task := &Task{
+			ID:        2,
+			Done:      true,
+			ProjectID: 2,
+		}
+		err = task.Update(s, u)
+		require.NoError(t, err)
+		err = s.Commit()
+		require.NoError(t, err)
+
+		db.AssertExists(t, "tasks", map[string]interface{}{
+			"id":         task.ID,
+			"project_id": 2,
+			"done":       true,
+		}, false)
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":         task.ID,
+			"project_view_id": 8,
+			"bucket_id":       40,
+		}, false)
+		db.AssertMissing(t, "task_buckets", map[string]interface{}{
+			"task_id":   task.ID,
+			"bucket_id": 4,
+		})
+		db.AssertMissing(t, "task_buckets", map[string]interface{}{
+			"task_id":   task.ID,
+			"bucket_id": 9999,
+		})
+	})
+	t.Run("reopening a repeating task in the done bucket moves it to the default", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		// Fixture task 2 is done and sits in view 4's done bucket 3.
+		task := &Task{
+			ID:          2,
+			Done:        false,
+			RepeatAfter: 3600,
+		}
+		err := task.Update(s, u)
+		require.NoError(t, err)
+		err = s.Commit()
+		require.NoError(t, err)
+
+		db.AssertExists(t, "tasks", map[string]interface{}{
+			"id":   2,
+			"done": false,
+		}, false)
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":         2,
+			"project_view_id": 4,
+			"bucket_id":       1,
+		}, false)
+		db.AssertMissing(t, "task_buckets", map[string]interface{}{
+			"task_id":   2,
+			"bucket_id": 3,
+		})
+	})
+	t.Run("reopening a repeating task outside the done bucket leaves it in place", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		_, err := s.Where("task_id = ? AND project_view_id = ?", 2, 4).
+			Cols("bucket_id").
+			Update(&TaskBucket{BucketID: 2})
+		require.NoError(t, err)
+
+		task := &Task{
+			ID:          2,
+			Done:        false,
+			RepeatAfter: 3600,
+		}
+		err = task.Update(s, u)
+		require.NoError(t, err)
+		err = s.Commit()
+		require.NoError(t, err)
+
+		db.AssertExists(t, "tasks", map[string]interface{}{
+			"id":   2,
+			"done": false,
+		}, false)
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":         2,
+			"project_view_id": 4,
+			"bucket_id":       2,
 		}, false)
 	})
 	t.Run("repeating tasks should not be moved to the done bucket", func(t *testing.T) {

@@ -1239,6 +1239,14 @@ func setTasksInBucketInViews(s *xorm.Session, views []*ProjectView, tasks []*Tas
 		return id, nil
 	}
 
+	doneBucketIDs := make(map[int64]int64, len(views))
+	for _, view := range views {
+		doneBucketIDs[view.ID], err = existingBucketID(s, view.ID, view.DoneBucketID)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
 	for _, t := range tasks {
 		var moveToDone bool
 		taskBucketsForTask := []*TaskBucket{}
@@ -1249,8 +1257,9 @@ func setTasksInBucketInViews(s *xorm.Session, views []*ProjectView, tasks []*Tas
 				view.ViewKind == ProjectViewKindKanban &&
 				view.BucketConfigurationMode == BucketConfigurationModeManual {
 
-				bucketID := view.DoneBucketID
-				if !t.Done || view.DoneBucketID == 0 {
+				doneBucketID := doneBucketIDs[view.ID]
+				bucketID := doneBucketID
+				if !t.Done || doneBucketID == 0 {
 					if providedBucket != nil && view.ID == providedBucket.ProjectViewID {
 						bucketID = providedBucket.ID
 					} else {
@@ -1261,7 +1270,7 @@ func setTasksInBucketInViews(s *xorm.Session, views []*ProjectView, tasks []*Tas
 					}
 				}
 
-				if view.DoneBucketID != 0 && view.DoneBucketID == t.BucketID && !t.Done {
+				if doneBucketID != 0 && doneBucketID == t.BucketID && !t.Done {
 					t.Done = true
 					_, err = s.Where("id = ?", t.ID).
 						Cols("done").
@@ -1517,7 +1526,11 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 		}
 
 		for _, view := range views {
-			var bucketID = view.DoneBucketID
+			var bucketID int64
+			bucketID, err = existingBucketID(s, view.ID, view.DoneBucketID)
+			if err != nil {
+				return err
+			}
 			if bucketID == 0 || !t.Done {
 				bucketID, err = getDefaultBucketID(s, view)
 				if err != nil {
@@ -1549,18 +1562,15 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 	}
 
 	// When a task changed its done status, make sure it is in the correct bucket
-	if t.ProjectID == ot.ProjectID && !t.isRepeating() && t.Done != ot.Done {
-		err = t.moveTaskToDoneBuckets(s, a, views)
-		if err != nil {
-			return
+	if t.ProjectID == ot.ProjectID && t.Done != ot.Done {
+		if t.isRepeating() && t.Done {
+			// Repeating tasks don't stay in the done bucket — route them back
+			// to the default bucket so the next iteration shows up in the
+			// "To-Do" column. See #2573.
+			err = t.moveTaskToDefaultBuckets(s, a, views)
+		} else {
+			err = t.moveTaskToDoneBuckets(s, a, views)
 		}
-	}
-
-	// Repeating tasks don't stay in the done bucket — route them back
-	// to the default bucket so the next iteration shows up in the
-	// "To-Do" column. See #2573.
-	if t.ProjectID == ot.ProjectID && t.isRepeating() && !ot.Done && t.Done {
-		err = t.moveTaskToDefaultBuckets(s, a, views)
 		if err != nil {
 			return
 		}
@@ -1805,8 +1815,15 @@ func (t *Task) moveTaskToDoneBuckets(s *xorm.Session, a web.Auth, views []*Proje
 
 		var bucketID = currentTaskBucket.BucketID
 
+		// The !t.Done checks below keep the raw id so a reopen still heals a row
+		// stranded at a dead done bucket.
+		doneBucketID, err := existingBucketID(s, view.ID, view.DoneBucketID)
+		if err != nil {
+			return err
+		}
+
 		// Task done, but no done bucket? Do nothing
-		if t.Done && view.DoneBucketID == 0 {
+		if t.Done && doneBucketID == 0 {
 			continue
 		}
 
@@ -1816,8 +1833,8 @@ func (t *Task) moveTaskToDoneBuckets(s *xorm.Session, a web.Auth, views []*Proje
 		}
 
 		// Task done? Done bucket
-		if t.Done && view.DoneBucketID != 0 {
-			bucketID = view.DoneBucketID
+		if t.Done && doneBucketID != 0 {
+			bucketID = doneBucketID
 		}
 
 		// Task not done, currently in done bucket? Move to default
