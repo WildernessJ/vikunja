@@ -237,3 +237,28 @@ Halt, log, and report if any of these hit:
   for a done repeating task, which is a design question, not a build fix.
 
 ## Execution Log
+
+### Build session (2026-09-12, Opus 5, driver-run)
+
+**Red before the fixes** (one `mage test:filter` run on the spec commit plus the new tests):
+
+1. "marking a task done with a stale done bucket leaves it in place": `Bucket does not exist [BucketID: 9999]`.
+2. "done sync skips another view's stale done bucket": `Entries map[bucket_id:41 project_view_id:<second view> task_id:1] do not exist in table task_buckets`.
+3. "done task created with a stale done bucket lands in the default": `Entries map[bucket_id:1 project_view_id:4 task_id:56] do not exist in table task_buckets`.
+4. "move done task to another project with a stale done bucket": `Bucket does not exist [BucketID: 9999]`.
+5. "reopening a repeating task in the done bucket moves it to the default": `Entries map[bucket_id:1 project_view_id:4 task_id:2] do not exist in table task_buckets`.
+6. "reopening a task stranded at a stale done bucket heals it to the default": green before (isolated run), green after.
+
+The spec predicted that tests 2 and 3 fail on the `AssertMissing` at 9999. They fail one assertion earlier, on the `AssertExists` for the live bucket. The cause is the same: the row was written at 9999 in place of the live bucket.
+
+**After the fixes:** tests 1-4 and 6 were green after commits 1 and 2, and test 5 was still red. All six were green after commit 3. `mage test:filter 'TestTask_Create|TestTask_Update|TestTaskBucket_Update'` passes. `mage lint` reports 0 issues after each fix. The exact gocyclo count of `setTasksInBucketInViews` was not measured; lint shows it is below 30.
+
+**Suite:** `TZ=UTC mage test:feature` has one FAIL: `TestGetUserBadgeCount` (`push_badge_test.go:246`, expected 6, actual 4, "for a user behind UTC …"). The run started at 00:33 UTC, inside the known 00:00-07:00 UTC window. This is the pre-existing red that the Verification section names. It is not this change. All other packages are `ok`, including `pkg/webtests`. The suite was run again at 00:37 UTC on the final code, after the test-5 amend, with the same single failure.
+
+**Deviations and details for the reviewer:**
+
+- Site 2 and site 4 use `var x int64` followed by `x, err = existingBucketID(...)`. Both functions have a named `err` return, and `:=` would shadow it. Site 1 uses `:=` because `err` is already declared in the same loop scope, so there is no shadow.
+- Site 1 has one new comment. It says why the `!t.Done` reads stay raw.
+- Test 5 commits after the first `Update` and does the reopen in a new session. `db.AssertExists` reads through the engine, not the test transaction. Without the commit, the "still at 3" check saw only the fixture row and proved nothing about the first update. The spec did not state this; the test now does what the spec asked.
+- Commit 1 carries tests 1, 3, 4 and 6 only. Test 5 was held out of `tasks_test.go` until commit 3, so no commit carries a red test.
+- No stop criterion hit. No file outside `pkg/models/` and `specs/` changed. No new helper and no `//nolint`.
