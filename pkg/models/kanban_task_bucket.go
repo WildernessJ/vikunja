@@ -145,10 +145,18 @@ func syncTaskIntoOtherDoneBuckets(s *xorm.Session, view *ProjectView, task *Task
 		return err
 	}
 	for _, v := range viewsWithDoneBucket {
+		var doneBucketID int64
+		doneBucketID, err = existingBucketID(s, v.ID, v.DoneBucketID)
+		if err != nil {
+			return err
+		}
+		if doneBucketID == 0 {
+			continue
+		}
 		newBucket := &TaskBucket{
 			TaskID:        task.ID,
 			ProjectViewID: v.ID,
-			BucketID:      v.DoneBucketID,
+			BucketID:      doneBucketID,
 		}
 		if err = newBucket.upsert(s); err != nil {
 			return err

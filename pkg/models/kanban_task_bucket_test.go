@@ -387,6 +387,58 @@ func TestTaskBucket_Update(t *testing.T) {
 		}, false)
 	})
 
+	t.Run("done sync skips another view's stale done bucket", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		secondView := &ProjectView{
+			Title:                   "Second Kanban",
+			ProjectID:               1,
+			ViewKind:                ProjectViewKindKanban,
+			BucketConfigurationMode: BucketConfigurationModeManual,
+		}
+		err := secondView.Create(s, u)
+		require.NoError(t, err)
+
+		_, err = s.Where("id = ?", secondView.ID).
+			Cols("done_bucket_id").
+			Update(&ProjectView{DoneBucketID: 9999})
+		require.NoError(t, err)
+
+		before := &TaskBucket{}
+		has, err := s.Where("task_id = ? AND project_view_id = ?", 1, secondView.ID).Get(before)
+		require.NoError(t, err)
+		require.True(t, has)
+
+		tb := &TaskBucket{
+			TaskID:        1,
+			BucketID:      3,
+			ProjectViewID: 4,
+			ProjectID:     1,
+		}
+		err = tb.Update(s, u)
+		require.NoError(t, err)
+		err = s.Commit()
+		require.NoError(t, err)
+		assert.True(t, tb.Task.Done)
+
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":         1,
+			"project_view_id": 4,
+			"bucket_id":       3,
+		}, false)
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":         1,
+			"project_view_id": secondView.ID,
+			"bucket_id":       before.BucketID,
+		}, false)
+		db.AssertMissing(t, "task_buckets", map[string]interface{}{
+			"task_id":   1,
+			"bucket_id": 9999,
+		})
+	})
+
 	t.Run("saved filter: first task into empty limited bucket is allowed", func(t *testing.T) {
 		// Regression test for #2672: on a saved-filter kanban view the bucket
 		// limit was checked against the total number of tasks matching the
