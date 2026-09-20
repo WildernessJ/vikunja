@@ -226,5 +226,100 @@ public-clean spec on `fix/utc-cleanup-cutoffs` at the approved base. No
 implementation, tests, dependencies, services, toolkit changes, delegation, or
 merge occurred.
 
-(Build appends commands, evidence, outcomes, candidate commit, and warranted record
-updates here.)
+### Build — 2026-09-20 (stopped)
+
+Recovered the clean feature branch at `7ae7ee4e6d3c755eefef7b1c1c58a7771e3b534a`,
+descending from unchanged approved base
+`603a122e2f13927e3c7358f963cddbd85ce53197`. The worktree, common Git directory,
+spec blob, branch, identity, and approval matched the checkpoint. The affected
+tests contain no parallel test execution; the only goroutine-based claim test
+waits for all workers before returning.
+
+Added sequential UTC and `America/New_York` cases around stale/recent migration
+claims and all existing token-cleanup cases. Added a recent pending-email-token
+retention assertion while retaining expired pending-email deletion,
+registration-confirmation retention, password-reset/account-deletion selection,
+the one-hour and 25-hour fixture ages, and the 24h/1ms timeout choices.
+
+Before application edits, the focused command ran under shell `TZ=UTC` and
+`TZ=America/New_York`; both exited 1 exactly as required. In each run, embedded
+UTC controls passed, embedded New York stale-claim takeover failed with
+`Migration already running: todoist`, and embedded New York expired
+pending-email deletion failed because the token remained. Recent-claim,
+recent-token, registration-confirmation, password-reset, and account-deletion
+controls passed.
+
+Applied only the approved cutoff changes:
+
+- `time.Now().Add(-timeout).UTC()` in `releaseStaleClaims`.
+- `time.Now().Add(time.Hour * 24 * -1).UTC()` in `CleanupOldTokens`.
+
+The same focused command then exited 0 under both shell zones, exercising and
+passing every named UTC and New York case. `mage -v test:feature` exited 0 under
+both shell zones. The offline `mage build` command exited 0.
+
+Execution then stopped at the specified criterion. The offline `mage lint:fix`
+command exited 1 with exactly three `gosmopolitan` diagnostics for reading,
+assigning, and restoring `time.Local` in
+`pkg/modules/migration/migration_status_test.go:73-75`. It made no source
+changes; the scoped diff hash remained
+`63bc8f815c58adace54e1d952df6d6df2a669395dcb2bff4a1b68bd6f2baab52`.
+Per the approved stop rule, no suppression, redesign, retry, plain lint, or
+frontend typecheck followed. The historical frontend exit-2 baseline remains
+visible but was not reverified in this build.
+
+The application/test candidate and this execution record remain uncommitted and
+unmerged. No review, independent verification, audit, merge-readiness, `picheck`,
+or D1 acceptance is claimed.
+
+### Continuation — 2026-09-20 (lint correction and verification)
+
+The preflight was rechecked on `fix/utc-cleanup-cutoffs` at
+`7ae7ee4e6d3c755eefef7b1c1c58a7771e3b534a`, with `main` still at the approved
+base `603a122e2f13927e3c7358f963cddbd85ce53197`. The common Git directory and
+main checkout resolved as recorded in the checkpoint. Git identity remained
+`WildernessJ <59486664+WildernessJ@users.noreply.github.com>`, and the dirty
+candidate contained only the five expected paths. The required `git pull
+--ff-only` was attempted after confirming that the feature branch has no
+upstream; it exited 1 with Git's no-tracking-information message and made no
+remote contact or worktree change.
+
+The helper isolation was rechecked before the correction. Its three
+`time.Local` accesses save, assign, and restore the location through
+`t.Cleanup`; its callers are sequential, no affected test uses `t.Parallel`,
+and the separate concurrent claim test joins every worker before returning.
+There is no background work that can observe the temporary location after the
+helper returns.
+
+Added only line-local, explained `//nolint:gosmopolitan` directives for the
+deliberate save/assign/restore accesses in the migration timezone helper. The
+first corrected `mage lint:fix` run then exposed the same three accesses in
+the approved token test (the linter reports three issues at a time); those
+were equally sequential and restored by `t.Cleanup`, so the same narrowly
+scoped directives were added there. No global lint setting, assertion,
+predicate, operator, timeout, fixture age, behavior, frontend file, or
+framework changed. The second fixer run reported `0 issues` and made no
+unrelated edits; its formatting change was limited to aligning the new inline
+comments. The affected checks were rerun after that source change.
+
+The new private evidence prefixes are `lint-fix-correction`,
+`lint-fix-correction-2`, `green-correction-focused-utc`,
+`green-correction-focused-new-york`, `feature-correction-utc`,
+`feature-correction-new-york`, `build-correction`, `lint-correction`, and
+`frontend-typecheck-correction`. Existing red/green evidence and
+`red-regressions.patch` were preserved. Results:
+
+- `env TZ=UTC GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local GOFLAGS='-mod=readonly -count=1' VIKUNJA_TESTS_USE_CONFIG=0 mage -v test:filter '^(TestClaimMigration.*|TestCleanupOldTokens)$'` exited 0.
+- The same focused command with `TZ=America/New_York` exited 0. Output shows both embedded zones for stale-claim takeover/release and recent-claim exclusion, plus expired pending-email deletion, recent pending-email retention, registration-confirmation retention, and unchanged password-reset/account-deletion selection.
+- `env TZ=UTC GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local GOFLAGS='-mod=readonly -count=1' VIKUNJA_TESTS_USE_CONFIG=0 mage -v test:feature` exited 0.
+- The same feature command with `TZ=America/New_York` exited 0.
+- `env GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local GOFLAGS='-mod=readonly' mage build` exited 0.
+- `env GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local GOFLAGS='-mod=readonly' mage lint:fix` exited 0 on the corrected candidate, followed by plain `env GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local GOFLAGS='-mod=readonly' mage lint`, which exited 0 with `0 issues`.
+- `cd frontend && pnpm typecheck` exited 2. It has exactly the accepted six distinct diagnostics, repeated in the output: TS2589 at `labels.ts:147`, TS2590 at `CreateEdit.vue:59`, and four TS2339 property errors at `task.test.ts:96-99`. No frontend diagnostic was repaired, suppressed, waived, or ratcheted.
+
+The corrected candidate's scoped diff remained limited to the enumerated four
+application/test files and this execution log. The known frontend typecheck
+failure remains a documented limitation, so this is not an overall-green,
+reviewed, audited, merge-ready, picheck, or D1 result. The candidate is to be
+committed locally and left unmerged; no live verification, service, deployment,
+remote, review, verifier, or auditor work is part of this continuation.

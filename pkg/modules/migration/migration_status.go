@@ -99,7 +99,7 @@ func releaseStaleClaims(s *xorm.Session, userID int64) error {
 	}
 
 	_, err := s.
-		Where("active_user_id = ? AND started_at < ?", userID, time.Now().Add(-timeout)).
+		Where("active_user_id = ? AND started_at < ?", userID, time.Now().Add(-timeout).UTC()).
 		Cols("finished_at", "active_user_id").
 		Update(&Status{FinishedAt: time.Now()})
 	if err != nil {
