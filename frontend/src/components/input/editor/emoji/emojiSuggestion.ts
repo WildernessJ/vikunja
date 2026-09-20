@@ -1,6 +1,7 @@
 import {VueRenderer} from '@tiptap/vue-3'
 import type {Editor, Range} from '@tiptap/core'
 import {PluginKey, type EditorState} from '@tiptap/pm/state'
+import type {SuggestionProps} from '@tiptap/suggestion'
 
 import EmojiList from './EmojiList.vue'
 import {loadEmojis, filterEmojis, type EmojiEntry} from './emojiData'
@@ -8,16 +9,6 @@ import {getPopupContainer} from '../popupContainer'
 import {createSuggestionPopup, type SuggestionPopup} from '../suggestionPopup'
 
 export const EmojiSuggestionPluginKey = new PluginKey('emojiSuggestion')
-
-interface SuggestionProps {
-	editor: Editor
-	range: Range
-	query: string
-	clientRect?: (() => DOMRect | null) | null
-	items: EmojiEntry[]
-	command: (item: EmojiEntry) => void
-	event?: KeyboardEvent
-}
 
 const SHORTCODE_RE = /^[a-zA-Z0-9_]*$/
 
@@ -65,7 +56,7 @@ export default function emojiSuggestionSetup() {
 				component?.destroy()
 			}
 
-			const mount = (props: SuggestionProps) => {
+			const mount = (props: SuggestionProps<EmojiEntry, EmojiEntry>) => {
 				unmount()
 
 				component = new VueRenderer(EmojiList, {
@@ -87,12 +78,12 @@ export default function emojiSuggestionSetup() {
 			}
 
 			return {
-				onStart: (props: SuggestionProps) => {
+				onStart: (props: SuggestionProps<EmojiEntry, EmojiEntry>) => {
 					if (!props.items.length && props.query === '') return
 					mount(props)
 				},
 
-				onUpdate(props: SuggestionProps) {
+				onUpdate(props: SuggestionProps<EmojiEntry, EmojiEntry>) {
 					if (!popup) {
 						if (props.items.length || props.query !== '') mount(props)
 						return

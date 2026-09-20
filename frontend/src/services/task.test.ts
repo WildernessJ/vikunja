@@ -4,8 +4,16 @@ import TaskService from './task'
 import TaskModel from '@/models/task'
 import type {ITask} from '@/modelTypes/ITask'
 
+interface BulkPayloadTask {
+	title: string,
+	deadline: string | null,
+	estimated_duration: number,
+	repeat_rrule: string,
+	repeat_from_completion: boolean,
+}
+
 interface BulkPayload {
-	tasks: {title: string}[],
+	tasks: BulkPayloadTask[],
 }
 
 interface BulkResponse {

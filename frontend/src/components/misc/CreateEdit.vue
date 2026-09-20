@@ -52,14 +52,12 @@
 </template>
 
 <script setup lang="ts">
-import type {IconProp} from '@fortawesome/fontawesome-svg-core'
-
 import {computed, ref, toRef, watch} from 'vue'
 
 const props = withDefaults(defineProps<{
 	title: string,
 	primaryLabel?: string,
-	primaryIcon?: IconProp,
+	primaryIcon?: 'plus' | 'copy' | 'paste',
 	primaryDisabled?: boolean,
 	hasPrimaryAction?: boolean,
 	tertiary?: string,
