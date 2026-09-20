@@ -229,3 +229,45 @@ unapproved file changed.
 All amendment checks pass after the two permitted type-only corrections. The
 candidate is ready for explicit-path staging and local commit, then remains
 **UNMERGED**. Final commit identity: pending.
+
+### Optional-slot continuation — 2026-09-20
+
+The approved follow-up scope is limited to the optional-slot finding in
+`frontend/src/components/input/Multiselect.vue`. The existing `items`, `tag`,
+and `searchResult` slot parameter and return types are unchanged; only the
+three member declarations now use optional method syntax. Runtime template
+fallbacks and all other component contracts are unchanged.
+
+The red/green declaration evidence was recorded with an inline TypeScript
+compiler-API inspection, without adding a test framework. Before the edit,
+the current required declaration was checked by assigning `{}` to the slot
+shape; the check reported one semantic diagnostic stating that `items`, `tag`,
+and `searchResult` were missing. Evidence: `optionality-before.{stdout.log,
+stderr.log,exit,meta}`. After the edit, the same omitted-slot assignment using
+the optional declaration reported `semantic diagnostics: 0`. Evidence:
+`optionality-after.{stdout.log,stderr.log,exit,meta}`.
+
+Fresh validation was run from `frontend/`, with output saved and read under
+`/Volumes/ext-ssd/Github/coding-workflow/.artifacts/vikunja-frontend-typecheck/`:
+
+- `pnpm test:unit --run src/components/input/Multiselect.test.ts` exited `0`;
+  1 file and 9 tests passed, including omitted-slot runtime fallback coverage.
+  Existing PostCSS/Sass deprecation warnings were emitted to stderr.
+  Evidence: `optionality-focused-tests.{stdout.log,stderr.log,exit,meta}`.
+- `pnpm typecheck` exited `0` with no diagnostics. Evidence:
+  `optionality-typecheck.{stdout.log,stderr.log,exit,meta}`.
+- `pnpm lint` exited `0` with 0 errors and the same 16 pre-existing warnings
+  as `amendment-lint-correction` (the warning output compares identically;
+  all warnings are outside the changed file). Evidence:
+  `optionality-lint.{stdout.log,stderr.log,exit,meta}`.
+- `pnpm build` exited `0` after transforming 1798 modules and copying
+  Workbox libraries. Its warning marker count and warning classes match the
+  recorded amendment build (existing PostCSS/Sass/Vite warnings only).
+  Evidence: `optionality-build.{stdout.log,stderr.log,exit,meta}`.
+
+Git status after every check showed only the intended Multiselect source edit
+plus pre-existing ignored `frontend/dist/`, `frontend/node_modules/`, and
+`frontend/stats.html`; `git diff --check` passed. No dependency, config,
+lockfile, generated-code, backend, toolkit, OMP, service, browser, E2E, or
+live-project work was performed. The correction is ready for an explicit-path
+local follow-up commit and remains **UNMERGED**.

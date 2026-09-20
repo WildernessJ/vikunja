@@ -247,14 +247,14 @@ const emit = defineEmits<{
 }>()
 
 defineSlots<{
-	items(props: {
+	items?(props: {
 		items: T[],
 		remove: (item: T) => void,
 	}): void
-	tag(props: {
+	tag?(props: {
 		item: T,
 	}): void
-	searchResult(props: {
+	searchResult?(props: {
 		option: T | string | UnwrapRef<T>,
 	}): void
 }>()
