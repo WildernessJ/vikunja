@@ -10,7 +10,7 @@ import type {Label, LabelWritable} from '@/client/generated'
 import {queryClient} from '@/client/queryClient'
 import {colorFromHex} from '@/helpers/color/colorFromHex'
 import {i18n} from '@/i18n'
-import {success} from '@/message'
+import {success, translate} from '@/message'
 
 export const labelKeys = {
 	all: ['labels'] as const,
@@ -144,13 +144,13 @@ export function useCreateLabelMutation() {
 export function useUpdateLabelMutation() {
 	return useMutation({
 		mutationFn: updateLabel,
-		onSuccess: () => success({message: i18n.global.t('label.edit.success')}),
+		onSuccess: () => success({message: translate('label.edit.success')}),
 	})
 }
 
 export function useDeleteLabelMutation() {
 	return useMutation({
 		mutationFn: deleteLabel,
-		onSuccess: () => success({message: i18n.global.t('label.deleteSuccess')}),
+		onSuccess: () => success({message: translate('label.deleteSuccess')}),
 	})
 }

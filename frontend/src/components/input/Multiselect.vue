@@ -157,7 +157,7 @@
 </template>
 
 <script setup lang="ts" generic="T extends Record<string, unknown>">
-import {computed, onBeforeUnmount, onMounted, ref, toRefs, useId, watch, type ComponentPublicInstance} from 'vue'
+import {computed, onBeforeUnmount, onMounted, ref, toRefs, useId, watch, type ComponentPublicInstance, type UnwrapRef} from 'vue'
 import {useI18n} from 'vue-i18n'
 
 import {closeWhenClickedOutside} from '@/helpers/closeWhenClickedOutside'
@@ -244,6 +244,19 @@ const emit = defineEmits<{
 	 * If `multiple` is enabled, this will be fired every time an item is removed from the array of selected items.
 	 */
 	'remove': [value: T],
+}>()
+
+defineSlots<{
+	items?(props: {
+		items: T[],
+		remove: (item: T) => void,
+	}): void
+	tag?(props: {
+		item: T,
+	}): void
+	searchResult?(props: {
+		option: T | string | UnwrapRef<T>,
+	}): void
 }>()
 
 const listboxId = useId()
