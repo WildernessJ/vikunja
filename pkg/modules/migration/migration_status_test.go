@@ -62,6 +62,22 @@ func assertIsAlreadyRunning(t *testing.T, err error, migratorName string) {
 	assert.Equal(t, migratorName, e.MigratorName)
 }
 
+func runInCleanupTimezones(t *testing.T, test func(t *testing.T)) {
+	t.Helper()
+
+	for _, name := range []string{"UTC", "America/New_York"} {
+		location, err := time.LoadLocation(name)
+		require.NoError(t, err)
+
+		t.Run(name, func(t *testing.T) {
+			previous := time.Local                      //nolint:gosmopolitan // Deliberate test-local timezone isolation; t.Cleanup restores it.
+			time.Local = location                       //nolint:gosmopolitan // Deliberate test-local timezone isolation.
+			t.Cleanup(func() { time.Local = previous }) //nolint:gosmopolitan // Restore the prior timezone before the test returns.
+			test(t)
+		})
+	}
+}
+
 func TestClaimMigrationSerializesPerUser(t *testing.T) {
 	clearMigrationStatus(t)
 	u1 := getTestUser(t, 1)
@@ -155,53 +171,57 @@ func TestClaimMigrationBlocksOnLegacyUnfinishedRow(t *testing.T) {
 }
 
 func TestClaimMigrationTakesOverStaleClaim(t *testing.T) {
-	clearMigrationStatus(t)
-	u1 := getTestUser(t, 1)
+	runInCleanupTimezones(t, func(t *testing.T) {
+		clearMigrationStatus(t)
+		u1 := getTestUser(t, 1)
 
-	config.MigrationClaimTimeout.Set("24h")
-	t.Cleanup(func() { config.MigrationClaimTimeout.Set("24h") })
+		config.MigrationClaimTimeout.Set("24h")
+		t.Cleanup(func() { config.MigrationClaimTimeout.Set("24h") })
 
-	status, err := ClaimMigration(&testMigrator{"todoist"}, u1)
-	require.NoError(t, err)
+		status, err := ClaimMigration(&testMigrator{"todoist"}, u1)
+		require.NoError(t, err)
 
-	_, err = ClaimMigration(&testMigrator{"csv"}, u1)
-	assertIsAlreadyRunning(t, err, "todoist")
+		_, err = ClaimMigration(&testMigrator{"csv"}, u1)
+		assertIsAlreadyRunning(t, err, "todoist")
 
-	config.MigrationClaimTimeout.Set("1ms")
-	s := db.NewSession()
-	_, err = s.Where("id = ?", status.ID).
-		Cols("started_at").
-		Update(&Status{StartedAt: time.Now().Add(-time.Hour)})
-	require.NoError(t, err)
-	require.NoError(t, s.Commit())
+		config.MigrationClaimTimeout.Set("1ms")
+		s := db.NewSession()
+		_, err = s.Where("id = ?", status.ID).
+			Cols("started_at").
+			Update(&Status{StartedAt: time.Now().Add(-time.Hour)})
+		require.NoError(t, err)
+		require.NoError(t, s.Commit())
 
-	newStatus, err := ClaimMigration(&testMigrator{"csv"}, u1)
-	require.NoError(t, err)
-	assert.Equal(t, "csv", newStatus.MigratorName)
+		newStatus, err := ClaimMigration(&testMigrator{"csv"}, u1)
+		require.NoError(t, err)
+		assert.Equal(t, "csv", newStatus.MigratorName)
 
-	fetched, err := GetMigrationStatusByID(status.ID)
-	require.NoError(t, err)
-	assert.False(t, fetched.FinishedAt.IsZero())
-	assert.Nil(t, fetched.ActiveUserID)
+		fetched, err := GetMigrationStatusByID(status.ID)
+		require.NoError(t, err)
+		assert.False(t, fetched.FinishedAt.IsZero())
+		assert.Nil(t, fetched.ActiveUserID)
+	})
 }
 
 func TestClaimMigrationRecentClaimIsNotTakenOver(t *testing.T) {
-	clearMigrationStatus(t)
-	u1 := getTestUser(t, 1)
+	runInCleanupTimezones(t, func(t *testing.T) {
+		clearMigrationStatus(t)
+		u1 := getTestUser(t, 1)
 
-	config.MigrationClaimTimeout.Set("24h")
-	t.Cleanup(func() { config.MigrationClaimTimeout.Set("24h") })
+		config.MigrationClaimTimeout.Set("24h")
+		t.Cleanup(func() { config.MigrationClaimTimeout.Set("24h") })
 
-	status, err := ClaimMigration(&testMigrator{"todoist"}, u1)
-	require.NoError(t, err)
+		status, err := ClaimMigration(&testMigrator{"todoist"}, u1)
+		require.NoError(t, err)
 
-	s := db.NewSession()
-	_, err = s.Where("id = ?", status.ID).
-		Cols("started_at").
-		Update(&Status{StartedAt: time.Now().Add(-time.Hour)})
-	require.NoError(t, err)
-	require.NoError(t, s.Commit())
+		s := db.NewSession()
+		_, err = s.Where("id = ?", status.ID).
+			Cols("started_at").
+			Update(&Status{StartedAt: time.Now().Add(-time.Hour)})
+		require.NoError(t, err)
+		require.NoError(t, s.Commit())
 
-	_, err = ClaimMigration(&testMigrator{"csv"}, u1)
-	assertIsAlreadyRunning(t, err, "todoist")
+		_, err = ClaimMigration(&testMigrator{"csv"}, u1)
+		assertIsAlreadyRunning(t, err, "todoist")
+	})
 }
