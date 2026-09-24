@@ -352,10 +352,70 @@ Rationale: 289 commits, 153 direct-merge conflicts, irreversible migrations, sec
 - `CLAUDE.md` now holds the fork guidance (no `AGENTS.fork.md`). Upstream's `AGENTS.md` split into `.agents/docs/` makes two `CLAUDE.md` lines stale: the pointer to "Development Commands in `AGENTS.md`" and the layout note in "Corrections to AGENTS.md". Update them in this sync.
 - Absolute local paths in this spec were replaced with relative ones. The fork is public.
 
+### Build — Phase A (`fcae90a36`) — 2026-09-24
+
+- Identity revalidated: base `d803c2b42` ancestor of HEAD, branch diff = spec + ADR-0015 only, `upstream/main` = `06c451da4`, all four phase targets ancestors of it (125/217/251/289 commits from the merge base).
+- Dry-run prediction held: 34 conflicted files.
+- Backend resolutions:
+  - `admin_user_create.go`: took upstream. `user.CreateUser` now sets the returned status itself (`CreateUserOptions{SkipEmailConfirm}`), so the fork's status-sync block is redundant. The post-commit reload fallback (fork invariant) is untouched.
+  - `project_duplicate.go`: upstream batch `createTasks(..., preserveIndexes=true)` plus the fork's template done-reset inside the loop.
+  - `tasks.go` `hardDeleteTask`: both deletes (fork activities, upstream task-index aliases).
+  - `migration_status.go`: upstream heartbeat structure; `staleBefore` is `.UTC()`, not `.In(config.GetTimeZone())`.
+  - **Scope note:** `import_upload.go:cleanupImportUploads` (new upstream code) copied the same configured-zone cutoff. Fixed to `.UTC()` under the spec's "every stale-claim comparison" rule; an early run deletes a live import's upload.
+  - **Test-helper change:** `runInCleanupTimezones` now also sets `service.timezone`. Before, tests ran with service zone GMT, so `.In(config.GetTimeZone())` was indistinguishable from `.UTC()`. Heartbeat tests are wrapped in the helper; added `TestClaimMigrationHeartbeatInsideTimeoutIsNotTakenOver` and an upload-cleanup boundary subtest. Mutation check: reverting both cutoffs to `.In(config.GetTimeZone())` fails 6 tests in `Asia/Tokyo`/`America/New_York` (`/tmp/sync-a-tz-mut.log`).
+  - `go.sum` via `go mod tidy`.
+  - `createTasks` reached gocyclo 31 (fork RRULE validation + upstream `preserveIndexes`); extracted `prepareTasksForCreation`.
+- Migrations (spec test 6): **spec correction** — `20260908202544` (project_ancestors) is an *upstream* migration already in the merge base, not a fork one. The late-application concern still holds (upstream added `20260901*` after `20260908` was recorded). Fork migrations since the merge base are all `202607xx` and only add `tasks` columns the upstream migrations do not read. Added `pkg/migration/late_upstream_migrations_test.go`: real `xormigrate` runner, fresh schema, the six upstream migrations rolled back and unrecorded with `20260908202544` recorded, then `Migrate` — all six apply, counters backfill to max index, ancestors untouched. Negative check confirmed it executes.
+  - Upstream also edited already-applied `20260720120000` (skips one index on pre-v2.5.0 upgrades). No effect on this database.
+- Frontend: adopted upstream native `Popup`, `Datepicker`, `DatepickerInline`, range pickers; deleted `Flatpickr.vue` and `useFlatpickrLanguage` users.
+  - Date-only ported into `DatepickerInline` (`boundary`, `forceTime`, `TimeControl` hidden, calendar and shortcut picks snap to day boundary, date-only wins over `defaultDueTime`) and `Datepicker` (props pass-through, date-only display/summary).
+  - `PropertyChip`: upstream `Popup` has no `openImperatively`/`hasOverflow`. Ported to `v-model:open` + `v-if="isOpen"` content gating (spec's mount-on-open rule). `has-overflow` removed from its two callers (top layer makes it moot).
+  - `Heading.vue`: upstream dropped the second close button (Modal renders its own from tablet up); the fork had already moved the title out, so the conflict resolved to neither side.
+  - `TaskDetailView.vue`: fork property-chip layout kept; upstream's hunks only reworked the old field columns the fork removed.
+  - `SingleTaskInProject.vue`: fork two-row layout kept; upstream's anchored/sheet due-date popup props applied to the fork's due-date button.
+  - `DeferTask.vue`: upstream native picker + debounce; fork task-store routing, `saving` state and date-only normalisation kept.
+  - `message/index.ts`: upstream cause lookup ported onto the fork's typed `ErrorLike`.
+  - Auto-merge left `faFlagCheckered` imported twice in `Icon.ts` (parse error); deduplicated.
+- Regenerated client adds fork types/routes the merged generated files lacked (activity, template instantiation, …). `check:frontendClient` idempotence passed pre-commit; its porcelain check can only pass once the merge is committed, so it is re-run after the commit.
+- Typecheck repairs of upstream code (upstream CI runs typecheck with `continue-on-error`): `Multiselect` generic refs (`Ref<T[]>` cast), `highlighter.test.ts` (`Decoration` internal `type`), `labels.ts` TS2589 (`translate`), `auth.ts` typed `register` catch, `MigrationHandler` auth-url cast.
+  - **Upstream bug:** `InviteLinksView.vue` fell back to `#{{ link.created_by_id }}`, a field the API never sends (`json:"-"`); it would render `#undefined`. Now renders `—`.
+- Tests rewritten for the native picker: `DatepickerInline.test.ts` (10 cases: time control visibility, calendar/shortcut boundaries, `defaultDueTime` precedence, forced time; mutation-checked), `DeferTask.test.ts` (flatpickr-string cases removed; behaviour cases kept). Popover API stubbed in the two chip test files (happy-dom has none; upstream stubs it the same way).
+- `CLAUDE.md`: dev-commands pointer now `.agents/docs/testing.md`. The models/modelTypes layout note waits for Phase D.
+- Live-verify note: native popover focus return and light dismiss are browser behaviours happy-dom cannot exercise; they are in the human scenario.
+
+### Build — Phase B (`8fb91c4e1`) — 2026-09-24
+
+- 79 conflicted files (49 content, 30 upstream-deleted legacy models/services/stores). Upstream deletes 42 files in this range: project/view/team/share/filter/background models, model types, services, and the project Pinia store.
+- Upstream-deleted files: fork deltas in them were typing only, except for five behaviours, all ported: `isTemplate` (backend-filtered, no frontend rule needed), per-view default sort, calendar view kind (added to `constants/projectView.ts`), sidebar drag state (`draggedProjectId` → module ref in `composables/useDraggedProject.ts`, UI state not server state), and the update-failure rollback (upstream's optimistic mutation plus the fork's clone reset in `ProjectsNavigation` on failure).
+  - Team `oidcId` was dead: the backend field is `external_id`; upstream's check is correct.
+- **Data-loss fix (fork field vs upstream whitelist):** `createProjectViewDraft` whitelists view fields and views are saved with a full PUT. Every upstream view update (done/default bucket toggle, view edit, reorder) would have cleared the fork's `default_sort_by`/`default_order_by`. Added both fields to the draft; regression test in `projectViews.test.ts`.
+- Project callers ported to `useProjects()` / `useCurrentProject()` / project and view mutations: Navigation (today badge, template link, hidden nav items kept), ProjectsNavigationItem (nest drop-zone kept), ProjectList (roll-up, default-sort save on `useUpdateProjectViewMutation`), ProjectKanban (fork's `bucketRoleToggleDisabled` guard kept on upstream mutations; helper moved to snake_case), NewProject (template picker kept; instantiate invalidates the project list), General settings (overview project picker kept), ShowTasks (overview scope kept), TaskDetailView (property-chip layout kept; back-navigation pre-set now by id), plus ProjectActivity, ProjectCalendar, AddTask, TaskTitleField, TaskPropertyChips, TaskContextMenu, SubprojectRollupPopup, ProjectSearchMultiple, UserStatistics, quick-add autocomplete (project search + `searchProjectUsers`).
+  - `services/template.ts`: the two project-returning helpers use `normalizeProject`; the template-list helpers are unchanged (no deleted type).
+  - The pre-set change: the fork skipped pre-setting the current project when the destination was not loaded yet (it had no project object). Upstream's setter takes an id, so the pre-set now always happens. `TaskDetailView.test.ts` case rewritten to assert it.
+- **Counts seam (spec step 4):** `stores/projectCounts.ts` deleted. `client/queries/projectCounts.ts` holds one shared query observer (enabled for real users only; link shares get a 403) and `refreshProjectCounts()`. Sidebar per-project badges, the Today badge and `useAppBadge` all read it; the task store invalidates it on create/update/delete/move. New `projectCounts.test.ts`: a task update through the real task store changes the sidebar count, Today count and app badge together (mutation-checked).
+- **Silent break found:** upstream's `Subscription` component now only emits `toggle` (the parent calls the API). The fork's task-menu subscription still listened for `update:modelValue`, so subscribing would have done nothing. Rebound to upstream's `toggleSubscription`.
+- **Merge damage found:** `ViewEditForm` filter block was half-duplicated by the auto-merge (upstream copy running into the fork's wrapped copy); replaced with upstream's block. `notification.ts`: took upstream whole (fork delta was typing) but restored the fork's `created = new Date(0)` (ADR-0003 date convention; `modelDefaults.test.ts` caught it).
+- `EditAssignees`: took upstream. Its user search is keyed by project id, which gives the fork's per-project reset and stale-response guard by construction. The fork's four behaviour tests are kept and point at the query seam; one case now expects the refetch on project change immediately instead of on next focus.
+- Typecheck: `i18n` instance now cast to a minimal `I18n` type in `src/i18n/index.ts`. vue-i18n's `t` overloads hit TS2589 ("excessively deep") against the fork's build; the cast lets upstream's `i18n.global.t` calls typecheck unchanged, so the query modules stay byte-identical to upstream (except `projectViews.ts`). `EditableTaskCollection` omits the fork's roll-up listing params (never part of a stored filter). `linkShares.ts` got an explicit return type (TS2883). The fork's typed draggable wrapper is restored in `ProjectSettingsViews`.
+- Tests whose only subject was a deleted model were removed (`teamMember.test.ts`, the ProjectModel/ProjectViewModel cases in `modelDefaults.test.ts`). Fixture-only uses of `ProjectModel` became `normalizeProject(...)`. `ProjectList.saveDefaultSort.test.ts` rewritten onto the real query cache and generated-client mocks.
+- Test noise: `TaskDetailView.test.ts` logs `ECONNREFUSED localhost:3000` from happy-dom loading page resources (not API calls; no `fetch` is made). Tests pass.
+
+### Build pause after Phase B — 2026-09-24
+
+- Jason asked to stop after Phase B and run `/checkpoint`; Phases C and D run in a new build session. This is a scheduled pause, not a stop criterion.
+- State: Phase A merge `a5bd762e1`, Phase B merge `8fc741876`, both gate-green (`/tmp/sync-{a,b}-*.log`, local to this machine). `check:frontendClient` passes on both commits. No `.workflow-run.json` gates are recorded; the build phase is not finished.
+- Resume at Phase C: `git merge --no-ff --no-commit a913bf4793b1687fd7b84a7dc559d039de5bffd7` from the worktree root. The merge base has moved, so the dry-run conflict counts (144 cumulative) no longer apply.
+- Carry into Phase C:
+  - Tasks still hold camelCase `ITask`, with `assignees` already the generated `User[]`. Phase C moves tasks to the generated `Task`/`TaskWritable`.
+  - `stores/tasks.ts` calls `refreshProjectCounts()` on create/update/delete/move. When upstream's task mutations replace the store, each mutation must invalidate the counts seam (`client/queries/projectCounts.ts`); `projectCounts.test.ts` must keep passing with the new task path.
+  - Check every upstream draft/body builder (`create*Draft`, `*Body`) for whitelists that drop fork task fields (deadline, estimated duration, RRULE, recurring reminders), the same class as the view `default_sort_by` fix.
+  - The fork's `translate()` wrapper in `message/index.ts` is now redundant with the i18n cast; left in place (out of scope).
+- Build report producer: session `18a66fd6-b0d8-4f19-bf4d-790e540019c4` (Phases A–B).
+
 ### Reports
 
 - Planner: this spec; producer `01a0d3a9-f676-7412-9c93-a7ca184f9c4e`.
-- Executor/build report: pending; record producer session ID beside the report.
+- Executor/build report: Phases A–B in the Execution Log above; producer `18a66fd6-b0d8-4f19-bf4d-790e540019c4`. Phases C–D pending.
 - Reviewer report: pending; record producer session ID beside the report.
 - Verifier report: pending; record producer session ID beside the report.
 - Cold-audit Pass 1/Pass 2 report: pending; record the same auditor session ID beside both passes.
