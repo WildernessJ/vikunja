@@ -5,12 +5,6 @@ import {PRIORITIES} from '@/constants/priorities'
 import {TASK_REPEAT_MODES} from '@/types/IRepeatMode'
 import type {Task as ITask} from '@/client/generated'
 
-vi.mock('@/stores/projects', () => ({
-	useProjectStore: () => ({
-		projects: {},
-	}),
-}))
-
 vi.mock('vue-i18n', () => ({
 	useI18n: () => ({t: (key: string) => key}),
 	createI18n: () => ({

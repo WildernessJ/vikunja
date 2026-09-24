@@ -83,14 +83,6 @@ vi.mock('@/stores/auth', () => ({
 	}),
 }))
 
-vi.mock('@/stores/projects', () => ({
-	useProjectStore: () => ({
-		projects: {},
-		findProjectByExactname: vi.fn().mockReturnValue(null),
-		findProjectByIdentifier: vi.fn().mockReturnValue(null),
-	}),
-}))
-
 vi.mock('@/stores/base', () => ({useBaseStore: () => ({})}))
 vi.mock('@/stores/config', () => ({useConfigStore: () => ({concurrentWrites: true})}))
 

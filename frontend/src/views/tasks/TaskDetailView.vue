@@ -167,7 +167,6 @@
 					<Description
 						:model-value="task"
 						:can-write="canWrite"
-						:attachment-upload="attachmentUploadForDescription"
 					/>
 				</div>
 
@@ -178,7 +177,6 @@
 					:entity-id="task.id ?? 0"
 					class="details d-print-none"
 					:disabled="!canWrite"
-					@update:modelValue="setReactions"
 				/>
 
 				<!-- Attachments -->
@@ -190,7 +188,6 @@
 						:ref="e => { attachmentsRef = e as any }"
 						:edit-enabled="canWrite"
 						:task="task"
-						@update:attachments="onAttachmentsUpdated"
 					/>
 				</div>
 
@@ -266,7 +263,7 @@
 								type="dropdown"
 								entity="task"
 								:entity-id="task.id ?? 0"
-								:model-value="task.subscription ? subscriptionFromApi(task.subscription) : null"
+								:model-value="task.subscription ?? null"
 								@toggle="toggleSubscription"
 							/>
 							<DropdownItem
@@ -330,12 +327,10 @@ import {useRouter, useRoute, type RouteLocation, onBeforeRouteLeave} from 'vue-r
 import {useI18n} from 'vue-i18n'
 import {unrefElement, useDebounceFn, useElementSize, useIntersectionObserver, useMutationObserver} from '@vueuse/core'
 import {klona} from 'klona/lite'
-import {useQueryClient} from '@tanstack/vue-query'
 
 import {useTask} from '@/composables/useTask'
 import {createTaskDraft, mergeTask} from '@/helpers/task'
 import {parseDateOrNull} from '@/helpers/parseDateOrNull'
-import {replaceTaskEverywhere} from '@/client/queries/taskCache'
 
 import type {Label, Task as ITask, User} from '@/client/generated'
 import type {ProjectResponse} from '@/client/queries/projects'
@@ -353,7 +348,7 @@ import TaskTimeTracking from '@/components/time-tracking/TaskTimeTracking.vue'
 import ChecklistSummary from '@/components/tasks/partials/ChecklistSummary.vue'
 import Comments from '@/components/tasks/partials/Comments.vue'
 import CreatedUpdated from '@/components/tasks/partials/CreatedUpdated.vue'
-import Description, {type AttachmentUploadFunction} from '@/components/tasks/partials/Description.vue'
+import Description from '@/components/tasks/partials/Description.vue'
 import Heading from '@/components/tasks/partials/Heading.vue'
 import RelatedTasks from '@/components/tasks/partials/RelatedTasks.vue'
 import TaskSubscription from '@/components/misc/Subscription.vue'
@@ -364,7 +359,6 @@ import TaskPropertyChips from '@/components/tasks/partials/TaskPropertyChips.vue
 import Dropdown from '@/components/misc/Dropdown.vue'
 import DropdownItem from '@/components/misc/DropdownItem.vue'
 
-import {uploadFile} from '@/helpers/attachments'
 import {getProjectTitle} from '@/helpers/getProjectTitle'
 import {canReturnTo} from '@/helpers/returnability'
 import {scrollIntoView} from '@/helpers/scrollIntoView'
@@ -392,8 +386,7 @@ import {useTaskDetailShortcuts} from '@/composables/useTaskDetailShortcuts'
 
 import {error, success} from '@/message'
 import type {Action as MessageAction} from '@/message'
-import {subscriptionsCreate, subscriptionsDelete} from '@/client/generated'
-import {subscriptionFromApi} from '@/models/subscription'
+import {useSetTaskSubscriptionMutation} from '@/client/queries/subscriptions'
 
 const props = defineProps<{
 	taskId: number,
@@ -416,6 +409,7 @@ const duplicateTask = useDuplicateTaskMutation()
 const markTaskRead = useMarkTaskReadMutation()
 const addLabelMutation = useAddTaskLabelMutation()
 const addAssigneeMutation = useAddTaskAssigneeMutation()
+const subscriptionMutation = useSetTaskSubscriptionMutation()
 const taskMutating = computed(() => [
 	updateTask,
 	deleteTaskMutation,
@@ -424,12 +418,12 @@ const taskMutating = computed(() => [
 	markTaskRead,
 ].some(mutation => mutation.isPending.value))
 const configStore = useConfigStore()
-const timeTrackingEnabled = computed(() => configStore.isProFeatureEnabled(PRO_FEATURE.TIME_TRACKING))
 const authStore = useAuthStore()
+const timeTrackingEnabled = computed(() => configStore.isProFeatureEnabled(PRO_FEATURE.TIME_TRACKING)
+	&& !authStore.isLinkShareAuth)
 const baseStore = useBaseStore()
 const quickAddMagicMode = computed(() => authStore.settings.frontendSettings.quickAddMagicMode)
 
-const queryClient = useQueryClient()
 const taskQuery = useTask(
 	() => props.taskId ?? 0,
 	() => [
@@ -619,31 +613,6 @@ const canWrite = computed(() => (
 ))
 
 const isModal = computed(() => Boolean(props.backdropView))
-
-async function attachmentUpload(file: File, onSuccess?: (url: string) => void) {
-	const uploaded = await uploadFile(props.taskId, file, onSuccess)
-	if (uploaded.length > 0) {
-		onAttachmentsUpdated()
-		await attachmentsRef.value?.reloadAttachments()
-	}
-	return uploaded
-}
-
-// Description only cares about the onSuccess callback firing with the uploaded url; its return value is discarded.
-const attachmentUploadForDescription: AttachmentUploadFunction = async (file, onSuccess) => {
-	const uploaded = await attachmentUpload(file, onSuccess)
-	return uploaded[0] ? String(uploaded[0].id) : ''
-}
-
-function setReactions(reactions: ITask['reactions']) {
-	task.value = {...task.value, reactions}
-	taskQuery.refetch()
-}
-
-async function onAttachmentsUpdated() {
-	const result = await taskQuery.refetch()
-	if (result.data) replaceTaskEverywhere(queryClient, result.data)
-}
 
 const heading = ref<HTMLElement | null>(null)
 
@@ -872,17 +841,9 @@ async function changeProject(project: ProjectResponse | null, title?: string) {
 	baseStore.setCurrentProject(project)
 }
 
-async function toggleSubscription(subscribed: boolean) {
-	const path = {entity: 'task', entityID: task.value.id!} as const
-	if (subscribed) {
-		await subscriptionsCreate({path})
-		await taskQuery.refetch()
-		success({message: t('task.subscription.subscribeSuccessTask')})
-		return
-	}
-	await subscriptionsDelete({path})
-	await taskQuery.refetch()
-	success({message: t('task.subscription.unsubscribeSuccessTask')})
+function toggleSubscription(subscribed: boolean) {
+	if (subscriptionMutation.isPending.value) return
+	subscriptionMutation.mutate({taskId: task.value.id!, subscribed})
 }
 
 async function toggleFavorite() {

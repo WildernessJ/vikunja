@@ -1,94 +1,66 @@
-import AttachmentModel from '@/models/attachment'
-import type {IAttachment} from '@/modelTypes/IAttachment'
+import type {TaskAttachment} from '@/client/generated'
+import {queryClient} from '@/client/queryClient'
+import {
+	attachmentBlob,
+	attachmentKeys,
+	type AttachmentIdentity,
+	type PreviewSize,
+} from '@/client/queries/attachments'
+import {captureClientRequestContext, assertClientRequestContext} from '@/client/requestContext'
+import {downloadBlob} from '@/helpers/downloadBlob'
 
-import AttachmentService, {type PREVIEW_SIZE} from '@/services/attachment'
+// A blob: url for an svg inherits our origin and can script; a data: url cannot.
+const SCRIPTABLE_MIME_TYPE = 'image/svg+xml'
 
-const blobService = new AttachmentService()
-const blobUrlCache = new Map<string, string>()
-const pendingBlobRequests = new Map<string, Promise<string>>()
-
-/**
- * Blob urls are shared between every consumer, so callers must not revoke them.
- * Use clearAttachmentBlobCache() instead.
- */
-export function fetchAttachmentBlobUrl(attachment: Pick<IAttachment, 'id' | 'taskId'>, size?: PREVIEW_SIZE): Promise<string> {
-	const key = `${attachment.taskId}-${attachment.id}-${size ?? ''}`
-
-	const cached = blobUrlCache.get(key)
-	if (cached !== undefined) {
-		return Promise.resolve(cached)
-	}
-
-	const pending = pendingBlobRequests.get(key)
-	if (pending !== undefined) {
-		return pending
-	}
-
-	const request = blobService.getBlobUrl(attachment, size)
-		.then(url => {
-			blobUrlCache.set(key, url)
-			pendingBlobRequests.delete(key)
-			return url
-		})
-		.catch(e => {
-			// drop the rejected promise, else every retry rethrows it
-			pendingBlobRequests.delete(key)
-			throw e
-		})
-
-	pendingBlobRequests.set(key, request)
-	return request
-}
-
-export function clearAttachmentBlobCache() {
-	blobUrlCache.forEach(url => window.URL.revokeObjectURL(url))
-	blobUrlCache.clear()
-	pendingBlobRequests.clear()
-}
-
-export async function uploadFile(taskId: number, file: File, onSuccess?: (url: string) => void): Promise<IAttachment[]> {
-	const attachmentService = new AttachmentService()
-	const files = [file]
-
-	return await uploadFiles(attachmentService, taskId, files, onSuccess)
-}
-
-export async function uploadFiles(
-	attachmentService: AttachmentService,
-	taskId: number,
-	files: File[] | FileList,
-	onSuccess?: (attachmentUrl: string) => void,
-): Promise<IAttachment[]> {
-	const attachmentModel = new AttachmentModel({taskId})
-	const response = await attachmentService.create(attachmentModel, files)
-	console.debug(`Uploaded attachments for task ${taskId}, response was`, response)
-
-	const uploaded: IAttachment[] = []
-	response.success?.map((attachment: IAttachment) => {
-		uploaded.push(attachment)
-		onSuccess?.(generateAttachmentUrl(taskId, attachment.id))
+// The cache holds the bytes; a url belongs to the caller that asked for it and nobody else may revoke it.
+export function fetchAttachmentBlob(attachment: AttachmentIdentity, size?: PreviewSize): Promise<Blob> {
+	return queryClient.fetchQuery({
+		queryKey: attachmentKeys.blob(attachment.task_id, attachment.id, size),
+		queryFn: ({signal}) => attachmentBlob(attachment, size, signal),
+		staleTime: Infinity,
+		retry: false,
 	})
-
-	if (response.errors !== null) {
-		const messages = response.errors.map((e: {message: string}) => e.message)
-		throw new Error(messages.join('\n'))
-	}
-
-	return uploaded
 }
 
-/**
- * Uploads report each finished file through a callback rather than their return
- * value, so the urls have to be collected there. The rejection still has to be
- * forwarded, else a failed upload leaves a dangling rejected promise behind.
- */
-export function uploadFilesForEditor(
-	upload: (file: File, onSuccess: (attachmentUrl: string) => void) => Promise<unknown>,
-	files: File[] | FileList,
-): Promise<string[]> {
-	return Promise.all(Array.from(files).map(file => new Promise<string>((resolve, reject) => {
-		upload(file, resolve).catch(reject)
-	})))
+export async function fetchAttachmentUrl(attachment: AttachmentIdentity, size?: PreviewSize): Promise<string> {
+	const context = captureClientRequestContext()
+	const blob = await fetchAttachmentBlob(attachment, size)
+	assertClientRequestContext(context)
+	const mimeType = blob.type.split(';')[0].trim().toLowerCase()
+	// FileReader is absent in iOS Lockdown Mode and some webviews, fall back to a blob url there.
+	if (mimeType !== SCRIPTABLE_MIME_TYPE || typeof FileReader === 'undefined') {
+		return URL.createObjectURL(blob)
+	}
+
+	return new Promise<string>((resolve, reject) => {
+		const reader = new FileReader()
+		reader.onload = () => {
+			// the identity can change while the read runs, so the pre-read fence has to be repeated
+			try {
+				assertClientRequestContext(context)
+			} catch (fenced) {
+				reject(fenced)
+				return
+			}
+			if (typeof reader.result === 'string') {
+				resolve(reader.result)
+				return
+			}
+			reject(new Error('Attachment could not be read as a data url'))
+		}
+		reader.onerror = () => reject(reader.error ?? new Error('Attachment could not be read as a data url'))
+		reader.readAsDataURL(blob)
+	})
+}
+
+// The svg defence hands out inert data: urls, which own nothing.
+export function releaseAttachmentUrl(url: string | null | undefined) {
+	if (url?.startsWith('blob:')) URL.revokeObjectURL(url)
+}
+
+export async function downloadAttachment(attachment: TaskAttachment) {
+	const url = await fetchAttachmentUrl({id: attachment.id!, task_id: attachment.task_id!})
+	downloadBlob(url, attachment.file?.name ?? '')
 }
 
 export function generateAttachmentUrl(taskId: number, attachmentId: number) {

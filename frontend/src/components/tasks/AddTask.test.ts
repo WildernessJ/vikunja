@@ -68,12 +68,6 @@ vi.mock('@/composables/useLabels', () => ({
 	}),
 }))
 
-vi.mock('@/stores/projects', () => ({
-	useProjectStore: () => ({
-		projects: {},
-	}),
-}))
-
 vi.mock('vue-router', () => ({
 	useRouter: () => ({
 		currentRoute: {value: {params: {}}},

@@ -5,6 +5,7 @@ import {REMINDER_PERIOD_RELATIVE_TO_TYPES} from '@/types/IReminderPeriodRelative
 import {secondsToPeriod, periodToSeconds} from '@/helpers/time/period'
 import {resolveOverride} from '@/helpers/resolveOverride'
 import {toISOStringOrNull} from '@/helpers/time/toISOStringOrNull'
+import {getDateWithTime} from '@/helpers/time/getDateWithTime'
 import {cleanupItemText, PREFIXES, type ParsedTaskText, type PrefixMode} from '@/modules/quickAddMagic'
 
 export function createTaskDraft(data: Partial<Task> = {}): Task {
@@ -183,10 +184,11 @@ export function buildQuickAddTask(
 		? cleanupItemText(text, assignees.map(user => user.match), prefixes.assignee)
 		: text
 	// A calendar-pattern "starting <date>" bound anchors the first occurrence when no due date was parsed.
+	// Without a due date an interval repeat never becomes due; RRULE tasks are anchored by the API instead.
 	const dueDate = toISOStringOrNull(resolveOverride(
 		overrides,
 		'dueDate',
-		parsed.date ?? parsed.rruleRepeat?.startDate ?? null,
+		parsed.date ?? parsed.rruleRepeat?.startDate ?? (parsed.repeats ? getDateWithTime(new Date()) : null),
 	)) ?? undefined
 	const repeat = parsed.rruleRepeat
 		? {
