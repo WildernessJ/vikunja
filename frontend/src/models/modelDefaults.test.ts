@@ -1,8 +1,6 @@
 import {describe, it, expect} from 'vitest'
 
 import TaskModel from './task'
-import ProjectModel from './project'
-import ProjectViewModel from './projectView'
 
 // Regression guard for the type-error burndown (#21): replacing `field: T = null`
 // defaults with `field!: T` silently changed the runtime default from null to
@@ -13,17 +11,6 @@ import ProjectViewModel from './projectView'
 describe('model construction defaults', () => {
 	it('leaves an absent subscription as null, not undefined', () => {
 		expect(new TaskModel({}).subscription).toBeNull()
-		expect(new ProjectModel({}).subscription).toBeNull()
-	})
-
-	it('converts incoming date strings on ProjectViewModel to Date objects (#46)', () => {
-		const raw = '2023-01-15T10:00:00Z'
-		const view = new ProjectViewModel({created: raw as unknown as Date, updated: raw as unknown as Date})
-
-		expect(view.created).toBeInstanceOf(Date)
-		expect(view.updated).toBeInstanceOf(Date)
-		expect(view.created.getTime()).toBe(new Date(raw).getTime())
-		expect(view.updated.getTime()).toBe(new Date(raw).getTime())
 	})
 })
 

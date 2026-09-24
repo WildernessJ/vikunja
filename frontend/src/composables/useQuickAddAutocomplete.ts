@@ -12,12 +12,11 @@ import {
 	type TokenInsertResult,
 } from '@/modules/quickAddMagic'
 import {useLabels} from '@/composables/useLabels'
-import {useProjectStore} from '@/stores/projects'
-import ProjectUserService from '@/services/projectUsers'
+import {useProjects} from '@/composables/useProjects'
+import {searchProjectUsers} from '@/client/queries/userSearch'
 import {getDisplayName} from '@/models/user'
 import {getHexColor} from '@/models/task'
-import type {IAbstract} from '@/modelTypes/IAbstract'
-import type {IUser} from '@/modelTypes/IUser'
+import type {UserWithId} from '@/models/user'
 
 export type AutocompleteKind = 'project' | 'label' | 'assignee'
 
@@ -27,7 +26,7 @@ export interface AutocompleteItem {
 	display: string,
 	insertValue: string,
 	color?: string,
-	user?: IUser,
+	user?: UserWithId,
 }
 
 // Priority ('!') only exists in the task-detail title's dropdown (the composer
@@ -56,11 +55,6 @@ export function useQuickAddAutocomplete(options: {
 	// has to be created once here rather than per watch run.
 	const {getLabelsByExactTitles, filterLabelsByQuery} = useLabels()
 
-	// Stores/service are constructed lazily, only once a token of their kind is
-	// actually active - so mounting the composer never requires every consumer
-	// (e.g. existing tests that only exercise the disabled-mode path) to mock them.
-	let projectUserService: ProjectUserService | undefined
-
 	const caretOffset = ref(0)
 	const forceClosed = ref(false)
 	const items = ref<AutocompleteItem[]>([])
@@ -76,18 +70,17 @@ export function useQuickAddAutocomplete(options: {
 	const isOpen = computed(() => activeToken.value !== null)
 
 	async function fetchAssignees(query: string, projectId: number, myRequestId: number) {
-		projectUserService ??= new ProjectUserService()
-		const response = await projectUserService.getAll({projectId} as unknown as IAbstract, {s: query}) as IUser[]
+		const response = await searchProjectUsers(projectId, query)
 		if (myRequestId !== requestId.value) {
 			return
 		}
-		items.value = response.map(user => ({
+		items.value = response.flatMap(user => user.id === undefined ? [] : [{
 			kind: 'assignee' as const,
 			id: user.id,
 			display: getDisplayName(user),
-			insertValue: user.username,
-			user,
-		}))
+			insertValue: user.username ?? '',
+			user: {...user, id: user.id},
+		}])
 	}
 
 	const debouncedFetchAssignees = useDebounceFn(fetchAssignees, ASSIGNEE_DEBOUNCE_MS)
@@ -103,7 +96,7 @@ export function useQuickAddAutocomplete(options: {
 		}
 
 		if (token.type === 'project') {
-			items.value = useProjectStore().searchProject(token.query)
+			items.value = useProjects().searchProject(token.query)
 				.map(p => ({kind: 'project' as const, id: p.id, display: p.title, insertValue: p.title}))
 			return
 		}

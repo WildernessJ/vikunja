@@ -39,8 +39,8 @@ vi.mock('@/stores/auth', () => ({
 	}),
 }))
 
-vi.mock('@/stores/projects', () => ({
-	useProjectStore: () => ({
+vi.mock('@/composables/useProjects', () => ({
+	useProjects: () => ({
 		projects: {},
 		searchProject: searchProjectMock,
 		findProjectByExactname: findProjectByExactnameMock,
@@ -54,10 +54,8 @@ vi.mock('@/composables/useLabels', () => ({
 	}),
 }))
 
-vi.mock('@/services/projectUsers', () => ({
-	default: class {
-		getAll = getAllAssigneesMock
-	},
+vi.mock('@/client/queries/userSearch', () => ({
+	searchProjectUsers: (projectId: number, query: string) => getAllAssigneesMock({projectId}, {s: query}),
 }))
 
 vi.mock('@/services/task', () => ({

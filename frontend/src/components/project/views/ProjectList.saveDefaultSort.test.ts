@@ -4,9 +4,10 @@ import {mount, flushPromises} from '@vue/test-utils'
 import {createPinia, setActivePinia} from 'pinia'
 import {createRouter, createMemoryHistory, type Router} from 'vue-router'
 import {createI18n} from 'vue-i18n'
+import {VueQueryPlugin} from '@tanstack/vue-query'
 import en from '@/i18n/lang/en.json'
 
-// Full-mount ProjectList (real pinia stores, real router, real useTaskList) rather than
+// Full-mount ProjectList (real pinia stores, real query cache, real router, real useTaskList) rather than
 // unit-testing saveDefaultSort in isolation: the bug this guards against (#70) is in the
 // interaction between the SortPopup emit order and the `sortBy` URL setter in
 // useTaskList, so the seam that matters is the real reactive wiring, not the function body.
@@ -15,14 +16,20 @@ const errorMock = vi.hoisted(() => vi.fn())
 vi.mock('@/message', () => ({
 	success: successMock,
 	error: errorMock,
+	translate: (key: string) => key,
 }))
 
+// The server's copy of the project; the detail query refetches it after every view mutation.
+const server = vi.hoisted(() => ({project: null as unknown}))
 const updateMock = vi.hoisted(() => vi.fn())
-vi.mock('@/services/projectViews', () => ({
-	default: class {
-		update = updateMock
-	},
-}))
+vi.mock('@/client/generated', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('@/client/generated')>()
+	return {
+		...actual,
+		projectViewsUpdate: updateMock,
+		projectsRead: async () => ({data: server.project}),
+	}
+})
 
 const getAll = vi.fn(async (..._args: unknown[]) => [])
 vi.mock('@/services/taskCollection', async (importOriginal) => {
@@ -38,28 +45,32 @@ vi.mock('@/services/taskCollection', async (importOriginal) => {
 })
 
 import ProjectList from './ProjectList.vue'
+import type {Project, ProjectView} from '@/client/generated'
+import {queryClient} from '@/client/queryClient'
+import {getCachedProject, normalizeProject, projectKeys} from '@/client/queries/projects'
 import {useAuthStore} from '@/stores/auth'
-import {useProjectStore} from '@/stores/projects'
 import {useBaseStore} from '@/stores/base'
 import {PERMISSIONS as Permissions} from '@/constants/permissions'
-import ProjectModel from '@/models/project'
-import ProjectViewModel from '@/models/projectView'
 
-const VIEW = new ProjectViewModel({
+const VIEW: ProjectView = {
 	id: 1,
-	projectId: 1,
+	project_id: 1,
 	title: 'List',
-	viewKind: 'list',
-	defaultSortBy: ['priority'],
-	defaultOrderBy: ['desc'],
-})
+	view_kind: 'list',
+	default_sort_by: ['priority'],
+	default_order_by: ['desc'],
+}
 
-const PROJECT = new ProjectModel({
+const PROJECT: Project = {
 	id: 1,
 	title: 'Test project',
-	maxPermission: Permissions.ADMIN,
+	max_permission: Permissions.ADMIN,
 	views: [VIEW],
-})
+}
+
+function cachedView() {
+	return getCachedProject(1)?.views[0]
+}
 
 const i18n = createI18n({legacy: false, locale: 'en', messages: {en}})
 
@@ -79,13 +90,16 @@ async function mountProjectList(query: Record<string, string> = {}): Promise<{wr
 	await router.push({path: '/', query})
 	await router.isReady()
 
-	// useBaseStore/useProjectStore call useI18n() at store-setup time, which needs an
-	// active component instance — seed them from a wrapper's setup (runs before the
-	// child's) rather than calling the store composables at the top level of the test.
+	server.project = PROJECT
+	queryClient.setQueryData(projectKeys.detail(1), normalizeProject(PROJECT))
+	queryClient.setQueryData(projectKeys.list(), {projects: [normalizeProject(PROJECT)], favoriteProject: null, savedFilterProjects: []})
+
+	// useBaseStore calls useI18n() at store-setup time, which needs an active component
+	// instance — seed it from a wrapper's setup (runs before the child's) rather than
+	// calling the store composable at the top level of the test.
 	const Harness = defineComponent({
 		setup() {
-			useProjectStore().setProject(new ProjectModel(PROJECT))
-			useBaseStore().setCurrentProject(new ProjectModel(PROJECT))
+			useBaseStore().setCurrentProject({id: 1})
 			return () => h(ProjectList, {
 				isLoadingProject: false,
 				projectId: 1,
@@ -96,7 +110,7 @@ async function mountProjectList(query: Record<string, string> = {}): Promise<{wr
 
 	const wrapper = mount(Harness, {
 		global: {
-			plugins: [router, i18n],
+			plugins: [router, i18n, [VueQueryPlugin, {queryClient}]],
 			stubs: {
 				ProjectWrapper: {template: '<div><slot name="header" /><slot name="default" /></div>'},
 				SortPopup: SortPopupStub,
@@ -121,6 +135,7 @@ async function flushTwice() {
 describe('ProjectList saveDefaultSort (#69, #70)', () => {
 	beforeEach(() => {
 		setActivePinia(createPinia())
+		queryClient.clear()
 		useAuthStore().setAuthenticated(true)
 		getAll.mockClear()
 		updateMock.mockReset()
@@ -128,9 +143,12 @@ describe('ProjectList saveDefaultSort (#69, #70)', () => {
 		errorMock.mockClear()
 	})
 
-	it('persists the new default, updates the store, toasts success, and clears the redundant ?sort= param', async () => {
-		const updatedView = new ProjectViewModel({...VIEW, defaultSortBy: ['title'], defaultOrderBy: ['asc']})
-		updateMock.mockResolvedValue(updatedView)
+	it('persists the new default, updates the cache, toasts success, and clears the redundant ?sort= param', async () => {
+		const updatedView: ProjectView = {...VIEW, default_sort_by: ['title'], default_order_by: ['asc']}
+		updateMock.mockImplementation(async () => {
+			server.project = {...PROJECT, views: [updatedView]}
+			return {data: updatedView}
+		})
 
 		const {wrapper, router} = await mountProjectList()
 
@@ -138,11 +156,12 @@ describe('ProjectList saveDefaultSort (#69, #70)', () => {
 		await flushPromises()
 
 		expect(updateMock).toHaveBeenCalledOnce()
-		const sentView = updateMock.mock.calls[0][0]
-		expect(sentView.defaultSortBy).toEqual(['title'])
-		expect(sentView.defaultOrderBy).toEqual(['asc'])
+		const sent = updateMock.mock.calls[0][0]
+		expect(sent.path).toEqual({project: 1, view: 1})
+		expect(sent.body.default_sort_by).toEqual(['title'])
+		expect(sent.body.default_order_by).toEqual(['asc'])
 
-		expect(useProjectStore().projects[1].views[0].defaultSortBy).toEqual(['title'])
+		expect(cachedView()?.default_sort_by).toEqual(['title'])
 		expect(successMock).toHaveBeenCalledOnce()
 		expect(errorMock).not.toHaveBeenCalled()
 
@@ -151,7 +170,7 @@ describe('ProjectList saveDefaultSort (#69, #70)', () => {
 		expect(router.currentRoute.value.query.sort).toBeUndefined()
 	})
 
-	it('toasts an error and does not update the store when the persist call rejects', async () => {
+	it('toasts an error and keeps the saved default when the persist call rejects', async () => {
 		updateMock.mockRejectedValue(new Error('nope'))
 
 		const {wrapper} = await mountProjectList()
@@ -162,6 +181,6 @@ describe('ProjectList saveDefaultSort (#69, #70)', () => {
 		expect(updateMock).toHaveBeenCalledOnce()
 		expect(errorMock).toHaveBeenCalledOnce()
 		expect(successMock).not.toHaveBeenCalled()
-		expect(useProjectStore().projects[1].views[0].defaultSortBy).toEqual(['priority'])
+		expect(cachedView()?.default_sort_by).toEqual(['priority'])
 	})
 })

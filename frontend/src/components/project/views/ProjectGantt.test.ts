@@ -17,8 +17,8 @@ vi.mock('@/views/project/helpers/useGanttFilters', () => ({
 	}),
 }))
 
-vi.mock('@/stores/base', () => ({
-	useBaseStore: () => ({currentProject: {id: 1, maxPermission: 2}}),
+vi.mock('@/composables/useCurrentProject', () => ({
+	useCurrentProject: () => ({currentProject: ref({id: 1, max_permission: 2})}),
 }))
 
 vi.mock('vue-i18n', async importOriginal => ({

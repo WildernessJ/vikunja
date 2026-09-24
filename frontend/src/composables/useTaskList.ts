@@ -10,10 +10,8 @@ import TaskCollectionService, {
 } from '@/services/taskCollection'
 import type {ITask} from '@/modelTypes/ITask'
 import {error} from '@/message'
-import type {IProject} from '@/modelTypes/IProject'
 import {useAuthStore} from '@/stores/auth'
 import {useViewFiltersStore} from '@/stores/viewFilters'
-import type {IProjectView} from '@/modelTypes/IProjectView'
 
 export type Order = 'asc' | 'desc' | 'none'
 
@@ -127,8 +125,8 @@ function formatSortOrder(sortBy: SortBy, params: TaskFilterParams): TaskFilterPa
  * This mixin provides a base set of methods and properties to get tasks.
  */
 export function useTaskList(
-	projectIdGetter: ComputedGetter<IProject['id']>,
-	projectViewIdGetter: ComputedGetter<IProjectView['id']>,
+	projectIdGetter: ComputedGetter<number>,
+	projectViewIdGetter: ComputedGetter<number>,
 	sortByDefault: SortBy | ComputedGetter<SortBy> = SORT_BY_DEFAULT,
 	expandGetter: ComputedGetter<ExpandTaskFilterParam> = () => 'subtasks',
 ) {

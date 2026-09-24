@@ -15,6 +15,35 @@ vi.mock('@/i18n', () => ({
 	i18n: {global: {t: (key: string) => key}},
 }))
 
+describe('settings route matching', () => {
+	it('routes negative project ids to saved-filter settings', () => {
+		expect(router.resolve('/projects/-2/settings/edit').name).toBe('filter.settings.edit')
+		expect(router.resolve('/projects/-2/settings/delete').name).toBe('filter.settings.delete')
+		expect(router.resolve('/projects/-10/settings/edit').name).toBe('filter.settings.edit')
+	})
+
+	it('routes non-negative project ids to project settings', () => {
+		expect(router.resolve('/projects/2/settings/edit').name).toBe('project.settings.edit')
+		expect(router.resolve('/projects/2/settings/delete').name).toBe('project.settings.delete')
+	})
+
+	it('does not route the Favorites pseudo-project to saved-filter settings', () => {
+		expect(router.resolve('/projects/-1/settings/edit').name).toBe('bad-not-found')
+		expect(router.resolve('/projects/-1/settings/delete').name).toBe('bad-not-found')
+	})
+
+	it('builds settings urls from named routes with projectId params', () => {
+		expect(router.resolve({name: 'project.settings.edit', params: {projectId: 2}}).path)
+			.toBe('/projects/2/settings/edit')
+		expect(router.resolve({name: 'project.settings.delete', params: {projectId: 2}}).path)
+			.toBe('/projects/2/settings/delete')
+		expect(router.resolve({name: 'filter.settings.edit', params: {projectId: -10}}).path)
+			.toBe('/projects/-10/settings/edit')
+		expect(router.resolve({name: 'filter.settings.delete', params: {projectId: -10}}).path)
+			.toBe('/projects/-10/settings/delete')
+	})
+})
+
 // getAuthForRoute only ever reads these two fields off the store.
 const ANONYMOUS = {authUser: null, authLinkShare: null} as unknown as ReturnType<typeof useAuthStore>
 const AUTHENTICATED = {authUser: {id: 1}, authLinkShare: null} as unknown as ReturnType<typeof useAuthStore>

@@ -5,7 +5,6 @@ import TaskModel from './task'
 import type {IBucket} from '@/modelTypes/IBucket'
 import type {ITask} from '@/modelTypes/ITask'
 import type {IUser} from '@/modelTypes/IUser'
-import type {IProjectView} from '@/modelTypes/IProjectView'
 
 export default class BucketModel extends AbstractModel<IBucket> implements IBucket {
 	id = 0
@@ -15,7 +14,7 @@ export default class BucketModel extends AbstractModel<IBucket> implements IBuck
 	tasks: ITask[] = []
 	position = 0
 	count = 0
-	projectViewId!: IProjectView['id']
+	projectViewId!: number
 
 	createdBy!: IUser
 	created: Date = new Date(0)

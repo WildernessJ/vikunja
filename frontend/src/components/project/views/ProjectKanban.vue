@@ -8,7 +8,7 @@
 		<template #header>
 			<div class="filter-container">
 				<FilterPopup
-					v-if="!isSavedFilter(project)"
+					v-if="!isSavedFilterProject(project)"
 					v-model="params"
 					:view-id="viewId"
 					:project-id="projectId"
@@ -46,7 +46,7 @@
 									@click="() => unCollapseBucket(bucket)"
 								>
 									<span
-										v-if="bucket.id !== 0 && view?.doneBucketId === bucket.id"
+										v-if="bucket.id !== 0 && view?.done_bucket_id === bucket.id"
 										v-tooltip="$t('project.kanban.doneBucketHint')"
 										class="icon is-small has-text-success mie-2"
 										@click.stop="() => collapseBucket(bucket)"
@@ -117,7 +117,7 @@
 										<DropdownItem
 											v-tooltip="bucketRoleToggleDisabled(bucket, view, 'done') ? $t('project.kanban.doneBucketDisabledIsDefault') : $t('project.kanban.doneBucketHintExtended')"
 											:disabled="bucketRoleToggleDisabled(bucket, view, 'done')"
-											:icon-class="{'has-text-success': bucket.id === view?.doneBucketId}"
+											:icon-class="{'has-text-success': bucket.id === view?.done_bucket_id}"
 											icon="check-double"
 											@click.stop="toggleDoneBucket(bucket)"
 										>
@@ -126,7 +126,7 @@
 										<DropdownItem
 											v-tooltip="bucketRoleToggleDisabled(bucket, view, 'default') ? $t('project.kanban.defaultBucketDisabledIsDone') : $t('project.kanban.defaultBucketHint')"
 											:disabled="bucketRoleToggleDisabled(bucket, view, 'default')"
-											:icon-class="{'has-text-primary': bucket.id === view?.defaultBucketId}"
+											:icon-class="{'has-text-primary': bucket.id === view?.default_bucket_id}"
 											icon="th"
 											@click.stop="toggleDefaultBucket(bucket)"
 										>
@@ -295,6 +295,7 @@
 
 <script setup lang="ts">
 import {computed, nextTick, ref, watch, toRef} from 'vue'
+import {useQuery} from '@tanstack/vue-query'
 import {useRouter} from 'vue-router'
 import {useRouteQuery} from '@vueuse/router'
 import {useI18n} from 'vue-i18n'
@@ -306,10 +307,8 @@ import BucketModel from '@/models/bucket'
 
 import type {IBucket} from '@/modelTypes/IBucket'
 import type {ITask} from '@/modelTypes/ITask'
-import type {IProject} from '@/modelTypes/IProject'
 import type {ITaskBucket} from '@/modelTypes/ITaskBucket'
 
-import {useBaseStore} from '@/stores/base'
 import {useTaskStore} from '@/stores/tasks'
 import {useKanbanStore} from '@/stores/kanban'
 import {useAuthStore} from '@/stores/auth'
@@ -329,23 +328,24 @@ import {calculateItemPosition} from '@/helpers/calculateItemPosition'
 import {runBucketMoveWithCountRevert} from '@/helpers/runBucketMoveWithCountRevert'
 import {bucketRoleToggleDisabled} from '@/helpers/bucketRoleToggle'
 
-import {isSavedFilter, useSavedFilter} from '@/services/savedFilter'
+import {getSavedFilterIdFromProjectId, isSavedFilterProject} from '@/client/queries/projects'
+import {savedFilterQuery} from '@/client/queries/savedFilters'
+import {useCurrentProject} from '@/composables/useCurrentProject'
 import {useTaskDragToProject} from '@/composables/useTaskDragToProject'
-import {success, translate} from '@/message'
-import {useProjectStore} from '@/stores/projects'
+import {success} from '@/message'
 import type {TaskFilterParams} from '@/services/taskCollection'
-import type {IProjectView} from '@/modelTypes/IProjectView'
+import type {ProjectView} from '@/client/generated'
 import TaskPositionService from '@/services/taskPosition'
 import TaskPositionModel from '@/models/taskPosition'
-import ProjectViewService from '@/services/projectViews'
-import ProjectViewModel from '@/models/projectView'
+import {i18n} from '@/i18n'
+import {createProjectViewUpdate, useUpdateProjectViewMutation} from '@/client/queries/projectViews'
 import TaskBucketService from '@/services/taskBucket'
 import TaskBucketModel from '@/models/taskBucket'
 
 const props = defineProps<{
 	isLoadingProject: boolean,
 	projectId: number,
-	viewId: IProjectView['id'],
+	viewId: number,
 }>()
 
 const projectId = toRef(props, 'projectId')
@@ -388,11 +388,12 @@ const DRAG_OPTIONS = {
 const MIN_SCROLL_HEIGHT_PERCENT = 0.25
 
 const {t} = useI18n({useScope: 'global'})
+const isCurrentProject = ({projectId: id}: {projectId: number}) => projectId.value === id
+const updateDefaultBucket = useUpdateProjectViewMutation(t('project.kanban.defaultBucketSavedSuccess'), isCurrentProject)
+const updateDoneBucket = useUpdateProjectViewMutation(t('project.kanban.doneBucketSavedSuccess'), isCurrentProject)
 
-const baseStore = useBaseStore()
 const kanbanStore = useKanbanStore()
 const taskStore = useTaskStore()
-const projectStore = useProjectStore()
 const authStore = useAuthStore()
 
 const alwaysShowBucketTaskCount = computed(() => authStore.settings.frontendSettings.alwaysShowBucketTaskCount)
@@ -400,9 +401,7 @@ const {handleTaskDropToProject} = useTaskDragToProject()
 const taskPositionService = ref(new TaskPositionService())
 const taskBucketService = ref(new TaskBucketService())
 
-// Saved filter composable for accessing filter data
-// useSavedFilter's internal watch skips on `undefined`; its getter signature just doesn't declare that.
-const savedFilter = useSavedFilter((): number => (isSavedFilter({id: projectId.value} as IProject) ? projectId.value : undefined) as number).filter
+const savedFilter = useQuery(computed(() => savedFilterQuery(getSavedFilterIdFromProjectId(projectId.value)))).data
 
 const taskContainerRefs = ref<{ [id: IBucket['id']]: HTMLElement }>({})
 const bucketLimitInputRef = ref<HTMLInputElement | null>(null)
@@ -477,9 +476,13 @@ const bucketDraggableComponentData = computed(() => ({
 		{'dragging-disabled': !canWrite.value},
 	],
 }))
-const project = computed(() => projectId.value ? projectStore.projects[projectId.value] : null)
-const view = computed(() => project.value?.views.find(v => v.id === props.viewId) as IProjectView || null)
-const canWrite = computed(() => (baseStore.currentProject?.maxPermission ?? 0) > Permissions.READ && view.value.bucketConfigurationMode === 'manual')
+const {currentProject: project} = useCurrentProject()
+const view = computed(() => project.value?.views.find(view => view.id === props.viewId) as ProjectView || null)
+const canWrite = computed(() =>
+	typeof project.value?.max_permission === 'number' &&
+	project.value.max_permission > Permissions.READ &&
+	view.value?.bucket_configuration_mode === 'manual',
+)
 const canCreateTasks = computed(() => canWrite.value && projectId.value > 0)
 
 const isTouchDevice = ref(false)
@@ -793,7 +796,7 @@ async function saveBucketTitle(bucketId: IBucket['id'], bucketTitle: string) {
 		title: bucketTitle,
 		projectId: projectId.value,
 	})
-	success({message: translate('project.kanban.bucketTitleSavedSuccess')})
+	success({message: i18n.global.t('project.kanban.bucketTitleSavedSuccess')})
 	bucketTitleEditable.value = false
 }
 
@@ -804,13 +807,14 @@ function updateBuckets(value: IBucket[]) {
 
 function handleRecurringTaskCompletion() {
 	// Only reload if we're in a saved filter and the filter contains date fields
-	if (!isSavedFilter(project.value)) {
+	if (!isSavedFilterProject(project.value)) {
 		return
 	}
 
-	const filterContainsDateFields = savedFilter.value?.filters?.filter?.includes('due_date') ||
-		savedFilter.value?.filters?.filter?.includes('start_date') ||
-		savedFilter.value?.filters?.filter?.includes('end_date')
+	const savedFilterQueryString = savedFilter.value?.filters.filter ?? ''
+	const filterContainsDateFields = savedFilterQueryString.includes('due_date') ||
+		savedFilterQueryString.includes('start_date') ||
+		savedFilterQueryString.includes('end_date')
 		
 	if (filterContainsDateFields) {
 		// Reload the kanban board to refresh tasks that now match/don't match the filter
@@ -902,66 +906,36 @@ function handleTaskDragStart(e: { item: HTMLElement, from: HTMLElement }) {
 	dragstart(bucket)
 }
 
-async function toggleDefaultBucket(bucket: IBucket) {
-	if (bucketRoleToggleDisabled(bucket, view.value, 'default')) {
+function toggleDefaultBucket(bucket: IBucket) {
+	const currentView = view.value
+	if (!currentView?.id || bucketRoleToggleDisabled(bucket, currentView, 'default')) {
 		return
 	}
-
-	const defaultBucketId = view.value?.defaultBucketId === bucket.id
+	const defaultBucketId = currentView.default_bucket_id === bucket.id
 		? 0
 		: bucket.id
 
-	if (!project.value) {
-		return
-	}
-	const currentProject = project.value
-
-	const projectViewService = new ProjectViewService()
-	const updatedView = await projectViewService.update(new ProjectViewModel({
-		...view.value,
-		defaultBucketId,
-	}))
-
-	const views = currentProject.views.map(v => v.id === view.value?.id ? updatedView : v)
-	const updatedProject = {
-		...currentProject,
-		views,
-	} as IProject
-
-	projectStore.setProject(updatedProject)
-
-	success({message: t('project.kanban.defaultBucketSavedSuccess')})
+	updateDefaultBucket.mutate({
+		projectId: projectId.value,
+		viewId: currentView.id,
+		view: createProjectViewUpdate({...currentView, default_bucket_id: defaultBucketId}),
+	})
 }
 
-async function toggleDoneBucket(bucket: IBucket) {
-	if (bucketRoleToggleDisabled(bucket, view.value, 'done')) {
+function toggleDoneBucket(bucket: IBucket) {
+	const currentView = view.value
+	if (!currentView?.id || bucketRoleToggleDisabled(bucket, currentView, 'done')) {
 		return
 	}
-
-	const doneBucketId = view.value?.doneBucketId === bucket.id
+	const doneBucketId = currentView.done_bucket_id === bucket.id
 		? 0
 		: bucket.id
-	
-	if (!project.value) {
-		return
-	}
-	const currentProject = project.value
 
-	const projectViewService = new ProjectViewService()
-	const updatedView = await projectViewService.update(new ProjectViewModel({
-		...view.value,
-		doneBucketId,
-	}))
-
-	const views = currentProject.views.map(v => v.id === view.value?.id ? updatedView : v)
-	const updatedProject = {
-		...currentProject,
-		views,
-	} as IProject
-
-	projectStore.setProject(updatedProject)
-	
-	success({message: t('project.kanban.doneBucketSavedSuccess')})
+	updateDoneBucket.mutate({
+		projectId: projectId.value,
+		viewId: currentView.id,
+		view: createProjectViewUpdate({...currentView, done_bucket_id: doneBucketId}),
+	})
 }
 
 function collapseBucket(bucket: IBucket) {

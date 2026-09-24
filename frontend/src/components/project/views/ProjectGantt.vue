@@ -71,7 +71,7 @@
 import {computed, toRefs} from 'vue'
 import type {RouteLocationNormalized} from 'vue-router'
 
-import {useBaseStore} from '@/stores/base'
+import {useCurrentProject} from '@/composables/useCurrentProject'
 import {roundToNaturalDayBoundary} from '@/helpers/time/roundToNaturalDayBoundary'
 
 import DateRangeInput from '@/components/input/DateRangeInput.vue'
@@ -85,20 +85,21 @@ import {useGanttFilters} from '../../../views/project/helpers/useGanttFilters'
 import {PERMISSIONS} from '@/constants/permissions'
 
 import type {DateISO} from '@/types/DateISO'
-import type {IProject} from '@/modelTypes/IProject'
 import type {ITask} from '@/modelTypes/ITask'
-import type {IProjectView} from '@/modelTypes/IProjectView'
 
 const props = defineProps<{
 	isLoadingProject: boolean,
-	projectId: IProject['id']
+	projectId: number,
 	route: RouteLocationNormalized
-	viewId: IProjectView['id']
+	viewId: number
 }>()
 
 
-const baseStore = useBaseStore()
-const canWrite = computed(() => (baseStore.currentProject?.maxPermission ?? 0) > PERMISSIONS.READ)
+const {currentProject} = useCurrentProject()
+const canWrite = computed(() =>
+	typeof currentProject.value?.max_permission === 'number' &&
+	currentProject.value.max_permission > PERMISSIONS.READ,
+)
 
 const {route, projectId, viewId} = toRefs(props)
 const {

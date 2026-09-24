@@ -2,8 +2,8 @@ import type {IAbstract} from './IAbstract'
 import type {IUser} from './IUser'
 import type {ITask} from './ITask'
 import type {ITaskComment} from './ITaskComment'
-import type {ITeam} from './ITeam'
-import type { IProject } from './IProject'
+import type {Team as ITeam} from '@/client/generated'
+import type {Project} from '@/client/generated'
 
 export const NOTIFICATION_NAMES = {
 	'TASK_COMMENT': 'task.comment',
@@ -34,14 +34,20 @@ export interface NotificationAssigned extends Notification {
 	assignee: IUser
 }
 
-export interface NotificationCreated extends Notification {
+export type NotificationProject = Pick<Project, 'id' | 'title'>
+
+export interface NotificationTaskCreated extends Notification {
 	task: ITask
-	project: IProject
+	project: NotificationProject
+}
+
+export interface NotificationProjectCreated extends Notification {
+	project: NotificationProject
 }
 
 export interface NotificationTaskReminder extends Notification {
 	task: ITask
-	project: IProject
+	project: NotificationProject
 }
 
 export interface NotificationMemberAdded extends Notification {
@@ -52,7 +58,7 @@ export interface NotificationMemberAdded extends Notification {
 export interface INotification extends IAbstract {
 	id: number
 	name: string
-	notification: NotificationTaskComment | NotificationTask | NotificationAssigned | NotificationCreated | NotificationMemberAdded | NotificationTaskReminder
+	notification: NotificationTaskComment | NotificationTask | NotificationAssigned | NotificationTaskCreated | NotificationProjectCreated | NotificationMemberAdded | NotificationTaskReminder
 	read: boolean
 	readAt: Date | null
 

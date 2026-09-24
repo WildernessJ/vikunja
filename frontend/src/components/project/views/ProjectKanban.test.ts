@@ -1,6 +1,7 @@
 import {shallowMount} from '@vue/test-utils'
 import {describe, expect, it, vi, beforeEach} from 'vitest'
 import draggable from 'zhyswan-vuedraggable'
+import {QueryClient, VueQueryPlugin} from '@tanstack/vue-query'
 
 const updateBucket = vi.fn()
 
@@ -22,21 +23,24 @@ vi.mock('@/stores/kanban', () => ({
 	}),
 }))
 
-vi.mock('@/stores/projects', () => ({
-	useProjectStore: () => ({
-		projects: {
-			1: {
+vi.mock('@/composables/useCurrentProject', () => ({
+	useCurrentProject: () => ({
+		currentProject: {
+			value: {
 				id: 1,
 				title: 'Test',
-				views: [{id: 10, viewKind: 'kanban', bucketConfigurationMode: 'manual'}],
+				max_permission: 2,
+				views: [{id: 10, view_kind: 'kanban', bucket_configuration_mode: 'manual'}],
 			},
 		},
-		hasProjects: true,
+		isPending: {value: false},
 	}),
 }))
 
-vi.mock('@/stores/base', () => ({
-	useBaseStore: () => ({currentProject: {id: 1, maxPermission: 2}}),
+vi.mock('@/composables/useTaskDragToProject', () => ({
+	useTaskDragToProject: () => ({
+		handleTaskDropToProject: async () => ({moved: false, targetProjectId: null}),
+	}),
 }))
 
 vi.mock('@/stores/tasks', () => ({
@@ -47,9 +51,12 @@ vi.mock('@/stores/auth', () => ({
 	useAuthStore: () => ({settings: {frontendSettings: {alwaysShowBucketTaskCount: false}}}),
 }))
 
-vi.mock('@/services/savedFilter', () => ({
-	isSavedFilter: () => false,
-	useSavedFilter: () => ({filter: {value: null}}),
+vi.mock('@/client/queries/savedFilters', () => ({
+	savedFilterQuery: (id: number) => ({
+		queryKey: ['saved-filters', 'detail', id],
+		queryFn: async () => null,
+		enabled: false,
+	}),
 }))
 
 vi.mock('@vueuse/router', () => ({
@@ -75,6 +82,7 @@ function mountKanban() {
 			viewId: 10,
 		},
 		global: {
+			plugins: [[VueQueryPlugin, {queryClient: new QueryClient()}]],
 			mocks: {$t: (key: string) => key},
 			stubs: {
 				ProjectWrapper: {template: '<div><slot name="default"/></div>'},

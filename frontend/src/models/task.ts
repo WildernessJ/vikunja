@@ -3,14 +3,13 @@ import {PRIORITIES, type Priority} from '@/constants/priorities'
 import type {ITask} from '@/modelTypes/ITask'
 import type {IUser} from '@/modelTypes/IUser'
 import type {IAttachment} from '@/modelTypes/IAttachment'
-import type {IProject} from '@/modelTypes/IProject'
 import type {ISubscription} from '@/modelTypes/ISubscription'
 import type {IBucket} from '@/modelTypes/IBucket'
 
 import type {IRepeatAfter} from '@/types/IRepeatAfter'
 import type {IRelationKind} from '@/types/IRelationKind'
 import {TASK_REPEAT_MODES, type IRepeatMode} from '@/types/IRepeatMode'
-import type {Label} from '@/client/generated'
+import type {Label, User} from '@/client/generated'
 
 import {parseDateOrNull} from '@/helpers/parseDateOrNull'
 import {secondsToPeriod} from '@/helpers/time/period'
@@ -68,7 +67,7 @@ export default class TaskModel extends AbstractModel<ITask> implements ITask {
 	deletedAt: Date | null = null
 	priority: Priority = PRIORITIES.UNSET
 	labels: Label[] = []
-	assignees: IUser[] = []
+	assignees: User[] = []
 
 	dueDate: Date | null = null
 	deadline: Date | null = null
@@ -101,13 +100,14 @@ export default class TaskModel extends AbstractModel<ITask> implements ITask {
 	created: Date = new Date(0)
 	updated: Date = new Date(0)
 
-	projectId: IProject['id'] = 0
+	projectId = 0
 	bucketId: IBucket['id'] = 0
 	buckets: IBucket[] = []
 
 	constructor(data: Partial<ITask> = {}) {
 		super()
 		const labels = (data.labels ?? []).map(label => objectToSnakeCase(label) as Label)
+		const assignees = (data.assignees ?? []).map(user => objectToSnakeCase(user) as User)
 		this.assignData(data)
 
 		this.id = Number(this.id)
@@ -119,10 +119,7 @@ export default class TaskModel extends AbstractModel<ITask> implements ITask {
 
 		this.labels = labels.sort((a, b) => (a.title ?? '').localeCompare(b.title ?? ''))
 
-		// Parse the assignees into user models
-		this.assignees = this.assignees.map(a => {
-			return new UserModel(a)
-		})
+		this.assignees = assignees
 
 		const dueDate = this.dueDate
 		this.dueDate = dueDate === null ? null : parseDateOrNull(dueDate)

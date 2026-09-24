@@ -102,7 +102,7 @@ vi.mock('@/stores/projects', () => ({
 
 vi.mock('@/stores/base', () => ({useBaseStore: () => ({})}))
 vi.mock('@/stores/kanban', () => ({useKanbanStore: () => ({})}))
-vi.mock('@/stores/projectCounts', () => ({useProjectCountsStore: () => ({loadCounts: vi.fn().mockResolvedValue(undefined)})}))
+vi.mock('@/client/queries/projectCounts', () => ({refreshProjectCounts: vi.fn()}))
 vi.mock('@/stores/config', () => ({useConfigStore: () => ({concurrentWrites: true})}))
 
 import AddTask from './AddTask.vue'

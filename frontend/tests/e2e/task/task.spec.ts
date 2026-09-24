@@ -441,6 +441,7 @@ test.describe('Task', () => {
 			await multiselectInput.pressSequentially(projects[1].title.substring(0, 10), {delay: 20})
 			// Wait for the search results to appear (there's a 200ms debounce in the multiselect)
 			await expect(page.locator('.task-view .content.details .field .multiselect.control .search-results')).toBeVisible({timeout: 5000})
+			await expect(page.locator('.task-view .content.details .field .multiselect.control .search-results').locator('> *').first()).toContainText(projects[1].title)
 			await page.locator('.task-view .content.details .field .multiselect.control .search-results').locator('> *').first().click()
 
 			await expect(page.locator('.task-view nav.subtitle')).toContainText(projects[1].title)
@@ -463,7 +464,7 @@ test.describe('Task', () => {
 			await expect(page).toHaveURL(new RegExp(`/projects/${tasks[0].project_id}/`))
 		})
 
-		test('Can add an assignee to a task', async ({authenticatedPage: page}) => {
+		test('Can add an assignee to a task', async ({authenticatedPage: page, apiContext, userToken}) => {
 			// Create users with IDs starting at 100 to avoid conflict with logged-in user (ID 1)
 			// Don't truncate to preserve the authenticated user from the fixture
 			const users = await UserFactory.create(5, {
@@ -495,10 +496,25 @@ test.describe('Task', () => {
 			await input.pressSequentially(userToAssign.username.substring(0, 10), {delay: 20})
 			// Wait for search results (200ms debounce + API request time)
 			await expect(page.locator('.task-view .column.assignees .multiselect .search-results')).toBeVisible({timeout: 5000})
-			await page.locator('.task-view .column.assignees .multiselect .search-results').locator('> *').first().click()
+			// Focus preloads every project member, so pick the matching result rather than the first.
+			const result = page.locator('.task-view .column.assignees .multiselect .search-result-button').filter({hasText: userToAssign.username})
+			await expect(result).toBeVisible()
+			await result.click()
 
 			await expect(page.locator('.global-notification')).toContainText('Success')
-			await expect(page.locator('.task-view .column.assignees .multiselect .input-wrapper span.assignee')).toBeVisible()
+			const assignees = page.locator('.task-view .column.assignees .multiselect .input-wrapper span.assignee')
+			await expect(assignees).toBeVisible()
+
+			await page.reload()
+			await expect(assignees).toHaveCount(1)
+			await expect(page.getByRole('button', {name: `Remove ${userToAssign.username} as assignee`})).toBeVisible()
+
+			const resp = await apiContext.get(`tasks/${tasks[0].id}`, {
+				headers: {Authorization: `Bearer ${userToken}`},
+			})
+			expect(resp.ok()).toBe(true)
+			const {assignees: apiAssignees} = await resp.json()
+			expect(apiAssignees.map((a: User) => a.id)).toEqual([userToAssign.id])
 		})
 
 		test('Can remove an assignee from a task', async ({authenticatedPage: page}) => {
@@ -524,6 +540,51 @@ test.describe('Task', () => {
 			await expect(page.locator('.task-view .column.assignees .multiselect .input-wrapper span.assignee')).not.toBeVisible()
 		})
 
+		test('Keeps a removed assignee unassigned after saving another field', async ({authenticatedPage: page, apiContext, userToken}) => {
+			const [removed, kept] = await UserFactory.create(2, {
+				id: (i: number) => 100 + i,
+			}, false)
+			const [project] = await ProjectFactory.create(1)
+			const [task] = await TaskFactory.create(1, {
+				id: 1,
+				project_id: project.id,
+			})
+			await UserProjectFactory.create(2, {
+				project_id: project.id,
+				user_id: (i: number) => 100 + i,
+			})
+			await TaskAssigneeFactory.create(2, {
+				task_id: task.id,
+				user_id: (i: number) => 100 + i,
+			})
+
+			await page.goto(`/tasks/${task.id}`)
+
+			const assignees = page.locator('.task-view .column.assignees .multiselect .input-wrapper span.assignee')
+			await expect(assignees).toHaveCount(2)
+			await page.getByRole('button', {name: `Remove ${removed.username} as assignee`}).click()
+			await expect(page.locator('.global-notification')).toContainText('Success')
+			await expect(assignees).toHaveCount(1)
+
+			const saved = page.waitForResponse(r =>
+				r.url().includes(`/tasks/${task.id}`) && r.request().method() === 'POST',
+			)
+			await page.locator('.task-view .action-buttons .button').filter({hasText: 'Set Priority'}).click()
+			await page.locator('.task-view .columns.details .column').filter({hasText: 'Priority'}).locator('.select select').selectOption('Urgent')
+			await saved
+
+			const resp = await apiContext.get(`tasks/${task.id}`, {
+				headers: {Authorization: `Bearer ${userToken}`},
+			})
+			expect(resp.ok()).toBe(true)
+			const {assignees: apiAssignees} = await resp.json()
+			expect(apiAssignees.map((a: User) => a.id)).toEqual([kept.id])
+
+			await page.reload()
+			await expect(assignees).toHaveCount(1)
+			await expect(assignees).toContainText(kept.username)
+		})
+
 		test('Can add a new label to a task', async ({authenticatedPage: page}) => {
 			const tasks = await TaskFactory.create(1, {
 				id: 1,
@@ -536,11 +597,40 @@ test.describe('Task', () => {
 			await expect(page.locator('.task-view .action-buttons .button').filter({hasText: 'Add Labels'})).toBeVisible()
 			await page.locator('.task-view .action-buttons .button').filter({hasText: 'Add Labels'}).click()
 			await page.locator('.task-view .details.labels-list .multiselect input').fill(newLabelText)
+			const createOption = page.locator('.task-view .details.labels-list .multiselect .search-results .is-create-option')
+			await expect(createOption).toHaveRole('option')
+			await expect(createOption.locator('span.tag.search-result')).toHaveText(newLabelText)
+			await expect(createOption.locator('.hint-text')).toHaveText('Add this as new label')
 			await page.locator('.task-view .details.labels-list .multiselect .search-results').locator('> *').first().click()
 
 			await expect(page.locator('.global-notification')).toContainText('Success')
 			await expect(page.locator('.task-view .details.labels-list .multiselect .input-wrapper span.tag')).toBeVisible()
 			await expect(page.locator('.task-view .details.labels-list .multiselect .input-wrapper span.tag')).toContainText(newLabelText)
+		})
+
+		test('Can create a new label with the keyboard', async ({authenticatedPage: page}) => {
+			const tasks = await TaskFactory.create(1, {
+				id: 1,
+				project_id: 1,
+			})
+			const newLabelText = 'keyboard label'
+
+			await page.goto(`/tasks/${tasks[0].id}`)
+
+			await page.locator('.task-view .action-buttons .button').filter({hasText: 'Add Labels'}).click()
+			const labelInput = page.locator('.task-view .details.labels-list .multiselect input')
+			await labelInput.fill(newLabelText)
+			const createOption = page.locator('.task-view .details.labels-list .multiselect .search-results .is-create-option')
+			await expect(createOption).toContainText(newLabelText)
+
+			await labelInput.press('ArrowDown')
+			await expect(createOption).toBeFocused()
+			await page.keyboard.press('Enter')
+
+			await expect(page.locator('.global-notification')).toContainText('Success')
+			await expect(page.locator('.task-view .details.labels-list .multiselect .input-wrapper span.tag')).toHaveCount(1)
+			await expect(page.locator('.task-view .details.labels-list .multiselect .input-wrapper span.tag')).toContainText(newLabelText)
+			await expect(labelInput).toBeFocused()
 		})
 
 		test('Can add an existing label to a task', async ({authenticatedPage: page}) => {

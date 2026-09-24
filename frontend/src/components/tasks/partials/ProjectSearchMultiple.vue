@@ -7,17 +7,17 @@
 		label="title"
 		:select-placeholder="$t('project.searchSelect')"
 		:model-value="modelValue"
-		@update:modelValue="(val) => emit('update:modelValue', (val ?? []) as IProject[])"
+		@update:modelValue="(val) => emit('update:modelValue', (val ?? []) as ProjectResponse[])"
 		@search="findProjects"
 	>
 		<template #searchResult="{option}">
 			<span
-				v-if="projectStore.getAncestors(option as IProject).length > 1"
+				v-if="projectList.getAncestors(option as ProjectResponse).length > 1"
 				class="has-text-grey"
 			>
-				{{ projectStore.getAncestors(option as IProject).filter(p => p.id !== (option as IProject).id).map(p => getProjectTitle(p)).join(' > ') }} >
+				{{ projectList.getAncestors(option as ProjectResponse).filter(p => p.id !== (option as ProjectResponse).id).map(p => getProjectTitle(p)).join(' > ') }} >
 			</span>
-			{{ getProjectTitle(option as IProject) }}
+			{{ getProjectTitle(option as ProjectResponse) }}
 		</template>
 	</Multiselect>
 </template>
@@ -25,32 +25,32 @@
 <script lang="ts" setup>
 import {ref} from 'vue'
 
-import type {IProject} from '@/modelTypes/IProject'
+import type {ProjectResponse} from '@/client/queries/projects'
 
-import {useProjectStore} from '@/stores/projects'
+import {useProjects} from '@/composables/useProjects'
 import {getProjectTitle} from '@/helpers/getProjectTitle'
 
 import Multiselect from '@/components/input/Multiselect.vue'
 
 const props = withDefaults(defineProps<{
-	modelValue?: IProject[]
+	modelValue?: ProjectResponse[]
 }>(), {
 	modelValue: () => [],
 })
 
 const emit = defineEmits<{
-	'update:modelValue': [value: IProject[]]
+	'update:modelValue': [value: ProjectResponse[]]
 }>()
 
-const projectStore = useProjectStore()
+const projectList = useProjects()
 
-const foundProjects = ref<IProject[]>([])
+const foundProjects = ref<ProjectResponse[]>([])
 function findProjects(query: string) {
 	if (query === '') {
 		foundProjects.value = []
 		return
 	}
 	const selectedIds = new Set(props.modelValue.map(p => p.id))
-	foundProjects.value = projectStore.searchProject(query).filter(p => !selectedIds.has(p.id))
+	foundProjects.value = projectList.searchProject(query).filter(p => !selectedIds.has(p.id))
 }
 </script>

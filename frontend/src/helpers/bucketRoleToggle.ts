@@ -1,5 +1,5 @@
 import type {IBucket} from '@/modelTypes/IBucket'
-import type {IProjectView} from '@/modelTypes/IProjectView'
+import type {ProjectView} from '@/client/generated'
 
 export type BucketRole = 'done' | 'default'
 
@@ -9,12 +9,12 @@ export type BucketRole = 'done' | 'default'
 // bucket already has is always allowed.
 export function bucketRoleToggleDisabled(
 	bucket: Pick<IBucket, 'id'>,
-	view: Pick<IProjectView, 'defaultBucketId' | 'doneBucketId'> | null | undefined,
+	view: Pick<ProjectView, 'default_bucket_id' | 'done_bucket_id'> | null | undefined,
 	role: BucketRole,
 ): boolean {
 	if (role === 'done') {
-		return bucket.id !== view?.doneBucketId && bucket.id === view?.defaultBucketId
+		return bucket.id !== view?.done_bucket_id && bucket.id === view?.default_bucket_id
 	}
 
-	return bucket.id !== view?.defaultBucketId && bucket.id === view?.doneBucketId
+	return bucket.id !== view?.default_bucket_id && bucket.id === view?.done_bucket_id
 }

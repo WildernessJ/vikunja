@@ -17,14 +17,18 @@
 						/>
 					</BaseButton>
 				</template>
-				<DropdownItem
-					v-for="bucket in buckets"
-					:key="bucket.id"
-					:class="{'is-active': currentBucket?.id === bucket.id}"
-					@click="changeBucket(bucket)"
-				>
-					{{ bucket.title }}
-				</DropdownItem>
+				<template #default="{close}">
+					<div @click="close">
+						<DropdownItem
+							v-for="bucket in buckets"
+							:key="bucket.id"
+							:class="{'is-active': currentBucket?.id === bucket.id}"
+							@click="changeBucket(bucket)"
+						>
+							{{ bucket.title }}
+						</DropdownItem>
+					</div>
+				</template>
 			</Dropdown>
 		</template>
 		<span
@@ -44,9 +48,9 @@ import type {ITask} from '@/modelTypes/ITask'
 import type {IBucket} from '@/modelTypes/IBucket'
 import type {ITaskBucket} from '@/modelTypes/ITaskBucket'
 
-import {PROJECT_VIEW_KINDS} from '@/modelTypes/IProjectView'
+import {PROJECT_VIEW_KINDS} from '@/constants/projectView'
 
-import {useProjectStore} from '@/stores/projects'
+import {useProjects} from '@/composables/useProjects'
 import {useKanbanStore} from '@/stores/kanban'
 import {useBaseStore} from '@/stores/base'
 
@@ -71,11 +75,11 @@ const emit = defineEmits<{
 
 const {t} = useI18n({useScope: 'global'})
 
-const projectStore = useProjectStore()
+const projectList = useProjects()
 const kanbanStore = useKanbanStore()
 const baseStore = useBaseStore()
 
-const project = computed(() => projectStore.projects[props.task.projectId])
+const project = computed(() => projectList.projects[props.task.projectId])
 
 // If the project has exactly one manual kanban view, always use it.
 // If there are multiple, only show the selector when the active view is one of them.
@@ -85,8 +89,8 @@ const kanbanView = computed(() => {
 	}
 
 	const manualKanbanViews = project.value.views.filter(
-		v => v.viewKind === PROJECT_VIEW_KINDS.KANBAN
-			&& v.bucketConfigurationMode === 'manual',
+		view => view.view_kind === PROJECT_VIEW_KINDS.KANBAN
+			&& view.bucket_configuration_mode === 'manual',
 	)
 
 	if (manualKanbanViews.length === 1) {

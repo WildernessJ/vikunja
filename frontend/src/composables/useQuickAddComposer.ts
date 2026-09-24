@@ -5,7 +5,7 @@ import {useDateOnly} from '@/composables/useDateOnly'
 import {parseSubtasksViaIndention} from '@/helpers/parseSubtasksViaIndention'
 import {resolveOverride} from '@/helpers/resolveOverride'
 import type {Label} from '@/client/generated'
-import type {IProject} from '@/modelTypes/IProject'
+import type {ProjectResponse} from '@/client/queries/projects'
 import type {ITaskReminder} from '@/modelTypes/ITaskReminder'
 import type {CreateNewTaskOverrides} from '@/stores/tasks'
 
@@ -15,7 +15,7 @@ export interface ComposerOverrides {
 	dueDate?: Date | null,
 	priority?: number | null,
 	labels?: Label[],
-	project?: IProject | null,
+	project?: ProjectResponse | null,
 	description?: string,
 	reminders?: ITaskReminder[],
 }
@@ -48,7 +48,7 @@ export function useQuickAddComposer(title: Ref<string>, mode: Ref<PrefixMode>) {
 			? parsed.value.labels.map(name => ({title: name} as Label))
 			: EMPTY_LABEL_LIST),
 	)
-	const effectiveProject = computed<IProject | null>(
+	const effectiveProject = computed<ProjectResponse | null>(
 		() => resolveOverride(overrides, 'project', null),
 	)
 	const effectiveProjectName = computed<string | null>(

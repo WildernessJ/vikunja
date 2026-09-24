@@ -11,17 +11,13 @@ vi.mock('@/services/task', () => ({
 }))
 
 const loadAllProjectsMock = vi.fn().mockResolvedValue(undefined)
-vi.mock('@/stores/projects', () => ({
-	useProjectStore: () => ({
-		loadAllProjects: loadAllProjectsMock,
-	}),
-}))
+vi.mock('@/client/queries/projects', () => ({refreshProjects: () => loadAllProjectsMock()}))
 
 // The task store eagerly instantiates these sibling stores in its setup. Stub them
 // so we can exercise toggleFavorite in isolation without their dependency graphs.
 vi.mock('@/stores/base', () => ({useBaseStore: () => ({})}))
 vi.mock('@/stores/kanban', () => ({useKanbanStore: () => ({})}))
-vi.mock('@/stores/projectCounts', () => ({useProjectCountsStore: () => ({})}))
+vi.mock('@/client/queries/projectCounts', () => ({refreshProjectCounts: vi.fn()}))
 vi.mock('@/stores/auth', () => ({useAuthStore: () => ({})}))
 vi.mock('@/stores/config', () => ({useConfigStore: () => ({})}))
 

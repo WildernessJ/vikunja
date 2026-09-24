@@ -115,7 +115,7 @@ import ColorBubble from '@/components/misc/ColorBubble.vue'
 import {formatDisplayDate, formatISO, formatDateLong} from '@/helpers/time/formatDate'
 import {useDateOnly} from '@/composables/useDateOnly'
 
-import {useProjectStore} from '@/stores/projects'
+import {useProjects} from '@/composables/useProjects'
 import AssigneeList from '@/components/tasks/partials/AssigneeList.vue'
 
 const props = withDefaults(defineProps<{
@@ -125,10 +125,10 @@ const props = withDefaults(defineProps<{
 	showProject: false,
 })
 
-const projectStore = useProjectStore()
+const projectList = useProjects()
 const {store: dateOnly} = useDateOnly()
 
-const project = computed(() => projectStore.projects[props.task.projectId])
+const project = computed(() => projectList.projects[props.task.projectId])
 </script>
 
 <style lang="scss" scoped>

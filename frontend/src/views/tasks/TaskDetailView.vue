@@ -50,7 +50,7 @@
 				class="subtitle"
 			>
 				<template
-					v-for="p in projectStore.getAncestors(project)"
+					v-for="p in projectList.getAncestors(project)"
 					:key="p.id"
 				>
 					<RouterLink
@@ -270,7 +270,7 @@
 								entity="task"
 								:entity-id="task.id"
 								:model-value="task.subscription"
-								@update:modelValue="sub => task.subscription = sub"
+								@toggle="toggleSubscription"
 							/>
 							<DropdownItem
 								icon="copy"
@@ -339,9 +339,8 @@ import TaskModel from '@/models/task'
 
 import type {ITask} from '@/modelTypes/ITask'
 import type {IAttachment} from '@/modelTypes/IAttachment'
-import type {IProject} from '@/modelTypes/IProject'
+import type {ProjectResponse} from '@/client/queries/projects'
 import type {Label} from '@/client/generated'
-import type {IUser} from '@/modelTypes/IUser'
 import type {IRepeatAfter} from '@/types/IRepeatAfter'
 
 import {type Priority} from '@/constants/priorities'
@@ -378,7 +377,7 @@ import {playPopSound} from '@/helpers/playPop'
 
 import {useTaskStore} from '@/stores/tasks'
 import {useKanbanStore} from '@/stores/kanban'
-import {useProjectStore} from '@/stores/projects'
+import {useProjects} from '@/composables/useProjects'
 import {useAuthStore} from '@/stores/auth'
 import {useBaseStore} from '@/stores/base'
 import {useConfigStore} from '@/stores/config'
@@ -388,6 +387,9 @@ import {useTaskDetailShortcuts} from '@/composables/useTaskDetailShortcuts'
 
 import {success} from '@/message'
 import type {Action as MessageAction} from '@/message'
+import {subscriptionsCreate, subscriptionsDelete} from '@/client/generated'
+import {subscriptionFromApi} from '@/models/subscription'
+import type {UserWithId} from '@/models/user'
 
 interface HTTPErrorResponse {
 	response?: {
@@ -412,7 +414,7 @@ const router = useRouter()
 const route = useRoute()
 const {t} = useI18n({useScope: 'global'})
 
-const projectStore = useProjectStore()
+const projectList = useProjects()
 const taskStore = useTaskStore()
 const configStore = useConfigStore()
 const timeTrackingEnabled = computed(() => configStore.isProFeatureEnabled(PRO_FEATURE.TIME_TRACKING))
@@ -466,16 +468,16 @@ function goBack() {
 // Deliberately broad: "which project does this entry belong to" is also answered by a settings
 // modal or the project's activity log, and highlighting that project is right either way.
 // `/projects/:parentProjectId/new` names its param differently but still belongs to its parent.
-function projectIdOf(backRoute: ReturnType<typeof router.resolve> | null): IProject['id'] | null {
+function projectIdOf(backRoute: ReturnType<typeof router.resolve> | null): number | null {
 	return Number(backRoute?.params.projectId ?? backRoute?.params.parentProjectId) || null
 }
 
-function lastProject(): IProject | null {
+function lastProject(): ProjectResponse | null {
 	const projectId = projectIdOf(resolveBackRoute())
 
 	return projectId === null
 		? null
-		: projectStore.projects[projectId] ?? null
+		: projectList.projects[projectId] ?? null
 }
 
 // The crumb links to the project's default view, so popping is only equivalent to following the
@@ -504,7 +506,7 @@ function isPlainClick(event: MouseEvent) {
 
 // Popping the history entry keeps the previous view's scroll position and state, so prefer it
 // over pushing whenever it is equivalent to following the link.
-function onBreadcrumbClick(event: MouseEvent, projectId: IProject['id'], navigate: (event: MouseEvent) => void) {
+function onBreadcrumbClick(event: MouseEvent, projectId: number, navigate: (event: MouseEvent) => void) {
 	const backRoute = resolveBackRoute()
 	const popIsEquivalent = PROJECT_CONTENT_ROUTE_NAMES.has(backRoute?.name as string)
 		&& projectIdOf(backRoute) === projectId
@@ -534,15 +536,7 @@ onBeforeRouteLeave(async (to) => {
 	// Source the project from the destination id, not from history state: on a back
 	// navigation vue-router swaps historyState to the destination entry before guards
 	// run, so `state.back` already points one entry further back than the destination.
-	const toProject = projectStore.projects[toProjectId]
-	if (!toProject) {
-		// Nothing to pre-set with. Waiting for the store to hydrate would stall a
-		// user-initiated navigation; ProjectView loads the project and sets it itself,
-		// so the worst case is the brief flash this pre-set exists to smooth over.
-		return
-	}
-
-	await baseStore.handleSetCurrentProjectIfNotSet(toProject)
+	baseStore.setCurrentProjectIfNotSet({id: toProjectId})
 })
 
 // We doubled the task color property here because verte does not have a real change property, leading
@@ -556,7 +550,7 @@ const taskColor = ref<ITask['hexColor']>('')
 // Used to avoid flashing of empty elements if the task content is not yet loaded.
 const visible = ref(false)
 
-const project = computed(() => projectStore.projects[task.value.projectId])
+const project = computed(() => projectList.projects[task.value.projectId])
 
 const projectRoute = computed(() => ({
 	name: 'project.index',
@@ -735,7 +729,7 @@ watch(
 
 			const previousProject = lastProject()
 			if (previousProject) {
-				await baseStore.handleSetCurrentProjectIfNotSet(previousProject)
+				baseStore.setCurrentProjectIfNotSet(previousProject)
 			}
 		} catch (caughtError) {
 			const e = caughtError as HTTPErrorResponse
@@ -827,7 +821,7 @@ async function toggleTaskDone() {
 // title is set when this comes from the title field's token-accept path, so
 // the stripped title and the new project persist in the same PATCH instead of
 // a redundant trailing literal-title save.
-async function changeProject(project: IProject | null, title?: string) {
+async function changeProject(project: ProjectResponse | null, title?: string) {
 	if (project === null) {
 		return
 	}
@@ -838,6 +832,19 @@ async function changeProject(project: IProject | null, title?: string) {
 		...(title === undefined ? {} : {title}),
 	})
 	baseStore.setCurrentProject(project)
+}
+
+async function toggleSubscription(subscribed: boolean) {
+	const path = {entity: 'task', entityID: task.value.id} as const
+	if (subscribed) {
+		const {data} = await subscriptionsCreate({path})
+		task.value.subscription = subscriptionFromApi(data)
+		success({message: t('task.subscription.subscribeSuccessTask')})
+		return
+	}
+	await subscriptionsDelete({path})
+	task.value.subscription = null
+	success({message: t('task.subscription.unsubscribeSuccessTask')})
 }
 
 async function toggleFavorite() {
@@ -908,7 +915,7 @@ async function acceptLabel(label: Label) {
 	task.value.labels.push(label)
 }
 
-async function acceptAssignee(user: IUser) {
+async function acceptAssignee(user: UserWithId) {
 	if (task.value.assignees.some(a => a.id === user.id)) {
 		return
 	}

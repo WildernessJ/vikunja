@@ -125,19 +125,20 @@ import {useI18n} from 'vue-i18n'
 import {useRouter} from 'vue-router'
 
 import TaskService from '@/services/task'
-import TeamService from '@/services/team'
-
-import TeamModel from '@/models/team'
-import TaskModel from '@/models/task'
-import ProjectModel from '@/models/project'
+import {useQueries} from '@tanstack/vue-query'
+import {teamsQuery, useCreateTeamMutation} from '@/client/queries/teams'
+import type {Label, Team as ITeam} from '@/client/generated'
+import {refDebounced} from '@vueuse/core'
 
 import BaseButton from '@/components/base/BaseButton.vue'
 import QuickAddMagic from '@/components/tasks/partials/QuickAddMagic.vue'
 import XLabel from '@/components/tasks/partials/Label.vue'
+import TaskModel from '@/models/task'
 import SingleTaskInlineReadonly from '@/components/tasks/partials/SingleTaskInlineReadonly.vue'
 
 import {useBaseStore} from '@/stores/base'
-import {useProjectStore} from '@/stores/projects'
+import {useProjects} from '@/composables/useProjects'
+import {useCurrentProject} from '@/composables/useCurrentProject'
 import {useTaskStore} from '@/stores/tasks'
 import {useAuthStore} from '@/stores/auth'
 import {useLabels} from '@/composables/useLabels'
@@ -146,18 +147,22 @@ import {getHistory} from '@/modules/projectHistory'
 import {parseTaskText, PREFIXES, PrefixMode} from '@/modules/quickAddMagic'
 import {success} from '@/message'
 
-import type {ITeam} from '@/modelTypes/ITeam'
 import type {ITask} from '@/modelTypes/ITask'
-import type {IProject} from '@/modelTypes/IProject'
-import type {Label} from '@/client/generated'
-import {isSavedFilter} from '@/services/savedFilter'
 import type {TaskFilterParams} from '@/services/taskCollection'
+import {
+	createProjectDraft,
+	isSavedFilterProject,
+	useCreateProjectMutation,
+	type ProjectResponse,
+} from '@/client/queries/projects'
 
 const {t} = useI18n({useScope: 'global'})
 const router = useRouter()
 
 const baseStore = useBaseStore()
-const projectStore = useProjectStore()
+const projectList = useProjects()
+const createProjectMutation = useCreateProjectMutation()
+const {currentProject: selectedProject} = useCurrentProject()
 const {filterLabelsByQuery, getLabelsByExactTitles} = useLabels()
 const taskStore = useTaskStore()
 const authStore = useAuthStore()
@@ -193,12 +198,7 @@ const selectedCmd = ref<Command | null>(null)
 const foundTasks = ref<DoAction<ITask>[]>([])
 const taskService = shallowReactive(new TaskService())
 
-// teamService.getAll() results get a `title` stamped on for display, mirroring
-// the other result kinds — ITeam itself only has `name`.
-type TeamResult = ITeam & { title: string }
-
-const foundTeams = ref<TeamResult[]>([])
-const teamService = shallowReactive(new TeamService())
+const createTeamMutation = useCreateTeamMutation()
 
 const active = computed(() => baseStore.quickActionsActive)
 
@@ -252,7 +252,7 @@ const foundProjects = computed(() => {
 	const {project, text, labels, assignees} = parsedQuery.value
 
 	if (project !== null) {
-		return projectStore.searchProjectAndFilter(project ?? text)
+		return projectList.searchProjectAndFilter(project ?? text)
 			.filter(p => Boolean(p))
 	}
 
@@ -262,13 +262,11 @@ const foundProjects = computed(() => {
 
 	if (text === '') {
 		const history = getHistory()
-		// projectStore.projects is exposed readonly(); the entries are structurally
-		// IProject, just deep-readonly-typed.
-		return history.map((p) => projectStore.projects[p.id] as IProject | undefined)
-			.filter((p): p is IProject => Boolean(p))
+		return history.map((p) => projectList.projects[p.id])
+			.filter(p => Boolean(p))
 	}
 
-	return projectStore.searchProjectAndFilter(project ?? text)
+	return projectList.searchProjectAndFilter(project ?? text)
 		.filter(p => Boolean(p))
 })
 
@@ -290,7 +288,8 @@ const foundCommands = computed(() => availableCmds.value.filter((a) =>
 	a.title.toLowerCase().includes(query.value.toLowerCase()),
 ))
 
-type ResultItem = Command | IProject | DoAction<ITask> | Label | TeamResult
+type TeamResult = ITeam & {title: string}
+type ResultItem = Command | ProjectResponse | DoAction<ITask> | Label | TeamResult
 
 interface Result {
 	type: ACTION_TYPE
@@ -342,8 +341,8 @@ function isDone(item: unknown): boolean {
 
 const loading = computed(() =>
 	taskService.loading ||
-	projectStore.isLoading ||
-	teamService.loading,
+	projectList.isLoading ||
+	teamSearchLoading.value || createTeamMutation.isPending.value,
 )
 
 interface Command {
@@ -380,14 +379,11 @@ const commands = computed<{ [key in COMMAND_TYPE]: Command }>(() => ({
 const placeholder = computed(() => selectedCmd.value?.placeholder || t('quickActions.placeholder'))
 
 const currentProject = computed(() => {
-	const project = baseStore.currentProject
-	// baseStore exposes currentProject via readonly(); it's still structurally
-	// IProject, just deep-readonly-typed, which isSavedFilter's IProject param doesn't accept.
-	if (project === null || Object.keys(project).length === 0 || isSavedFilter(project as IProject)) {
+	if (!selectedProject.value || isSavedFilterProject(selectedProject.value)) {
 		return null
 	}
 
-	return project
+	return selectedProject.value
 })
 
 const hintText = computed(() => {
@@ -485,8 +481,7 @@ function searchTasks() {
 	let filter = ''
 
 	if (projectName !== null) {
-		const project = projectStore.findProjectByExactname(projectName)
-		console.log({project})
+		const project = projectList.findProjectByExactname(projectName)
 		if (project !== null) {
 			filter += ' project = ' + project.id
 		}
@@ -518,39 +513,17 @@ function searchTasks() {
 	}, 150)
 }
 
-const teamSearchTimeout = ref<ReturnType<typeof setTimeout> | null>(null)
-
-function searchTeams() {
-	if (
-		searchMode.value !== SEARCH_MODE.ALL &&
-		searchMode.value !== SEARCH_MODE.TEAMS
-	) {
-		foundTeams.value = []
-		return
-	}
-	if (query.value === '' || selectedCmd.value !== null) {
-		return
-	}
-	if (teamSearchTimeout.value !== null) {
-		clearTimeout(teamSearchTimeout.value)
-		teamSearchTimeout.value = null
-	}
-	const {assignees} = parsedQuery.value
-	teamSearchTimeout.value = setTimeout(async () => {
-		const teamSearchPromises = assignees.map((t) =>
-			teamService.getAll(new TeamModel(), {s: t}),
-		)
-		const teamsResult = await Promise.all(teamSearchPromises)
-		foundTeams.value = teamsResult.flat().map((team): TeamResult => {
-			(team as TeamResult).title = team.name
-			return team as TeamResult
-		})
-	}, 150)
-}
+const teamSearches = refDebounced(computed(() => parsedQuery.value.assignees), 150)
+const teamQueries = useQueries({
+	queries: computed(() => active.value && query.value !== '' && selectedCmd.value === null &&
+		(searchMode.value === SEARCH_MODE.ALL || searchMode.value === SEARCH_MODE.TEAMS)
+		? teamSearches.value.map(search => teamsQuery(search)) : []),
+})
+const foundTeams = computed(() => teamQueries.value.flatMap(result => result.data ?? []).map(team => ({...team, title: team.name ?? ''})))
+const teamSearchLoading = computed(() => teamQueries.value.some(result => result.isFetching))
 
 function search() {
 	searchTasks()
-	searchTeams()
 }
 
 const searchInput = ref<HTMLElement | null>(null)
@@ -588,7 +561,7 @@ async function doAction(type: ACTION_TYPE, item: ResultItem) {
 			if (!isQuickAddMode) {
 				await router.push({
 					name: 'project.index',
-					params: {projectId: (item as IProject).id},
+					params: {projectId: (item as DoAction<ProjectResponse>).id},
 				})
 			}
 			break
@@ -689,21 +662,24 @@ async function newTask() {
 
 async function newProject() {
 	const parentProjectId = currentProject.value?.id ?? 0
-	await projectStore.createProject(new ProjectModel({
+	const created = await createProjectMutation.mutateAsync(createProjectDraft({
 		title: query.value,
-		parentProjectId: Math.max(parentProjectId, 0),
+		parent_project_id: Math.max(parentProjectId, 0),
 	}))
-	success({message: t('project.create.createdSuccess')})
+	await router.push({name: 'project.index', params: {projectId: created.id}})
 }
 
 async function newTeam() {
-	const newTeam = new TeamModel({name: query.value})
-	const team = await teamService.create(newTeam)
+	let team
+	try {
+		team = await createTeamMutation.mutateAsync({name: query.value})
+	} catch {
+		return
+	}
 	await router.push({
 		name: 'teams.edit',
 		params: {id: team.id},
 	})
-	success({message: t('team.create.success')})
 }
 
 type BaseButtonInstance = InstanceType<typeof BaseButton>

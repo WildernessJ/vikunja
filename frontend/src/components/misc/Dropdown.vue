@@ -67,9 +67,7 @@ defineSlots<{
 		toggleOpen: () => void,
 		open: boolean
 	}) => void,
-	'default': (props: {
-		close: () => void,
-	}) => void
+	'default': (props: {close: () => void}) => void
 }>()
 
 

@@ -9,8 +9,8 @@ const getAllAssigneesMock = vi.fn().mockResolvedValue([])
 const website = {id: 1, title: 'Website'}
 const urgentLabel = {id: 9, title: 'urgent', hex_color: 'ff0000'}
 
-vi.mock('@/stores/projects', () => ({
-	useProjectStore: () => ({
+vi.mock('@/composables/useProjects', () => ({
+	useProjects: () => ({
 		projects: {1: website},
 		searchProject: searchProjectMock,
 	}),
@@ -24,10 +24,8 @@ vi.mock('@/composables/useLabels', () => ({
 	}),
 }))
 
-vi.mock('@/services/projectUsers', () => ({
-	default: class {
-		getAll = getAllAssigneesMock
-	},
+vi.mock('@/client/queries/userSearch', () => ({
+	searchProjectUsers: (projectId: number, query: string) => getAllAssigneesMock({projectId}, {s: query}),
 }))
 
 vi.mock('vue-i18n', () => ({

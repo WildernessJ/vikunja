@@ -1,17 +1,20 @@
 import {beforeEach, describe, expect, it, vi} from 'vitest'
-import {mount} from '@vue/test-utils'
-import type {IUser} from '@/modelTypes/IUser'
+import {flushPromises, mount} from '@vue/test-utils'
+import {VueQueryPlugin} from '@tanstack/vue-query'
+import type {User} from '@/client/generated'
+import {queryClient} from '@/client/queryClient'
 
+// (projectId, query) => Promise<User[]>
 const projectGetAllMock = vi.fn()
 
-vi.mock('@/services/projectUsers', () => ({
-	default: class {
-		loading = false
-		getAll(...args: unknown[]) {
-			return projectGetAllMock(...args)
-		}
-	},
-}))
+vi.mock('@/client/generated', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('@/client/generated')>()
+	return {
+		...actual,
+		projectsUsersSearch: async ({path, query}: {path: {project: number}, query: {q: string}}) =>
+			({data: {items: await projectGetAllMock(path.project, query.q)}}),
+	}
+})
 
 vi.mock('@/stores/auth', () => ({
 	useAuthStore: () => ({info: {id: 1}}),
@@ -45,8 +48,8 @@ const MultiselectStub = {
 	template: '<div />',
 }
 
-function user(id: number, name: string): IUser {
-	return {id, name, username: name} as IUser
+function user(id: number, name: string): User {
+	return {id, name, username: name}
 }
 
 function deferred<T>() {
@@ -64,6 +67,7 @@ function mountComponent(props: {taskId: number, projectId: number}) {
 			...props,
 		},
 		global: {
+			plugins: [[VueQueryPlugin, {queryClient}]],
 			mocks: {
 				$t: (key: string) => key,
 			},
@@ -78,6 +82,7 @@ function mountComponent(props: {taskId: number, projectId: number}) {
 
 describe('EditAssignees', () => {
 	beforeEach(() => {
+		queryClient.clear()
 		projectGetAllMock.mockReset()
 		projectGetAllMock.mockResolvedValue([])
 	})
@@ -97,6 +102,7 @@ describe('EditAssignees', () => {
 				projectId: 10,
 			},
 			global: {
+				plugins: [[VueQueryPlugin, {queryClient}]],
 				mocks: {
 					$t: (key: string) => key,
 				},
@@ -110,8 +116,7 @@ describe('EditAssignees', () => {
 
 		const assigneeList = wrapper.findComponent({name: 'AssigneeList'})
 		await assigneeList.vm.$emit('remove', user(2, 'Alice'))
-		await Promise.resolve()
-		await Promise.resolve()
+		await flushPromises()
 
 		expect(wrapper.emitted('update:modelValue')).toBeDefined()
 		const lastEmit = wrapper.emitted('update:modelValue')!.at(-1)
@@ -124,19 +129,15 @@ describe('EditAssignees', () => {
 
 		projectGetAllMock.mockResolvedValueOnce([user(2, 'Alice')])
 		await ms.vm.$emit('focus')
-		await Promise.resolve()
-		await Promise.resolve()
+		await flushPromises()
 		expect(ms.props('searchResults')).toEqual([user(2, 'Alice')])
 
+		// The search is keyed by project, so the new project's members are fetched, never shown stale.
+		projectGetAllMock.mockResolvedValueOnce([user(3, 'Bob')])
 		await wrapper.setProps({projectId: 20})
 		expect(ms.props('searchResults')).toEqual([])
-
-		// hasPreloaded was reset too, so focusing again refetches for the new project.
-		projectGetAllMock.mockResolvedValueOnce([user(3, 'Bob')])
-		await ms.vm.$emit('focus')
-		await Promise.resolve()
-		await Promise.resolve()
-		expect(projectGetAllMock).toHaveBeenLastCalledWith({projectId: 20}, {s: ''})
+		await flushPromises()
+		expect(projectGetAllMock).toHaveBeenLastCalledWith(20, '')
 		expect(ms.props('searchResults')).toEqual([user(3, 'Bob')])
 	})
 
@@ -146,17 +147,16 @@ describe('EditAssignees', () => {
 
 		projectGetAllMock.mockResolvedValueOnce([user(2, 'Alice')])
 		await ms.vm.$emit('focus')
-		await Promise.resolve()
-		await Promise.resolve()
+		await flushPromises()
 		expect(ms.props('searchResults')).toEqual([user(2, 'Alice')])
 
 		const callsBefore = projectGetAllMock.mock.calls.length
 		await wrapper.setProps({taskId: 2})
 		expect(ms.props('searchResults')).toEqual([user(2, 'Alice')])
 
-		// hasPreloaded stays set, so re-focusing does not trigger another fetch.
+		// Same project and query, so re-focusing serves the cached result without another fetch.
 		await ms.vm.$emit('focus')
-		await Promise.resolve()
+		await flushPromises()
 		expect(projectGetAllMock.mock.calls.length).toBe(callsBefore)
 	})
 
@@ -164,7 +164,7 @@ describe('EditAssignees', () => {
 		const wrapper = mountComponent({taskId: 1, projectId: 10})
 		const ms = wrapper.findComponent(MultiselectStub)
 
-		const stale = deferred<IUser[]>()
+		const stale = deferred<User[]>()
 		projectGetAllMock.mockReturnValueOnce(stale.promise)
 
 		await ms.vm.$emit('search', '')
@@ -176,7 +176,7 @@ describe('EditAssignees', () => {
 		// The stale response for project 10 resolves last and must be dropped.
 		stale.resolve([user(2, 'Alice')])
 		await stale.promise
-		await Promise.resolve()
+		await flushPromises()
 		expect(ms.props('searchResults')).toEqual([])
 	})
 })

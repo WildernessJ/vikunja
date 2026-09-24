@@ -3,7 +3,7 @@ import {mount} from '@vue/test-utils'
 
 import QuickAddAutocompleteResults from './QuickAddAutocompleteResults.vue'
 import type {AutocompleteItem} from '@/composables/useQuickAddAutocomplete'
-import type {IUser} from '@/modelTypes/IUser'
+import type {UserWithId} from '@/models/user'
 
 const ITEMS: AutocompleteItem[] = [
 	{kind: 'project', id: 1, display: 'ProjectOne', insertValue: 'ProjectOne'},
@@ -97,7 +97,7 @@ describe('QuickAddAutocompleteResults', () => {
 	})
 
 	it('renders the avatar for an assignee item', () => {
-		const user = {id: 1, username: 'peter', name: 'Peter'} as IUser
+		const user: UserWithId = {id: 1, username: 'peter', name: 'Peter'}
 		const wrapper = mountResults([{kind: 'assignee', id: 1, display: 'Peter', insertValue: 'peter', user}])
 
 		const avatar = wrapper.findComponent({name: 'User'})

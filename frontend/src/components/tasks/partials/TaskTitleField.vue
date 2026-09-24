@@ -41,16 +41,16 @@ import {computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch} from 
 import {onClickOutside} from '@vueuse/core'
 import {autoUpdate, computePosition, flip, offset, shift} from '@floating-ui/dom'
 
-import type {IProject} from '@/modelTypes/IProject'
+import type {ProjectResponse} from '@/client/queries/projects'
 import type {Label} from '@/client/generated'
-import type {IUser} from '@/modelTypes/IUser'
+import type {UserWithId} from '@/models/user'
 import type {PrefixMode} from '@/modules/quickAddMagic'
 
 import QuickAddAutocompleteResults from '@/components/tasks/partials/QuickAddAutocompleteResults.vue'
 import {useAutoHeightTextarea} from '@/composables/useAutoHeightTextarea'
 import {useTaskTitleAutocomplete} from '@/composables/useTaskTitleAutocomplete'
 import type {TitleAutocompleteItem} from '@/composables/useQuickAddAutocomplete'
-import {useProjectStore} from '@/stores/projects'
+import {useProjects} from '@/composables/useProjects'
 import {useLabels} from '@/composables/useLabels'
 import {useI18n} from 'vue-i18n'
 import {error} from '@/message'
@@ -67,9 +67,9 @@ const props = defineProps<{
 	// Project/priority setters already saveTask() the whole task - passing the
 	// stripped title lets them persist it in that same PATCH instead of a
 	// separate trailing literal-save (which would double-save and double-toast).
-	onAcceptProject: (project: IProject, title: string) => Promise<void>,
+	onAcceptProject: (project: ProjectResponse, title: string) => Promise<void>,
 	onAcceptLabel: (label: Label) => Promise<void>,
-	onAcceptAssignee: (user: IUser) => Promise<void>,
+	onAcceptAssignee: (user: UserWithId) => Promise<void>,
 	onAcceptPriority: (priority: number, title: string) => Promise<void>,
 }>()
 
@@ -78,7 +78,7 @@ const emit = defineEmits<{
 }>()
 
 const {t} = useI18n({useScope: 'global'})
-const projectStore = useProjectStore()
+const projectList = useProjects()
 const {getLabelById} = useLabels()
 
 const localTitle = ref('')
@@ -182,11 +182,11 @@ async function onSelect(item: TitleAutocompleteItem) {
 	// Resolve the store item before stripping the token - if the project/label
 	// can't be found (a store miss), abort the whole accept so the token isn't
 	// silently consumed with the property lost.
-	let project: IProject | undefined
+	let project: ProjectResponse | undefined
 	let label: Label | undefined
 
 	if (item.kind === 'project') {
-		project = projectStore.projects[item.id as IProject['id']]
+		project = projectList.projects[item.id as number]
 		if (!project) {
 			selectingItem.value = false
 			return

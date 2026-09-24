@@ -130,7 +130,7 @@
 						@click.stop
 					>
 						<ProjectSearch
-							:filter="(project: IProject) => project.id !== task.projectId"
+							:filter="(project: ProjectResponse) => project.id !== task.projectId"
 							@update:modelValue="selectProject"
 						/>
 					</div>
@@ -225,9 +225,8 @@ import {getDateWithTime} from '@/helpers/time/getDateWithTime'
 import {useTaskStore} from '@/stores/tasks'
 
 import type {ITask} from '@/modelTypes/ITask'
-import type {Label} from '@/client/generated'
-import type {IUser} from '@/modelTypes/IUser'
-import type {IProject} from '@/modelTypes/IProject'
+import type {Label, User} from '@/client/generated'
+import type {ProjectResponse} from '@/client/queries/projects'
 
 const props = defineProps<{
 	task: ITask
@@ -370,7 +369,7 @@ async function pickDueDate(date: Date | null) {
 	emit('taskUpdated', updated)
 }
 
-async function selectProject(project: IProject | null) {
+async function selectProject(project: ProjectResponse | null) {
 	if (project === null) {
 		return
 	}
@@ -383,7 +382,7 @@ function onLabelsUpdated(labels: Label[]) {
 	emit('taskUpdated', {...props.task, labels})
 }
 
-function onAssigneesUpdated(assignees: IUser[] | undefined) {
+function onAssigneesUpdated(assignees: User[] | undefined) {
 	emit('taskUpdated', {...props.task, assignees: assignees ?? []})
 }
 

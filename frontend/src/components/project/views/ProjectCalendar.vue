@@ -170,7 +170,7 @@ import XButton from '@/components/input/Button.vue'
 import AddTask from '@/components/tasks/AddTask.vue'
 import Message from '@/components/misc/Message.vue'
 
-import {useBaseStore} from '@/stores/base'
+import {useCurrentProject} from '@/composables/useCurrentProject'
 import {useAuthStore} from '@/stores/auth'
 import {useTaskStore} from '@/stores/tasks'
 
@@ -183,13 +183,12 @@ import {PERMISSIONS} from '@/constants/permissions'
 import {error} from '@/message'
 
 import type {ITask} from '@/modelTypes/ITask'
-import type {IProjectView} from '@/modelTypes/IProjectView'
 import type {DateKebab} from '@/types/DateKebab'
 
 const props = defineProps<{
 	isLoadingProject: boolean,
 	projectId: number,
-	viewId: IProjectView['id'],
+	viewId: number,
 }>()
 
 const MONTH_GRID_DAYS = 42
@@ -202,7 +201,6 @@ const DAY_MS = 86_400_000
 const UNSCHEDULED_FILTER = 'due_date > "9999-12-31" && start_date > "9999-12-31" && end_date > "9999-12-31"'
 
 const router = useRouter()
-const baseStore = useBaseStore()
 const authStore = useAuthStore()
 const taskStore = useTaskStore()
 const {store: dateOnly} = useDateOnly()
@@ -218,7 +216,8 @@ const windowTruncated = ref(false)
 const unscheduledTruncated = ref(false)
 const loading = computed(() => windowTaskService.loading || unscheduledTaskService.loading)
 
-const canWrite = computed(() => (baseStore.currentProject?.maxPermission ?? PERMISSIONS.READ) > PERMISSIONS.READ)
+const {currentProject} = useCurrentProject()
+const canWrite = computed(() => (currentProject.value?.max_permission ?? PERMISSIONS.READ) > PERMISSIONS.READ)
 const weekStart = computed<number>(() => authStore.settings.weekStart ?? 0)
 
 interface CalendarDay {
@@ -389,7 +388,7 @@ let windowLoadSeq = 0
 
 // The grid: one windowed request for the tasks intersecting the visible days,
 // with include_nulls OFF so dateless tasks never compete for its page budget.
-async function loadWindowTasks(seq: number, projectId: number, viewId: IProjectView['id']) {
+async function loadWindowTasks(seq: number, projectId: number, viewId: number) {
 	const params: TaskFilterParams = {
 		sort_by: ['due_date', 'start_date', 'id'],
 		order_by: ['asc', 'asc', 'asc'],
@@ -410,7 +409,7 @@ async function loadWindowTasks(seq: number, projectId: number, viewId: IProjectV
 
 // The panel: a separate, window-independent request returning only fully-dateless
 // tasks (due AND start AND end all null). Refetched only on project/view change.
-async function loadUnscheduledTasks(seq: number, projectId: number, viewId: IProjectView['id']) {
+async function loadUnscheduledTasks(seq: number, projectId: number, viewId: number) {
 	const params: TaskFilterParams = {
 		sort_by: ['id'],
 		order_by: ['asc'],

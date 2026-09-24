@@ -93,7 +93,7 @@
 					<SingleTaskInProject
 						:show-project="true"
 						:the-task="task"
-						:can-mark-as-done="(projectStore.projects[task.projectId]?.maxPermission ?? 0) > PERMISSIONS.READ"
+						:can-mark-as-done="(projectList.projects[task.projectId]?.max_permission ?? 0) > PERMISSIONS.READ"
 						@taskUpdated="updateTasks"
 					/>
 				</li>
@@ -127,7 +127,7 @@ import LlamaCool from '@/assets/llama-cool.svg?component'
 import type {ITask} from '@/modelTypes/ITask'
 import {useAuthStore} from '@/stores/auth'
 import {useTaskStore} from '@/stores/tasks'
-import {useProjectStore} from '@/stores/projects'
+import {useProjects} from '@/composables/useProjects'
 import {useLabels} from '@/composables/useLabels'
 import type {TaskFilterParams, ExpandTaskFilterParam} from '@/services/taskCollection'
 import TaskCollectionService from '@/services/taskCollection'
@@ -155,7 +155,7 @@ const emit = defineEmits<{
 
 const authStore = useAuthStore()
 const taskStore = useTaskStore()
-const projectStore = useProjectStore()
+const projectList = useProjects()
 const {getLabelById} = useLabels()
 
 const route = useRoute()
@@ -182,7 +182,7 @@ const filteredLabels = computed(() => {
 const savedFilterIgnored = computed(() => {
 	return filteredLabels.value.length > 0
 		&& filterIdUsedOnOverview.value
-		&& typeof projectStore.projects[filterIdUsedOnOverview.value] !== 'undefined'
+		&& typeof projectList.projects[filterIdUsedOnOverview.value] !== 'undefined'
 })
 
 const pageTitle = computed(() => {
@@ -297,7 +297,7 @@ async function loadPendingTasks(from: Date|string, to: Date|string, filterId: nu
 		overviewProjectIds: overviewProjectIds.value,
 		exclude: overviewProjectsExclude.value,
 		savedFilterId: filterId,
-		savedFilterExists: !!filterId && typeof projectStore.projects[filterId] !== 'undefined',
+		savedFilterExists: !!filterId && typeof projectList.projects[filterId] !== 'undefined',
 		showAll: showAll.value,
 		hasLabelFilter: Boolean(props.labelIds && props.labelIds.length > 0),
 	})

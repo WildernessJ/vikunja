@@ -242,7 +242,7 @@ import {computed, ref} from 'vue'
 import {useI18n} from 'vue-i18n'
 
 import type {ITask} from '@/modelTypes/ITask'
-import type {IProject} from '@/modelTypes/IProject'
+import type {ProjectResponse} from '@/client/queries/projects'
 
 import {PRIORITIES} from '@/constants/priorities'
 import {TASK_REPEAT_MODES} from '@/types/IRepeatMode'
@@ -266,7 +266,7 @@ import EditEstimatedDuration from '@/components/tasks/partials/EditEstimatedDura
 import {getProjectTitle} from '@/helpers/getProjectTitle'
 import {getDisplayName} from '@/models/user'
 import {formatDuration} from '@/helpers/time/duration'
-import {useProjectStore} from '@/stores/projects'
+import {useProjects} from '@/composables/useProjects'
 
 const {
 	canWrite,
@@ -290,14 +290,14 @@ const {
 	savePercentDone: (percentDone: number) => Promise<void>,
 	saveEstimatedDuration: (estimatedDuration: number) => Promise<void>,
 	saveGeneric: () => Promise<void>,
-	changeProject: (project: IProject | null, title?: string) => Promise<void>,
+	changeProject: (project: ProjectResponse | null, title?: string) => Promise<void>,
 	removeRepeatAfter: () => Promise<void>,
 }>()
 const task = defineModel<ITask>('task', {required: true})
 const taskColor = defineModel<string>('taskColor', {required: true})
 
 const {t} = useI18n({useScope: 'global'})
-const projectStore = useProjectStore()
+const projectList = useProjects()
 
 const projectChipRef = ref<InstanceType<typeof PropertyChip> | null>(null)
 const dueDateChipRef = ref<InstanceType<typeof Datepicker> | null>(null)
@@ -326,7 +326,7 @@ defineExpose({
 })
 
 const projectChipLabel = computed(() => {
-	const project = projectStore.projects[task.value.projectId]
+	const project = projectList.projects[task.value.projectId]
 	return project ? getProjectTitle(project) : t('task.detail.actions.moveProject')
 })
 

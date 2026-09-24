@@ -263,8 +263,8 @@ import {useDateOnly} from '@/composables/useDateOnly'
 import {getDueDateUrgency} from '@/helpers/time/dueDateUrgency'
 import {success} from '@/message'
 
-import {useProjectStore} from '@/stores/projects'
-import {useBaseStore} from '@/stores/base'
+import {useProjects} from '@/composables/useProjects'
+import {useCurrentProject} from '@/composables/useCurrentProject'
 import {useTaskStore} from '@/stores/tasks'
 import {useAuthStore} from '@/stores/auth'
 import AssigneeList from '@/components/tasks/partials/AssigneeList.vue'
@@ -328,13 +328,12 @@ watch(
 	},
 )
 
-const baseStore = useBaseStore()
-const projectStore = useProjectStore()
+const projectList = useProjects()
 const taskStore = useTaskStore()
 const authStore = useAuthStore()
 
-const project = computed(() => projectStore.projects[task.value.projectId])
-const projectColor = computed(() => project.value ? project.value?.hexColor : '')
+const project = computed(() => projectList.projects[task.value.projectId])
+const projectColor = computed(() => project.value?.hex_color ?? '')
 // Only tint the name for a well-formed hex; the backend validates length but not
 // charset, so a malformed value would make the CSS colour invalid and fall back
 // unpredictably rather than to the intended grey.
@@ -354,12 +353,7 @@ const shouldShowProject = computed(() => {
 	return currentProject.value?.id !== task.value.projectId
 })
 
-const currentProject = computed(() => {
-	return typeof baseStore.currentProject === 'undefined' ? {
-		id: 0,
-		title: '',
-	} : baseStore.currentProject
-})
+const {currentProject} = useCurrentProject()
 
 const taskDetailRoute = computed(() => ({
 	name: 'task.detail',

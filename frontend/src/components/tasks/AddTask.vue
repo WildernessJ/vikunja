@@ -219,7 +219,7 @@ import {autoUpdate, computePosition, flip, offset, shift} from '@floating-ui/dom
 
 import {RELATION_KIND} from '@/types/IRelationKind'
 import type {ITask} from '@/modelTypes/ITask'
-import type {IProject} from '@/modelTypes/IProject'
+import type {ProjectResponse} from '@/client/queries/projects'
 import type {Label} from '@/client/generated'
 
 import Expandable from '@/components/base/Expandable.vue'
@@ -248,7 +248,7 @@ import {REMINDER_PERIOD_RELATIVE_TO_TYPES} from '@/types/IReminderPeriodRelative
 import {useAuthStore} from '@/stores/auth'
 import {useConfigStore} from '@/stores/config'
 import {useTaskStore} from '@/stores/tasks'
-import {useProjectStore} from '@/stores/projects'
+import {useProjects} from '@/composables/useProjects'
 
 import {useAutoHeightTextarea} from '@/composables/useAutoHeightTextarea'
 import {useQuickAddComposer} from '@/composables/useQuickAddComposer'
@@ -270,7 +270,7 @@ const {t} = useI18n({useScope: 'global'})
 const authStore = useAuthStore()
 const configStore = useConfigStore()
 const taskStore = useTaskStore()
-const projectStore = useProjectStore()
+const projectList = useProjects()
 const router = useRouter()
 
 const quickAddMagicMode = computed(() => authStore.settings.frontendSettings.quickAddMagicMode)
@@ -332,7 +332,7 @@ const assigneeProjectId = computed<number | null>(() => {
 		return overrides.project.id
 	}
 	if (effectiveProjectName.value !== null) {
-		const matched = projectStore.findProjectByExactname(effectiveProjectName.value)
+		const matched = projectList.findProjectByExactname(effectiveProjectName.value)
 		if (matched !== null) {
 			return matched.id
 		}
@@ -425,7 +425,7 @@ const projectChipLabel = computed(() => {
 	if (effectiveProjectName.value !== null) {
 		return effectiveProjectName.value
 	}
-	const defaultProject = currentProjectId.value ? projectStore.projects[currentProjectId.value] : undefined
+	const defaultProject = currentProjectId.value ? projectList.projects[currentProjectId.value] : undefined
 	return defaultProject ? getProjectTitle(defaultProject) : t('task.quickAdd.projectChip')
 })
 
@@ -450,7 +450,7 @@ const remindersDefaultRelativeTo = computed(() => (
 	effectiveDate.value ? REMINDER_PERIOD_RELATIVE_TO_TYPES.DUEDATE : null
 ))
 
-function onProjectPicked(project: IProject | null, close: () => void) {
+function onProjectPicked(project: ProjectResponse | null, close: () => void) {
 	setOverride('project', project)
 	close()
 }

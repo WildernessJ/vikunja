@@ -52,8 +52,7 @@
 						@create="createAndRelateTask"
 					>
 						<template #searchResult="{option: task}">
-							<span 
-								v-if="typeof task !== 'string'"
+							<span
 								class="search-result"
 								:class="{'is-strikethrough': task.done}"
 							>
@@ -70,12 +69,6 @@
 								</span>
 								<span class="task-identifier">{{ getTaskIdentifier(task) }}</span>
 								{{ task.title }}
-							</span>
-							<span
-								v-else
-								class="search-result"
-							>
-								{{ task }}
 							</span>
 						</template>
 					</Multiselect>
@@ -212,7 +205,7 @@ import QuickAddMagic from '@/components/tasks/partials/QuickAddMagic.vue'
 
 import {error, success} from '@/message'
 import {useTaskStore} from '@/stores/tasks'
-import {useProjectStore} from '@/stores/projects'
+import {useProjects} from '@/composables/useProjects'
 import {useAuthStore} from '@/stores/auth'
 import {playPopSound} from '@/helpers/playPop'
 
@@ -228,7 +221,7 @@ const props = withDefaults(defineProps<{
 })
 
 const taskStore = useTaskStore()
-const projectStore = useProjectStore()
+const projectList = useProjects()
 const authStore = useAuthStore()
 const route = useRoute()
 const {t} = useI18n({useScope: 'global'})
@@ -281,7 +274,7 @@ async function findTasks(newQuery: string) {
 function mapRelatedTasks(tasks: ITask[]) {
 	return tasks.map(task => {
 		// by doing this here once we can save a lot of duplicate calls in the template
-		const project = projectStore.projects[task.projectId]
+		const project = projectList.projects[task.projectId]
 
 		return {
 			...task,

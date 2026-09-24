@@ -127,9 +127,9 @@ import TaskModel from '@/models/task'
 import {smartFillStart} from '@/helpers/time/smartFillStart'
 import {useTimeTrackingStore} from '@/stores/timeTracking'
 import {useAuthStore} from '@/stores/auth'
-import {useProjectStore} from '@/stores/projects'
+import {useProjects} from '@/composables/useProjects'
 
-import type {IProject} from '@/modelTypes/IProject'
+import type {ProjectResponse} from '@/client/queries/projects'
 import type {ITask} from '@/modelTypes/ITask'
 import type {ITimeEntry} from '@/modelTypes/ITimeEntry'
 
@@ -153,12 +153,12 @@ const emit = defineEmits<{
 
 const timeTrackingStore = useTimeTrackingStore()
 const authStore = useAuthStore()
-const projectStore = useProjectStore()
+const projectList = useProjects()
 
 const isEditing = computed(() => props.entry != null)
 
 const formEl = ref<HTMLFormElement | null>(null)
-const selectedProject = ref<IProject | null>(null)
+const selectedProject = ref<ProjectResponse | null>(null)
 const selectedTask = ref<ITask | null>(null)
 const from = ref<Date | null>(new Date())
 const to = ref<Date | null>(null)
@@ -178,8 +178,8 @@ watch(selectedProject, project => {
 	}
 })
 
-// ProjectSearch's modelValue is IProject | undefined (no null); adapt to our null-based state.
-const selectedProjectModel = computed<IProject | undefined>({
+// ProjectSearch's modelValue is ProjectResponse | undefined (no null); adapt to our null-based state.
+const selectedProjectModel = computed<ProjectResponse | undefined>({
 	get: () => selectedProject.value ?? undefined,
 	set: value => {
 		selectedProject.value = value ?? null
@@ -271,7 +271,7 @@ watch(() => props.entry, async entry => {
 		}
 	} else if (entry.projectId > 0) {
 		selectedTask.value = null
-		selectedProject.value = (projectStore.projects[entry.projectId] as IProject) ?? null
+		selectedProject.value = projectList.projects[entry.projectId] ?? null
 	}
 }, {immediate: true})
 

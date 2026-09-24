@@ -5,7 +5,7 @@ import {createPinia, setActivePinia} from 'pinia'
 import {useQuickAddComposer} from './useQuickAddComposer'
 import {PrefixMode} from '@/modules/quickAddMagic'
 import {PRIORITIES} from '@/constants/priorities'
-import ProjectModel from '@/models/project'
+import {normalizeProject} from '@/client/queries/projects'
 import TaskReminderModel from '@/models/taskReminder'
 
 describe('useQuickAddComposer', () => {
@@ -120,7 +120,7 @@ describe('useQuickAddComposer', () => {
 		expect(effectiveProjectName.value).toBe('groceries')
 		expect(effectiveProject.value).toBeNull()
 
-		const project = new ProjectModel({id: 9, title: 'Work'})
+		const project = normalizeProject({id: 9, title: 'Work'})
 		setOverride('project', project)
 		await nextTick()
 		expect(effectiveProject.value).toEqual(project)
@@ -137,7 +137,7 @@ describe('useQuickAddComposer', () => {
 		setOverride('priority', PRIORITIES.LOW)
 		expect(toStoreOverrides()).toEqual({priority: PRIORITIES.LOW})
 
-		const project = new ProjectModel({id: 3, title: 'Home'})
+		const project = normalizeProject({id: 3, title: 'Home'})
 		setOverride('project', project)
 		expect(toStoreOverrides()).toEqual({priority: PRIORITIES.LOW, projectId: 3})
 	})

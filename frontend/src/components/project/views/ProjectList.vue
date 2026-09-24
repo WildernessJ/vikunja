@@ -13,7 +13,7 @@
 					@saveDefault="saveDefaultSort"
 				/>
 				<FilterPopup
-					v-if="!isSavedFilter(project)"
+					v-if="!isSavedFilterProject(project)"
 					v-model="params"
 					:view-id="viewId"
 					:project-id="projectId"
@@ -38,7 +38,7 @@
 					class="has-overflow"
 				>
 					<AddTask
-						v-if="!project?.isArchived && canWrite"
+						v-if="!project?.is_archived && canWrite"
 						ref="addTaskRef"
 						class="list-view__add-task d-print-none"
 						@tasksAdded="updateTaskList"
@@ -125,31 +125,28 @@ import SortPopup from '@/components/project/partials/SortPopup.vue'
 
 import {useTaskList, defaultSortToSortBy, sortByToDefaultArrays, type SortBy} from '@/composables/useTaskList'
 import type {ExpandTaskFilterParam} from '@/services/taskCollection'
-import ProjectViewService from '@/services/projectViews'
-import ProjectViewModel from '@/models/projectView'
-import {success, error} from '@/message'
+import {createProjectViewUpdate, useUpdateProjectViewMutation} from '@/client/queries/projectViews'
+import {useProjects} from '@/composables/useProjects'
 import {useTaskDragToProject} from '@/composables/useTaskDragToProject'
+import {useCurrentProject} from '@/composables/useCurrentProject'
 import {shouldShowTaskInListView, isTaskFromSubproject} from '@/composables/useTaskListFiltering'
 import {getSubprojectRollupState, saveSubprojectRollupState, type SubprojectRollupState} from '@/helpers/subprojectRollupState'
 import {PERMISSIONS as Permissions} from '@/constants/permissions'
 import {calculateItemPosition} from '@/helpers/calculateItemPosition'
 import type {ITask} from '@/modelTypes/ITask'
-import {isSavedFilter, useSavedFilter, getSavedFilterIdFromProjectId} from '@/services/savedFilter'
+import {isSavedFilterProject, type ProjectResponse} from '@/client/queries/projects'
 
 import {useAuthStore} from '@/stores/auth'
 import {useBaseStore} from '@/stores/base'
-import {useProjectStore} from '@/stores/projects'
 import {useTaskStore} from '@/stores/tasks'
 
-import type {IProject} from '@/modelTypes/IProject'
-import type {IProjectView} from '@/modelTypes/IProjectView'
 import TaskPositionService from '@/services/taskPosition'
 import TaskPositionModel from '@/models/taskPosition'
 
 const props = defineProps<{
-        isLoadingProject: boolean,
-        projectId: IProject['id'],
-        viewId: IProjectView['id'],
+	isLoadingProject: boolean,
+	projectId: number,
+	viewId: number,
 }>()
 
 const projectId = toRef(props, 'projectId')
@@ -162,10 +159,10 @@ const drag = ref(false)
 
 const {t} = useI18n({useScope: 'global'})
 const authStore = useAuthStore()
-const projectStore = useProjectStore()
+const projectList = useProjects()
 
 const currentView = computed(() =>
-	projectStore.projects[projectId.value]?.views.find(v => v.id === props.viewId),
+	projectList.projects[projectId.value]?.views.find(v => v.id === props.viewId),
 )
 
 const {
@@ -179,14 +176,14 @@ const {
 } = useTaskList(
 	() => projectId.value,
 	() => props.viewId,
-	() => defaultSortToSortBy(currentView.value?.defaultSortBy ?? [], currentView.value?.defaultOrderBy ?? []) ?? {position: 'asc'},
+	() => defaultSortToSortBy(currentView.value?.default_sort_by ?? [], currentView.value?.default_order_by ?? []) ?? {position: 'asc'},
 	() => (projectId.value === -1
 		? ['comment_count', 'is_unread']
 		: ['subtasks', 'comment_count', 'is_unread']) as unknown as ExpandTaskFilterParam,
 )
 const currentUserId = computed(() => authStore.info?.id ?? 0)
 
-function collectDescendants(id: IProject['id'], visited: Set<IProject['id']> = new Set()): IProject[] {
+function collectDescendants(id: number, visited: Set<number> = new Set()): ProjectResponse[] {
 	// Guards against corrupt/imported parent_project_id cycles (see the backend's
 	// maxDescendantDepth in pkg/models/task_collection.go for the same concern).
 	if (visited.has(id)) {
@@ -194,7 +191,7 @@ function collectDescendants(id: IProject['id'], visited: Set<IProject['id']> = n
 	}
 	visited.add(id)
 
-	const children = projectStore.getChildProjects(id).filter(p => !p.isArchived)
+	const children = projectList.getChildProjects(id).filter(p => !p.is_archived)
 	return children.flatMap(child => [child, ...collectDescendants(child.id, visited)])
 }
 
@@ -216,14 +213,6 @@ watch(rollupState, state => {
 
 const taskPositionService = ref(new TaskPositionService())
 
-// isSavedFilter() requires a full IProject; here we only have an id, so re-implement its check locally.
-function isSavedFilterId(id: IProject['id']) {
-	return getSavedFilterIdFromProjectId(id) > 0
-}
-
-// Saved filter composable for accessing filter data
-const _savedFilter = useSavedFilter(() => (isSavedFilterId(projectId.value) ? projectId.value : undefined) as number).filter
-
 const tasks = ref<ITask[]>([])
 watch(
 	allTasks,
@@ -237,17 +226,15 @@ const isPositionSorting = computed(() => 'position' in sortByParam.value)
 const baseStore = useBaseStore()
 const taskStore = useTaskStore()
 const {handleTaskDropToProject} = useTaskDragToProject()
-// baseStore.currentProject is a DeepReadonly<IProject>; copy it to get back a plain IProject.
-const project = computed<IProject | null>(() => {
-	return baseStore.currentProject ? {...baseStore.currentProject} as IProject : null
-})
+const {currentProject: project} = useCurrentProject()
 
 const canWrite = computed(() => {
-	return project.value?.maxPermission !== null && project.value?.maxPermission !== undefined &&
-		project.value.maxPermission > Permissions.READ && (project.value?.id ?? 0) > 0
+	return typeof project.value?.max_permission === 'number' &&
+		project.value.max_permission > Permissions.READ &&
+		project.value.id > 0
 })
 
-const isPseudoProject = computed(() => (project.value && isSavedFilter(project.value)) || project.value?.id === -1)
+const isPseudoProject = computed(() => isSavedFilterProject(project.value) || project.value?.id === -1)
 
 onMounted(async () => {
 	await nextTick()
@@ -256,7 +243,7 @@ onMounted(async () => {
 
 // No manual reordering while sub-project tasks are rolled up: foreign rows have
 // no task_positions entry in this view, so a drag would write a mis-scoped row.
-const canDragTasks = computed(() => (canWrite.value || isSavedFilter(project.value)) && !rollupState.value.enabled)
+const canDragTasks = computed(() => (canWrite.value || isSavedFilterProject(project.value)) && !rollupState.value.enabled)
 
 const isTouchDevice = ref(false)
 if (typeof window !== 'undefined') {
@@ -270,36 +257,35 @@ function focusNewTaskInput() {
 	addTaskRef.value?.focusTaskInput()
 }
 
-const projectViewService = new ProjectViewService()
+const updateViewMutation = useUpdateProjectViewMutation(t('sorting.defaultSaved'))
 
 // Saving a view's default sort calls ProjectView.Update, which requires project admin
 // (pkg/models/project_view_permissions.go) — hide the action for non-admins so they
 // don't hit a 403 toast on a control they can't use.
 const canSaveDefaultSort = computed(() =>
-	(project.value?.maxPermission ?? Permissions.READ) >= Permissions.ADMIN && (project.value?.id ?? 0) > 0,
+	(project.value?.max_permission ?? Permissions.READ) >= Permissions.ADMIN && (project.value?.id ?? 0) > 0,
 )
 
 async function saveDefaultSort(newSortBy: SortBy) {
 	const view = currentView.value
-	if (!view) {
+	if (!view?.id) {
 		return
 	}
 
 	const {sortBy: defaultSortBy, orderBy: defaultOrderBy} = sortByToDefaultArrays(newSortBy)
 	try {
-		const updatedView = await projectViewService.update(new ProjectViewModel({
-			...view,
-			defaultSortBy,
-			defaultOrderBy,
-		}))
-		projectStore.setProjectView(updatedView)
-		// Re-run the sortBy setter now that resolvedSortByDefault reflects the new
-		// default, so serializeSortBy sees newSortBy === default and drops `?sort=`.
-		sortByParam.value = newSortBy
-		success({message: t('sorting.defaultSaved')})
-	} catch (e) {
-		error(e)
+		await updateViewMutation.mutateAsync({
+			projectId: projectId.value,
+			viewId: view.id,
+			view: createProjectViewUpdate({...view, default_sort_by: defaultSortBy, default_order_by: defaultOrderBy}),
+		})
+	} catch {
+		// The mutation already toasted the failure.
+		return
 	}
+	// Re-run the sortBy setter now that resolvedSortByDefault reflects the new
+	// default, so serializeSortBy sees newSortBy === default and drops `?sort=`.
+	sortByParam.value = newSortBy
 }
 
 function updateTaskList(newTasks: ITask[]) {

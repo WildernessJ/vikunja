@@ -1,4 +1,4 @@
-import type { PluralizationRule } from 'vue-i18n'
+import type { I18n, PluralizationRule } from 'vue-i18n'
 import { createI18n } from 'vue-i18n'
 import langEN from './lang/en.json'
 
@@ -85,7 +85,7 @@ export const i18n = createI18n({
 		[DEFAULT_LANGUAGE]: langEN,
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	} as Record<SupportedLocale, any>,
-})
+}) as unknown as I18n<Record<string, never>, Record<string, never>, Record<string, never>, string, false>
 
 export async function setLanguage(lang: SupportedLocale): Promise<SupportedLocale | undefined> {
 	if (!lang) {

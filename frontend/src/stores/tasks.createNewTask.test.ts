@@ -1,7 +1,7 @@
 import {setActivePinia, createPinia} from 'pinia'
 import {describe, it, expect, beforeEach, vi} from 'vitest'
 
-import ProjectModel from '@/models/project'
+import type {ProjectResponse} from '@/client/queries/projects'
 import {PRIORITIES} from '@/constants/priorities'
 import type {ITaskReminder} from '@/modelTypes/ITaskReminder'
 
@@ -24,13 +24,12 @@ vi.mock('@/client/generated', () => ({
 	taskLabelsDelete: vi.fn().mockResolvedValue({data: {}}),
 }))
 
-const findProjectByExactnameMock = vi.fn().mockReturnValue(null)
-const findProjectByIdentifierMock = vi.fn().mockReturnValue(null)
-vi.mock('@/stores/projects', () => ({
-	useProjectStore: () => ({
-		findProjectByExactname: findProjectByExactnameMock,
-		findProjectByIdentifier: findProjectByIdentifierMock,
-	}),
+const {projectsFixture} = vi.hoisted(() => ({projectsFixture: [] as ProjectResponse[]}))
+vi.mock('@/client/queries/projects', () => ({
+	ensureProjects: async () => ({projects: projectsFixture, favoriteProject: null, savedFilterProjects: []}),
+	findProjectByExactTitle: (projects: ProjectResponse[], title: string) =>
+		projects.find(project => project.title.toLowerCase() === title.toLowerCase()) ?? null,
+	refreshProjects: vi.fn(),
 }))
 
 vi.mock('@/router', () => ({
@@ -42,7 +41,7 @@ vi.mock('@/router', () => ({
 const createLabelMock = vi.hoisted(() => vi.fn())
 vi.mock('@/stores/base', () => ({useBaseStore: () => ({})}))
 vi.mock('@/stores/kanban', () => ({useKanbanStore: () => ({})}))
-vi.mock('@/stores/projectCounts', () => ({useProjectCountsStore: () => ({loadCounts: vi.fn().mockResolvedValue(undefined)})}))
+vi.mock('@/client/queries/projectCounts', () => ({refreshProjectCounts: vi.fn()}))
 vi.mock('@/client/queries/labels', () => ({
 	ensureLabels: vi.fn().mockResolvedValue([]),
 	refreshLabels: vi.fn().mockResolvedValue([]),
@@ -80,8 +79,7 @@ describe('tasks store createNewTask', () => {
 	beforeEach(() => {
 		setActivePinia(createPinia())
 		taskCreateMock.mockReset().mockImplementation(async (task) => task)
-		findProjectByExactnameMock.mockReset().mockReturnValue(null)
-		findProjectByIdentifierMock.mockReset().mockReturnValue(null)
+		projectsFixture.length = 0
 		createLabelMock.mockReset()
 		errorMock.mockReset()
 		quickAddDefaultRemindersMock.value = []
@@ -139,8 +137,8 @@ describe('tasks store createNewTask', () => {
 
 	describe('finding #2: explicit null override vs absent override (tri-state)', () => {
 		it('resolves the parsed +project when projectId override is absent', async () => {
-			const project = new ProjectModel({id: 42, title: 'groceries'})
-			findProjectByExactnameMock.mockReturnValue(project)
+			const project = {id: 42, title: 'groceries', identifier: ''} as ProjectResponse
+			projectsFixture.push(project)
 
 			const store = useTaskStore()
 			const created = await store.createNewTask({title: 'Buy milk +groceries', projectId: 1})
@@ -149,8 +147,8 @@ describe('tasks store createNewTask', () => {
 		})
 
 		it('falls back to the passed-in projectId (not the parsed +project) when projectId override is explicitly cleared (null)', async () => {
-			const project = new ProjectModel({id: 42, title: 'groceries'})
-			findProjectByExactnameMock.mockReturnValue(project)
+			const project = {id: 42, title: 'groceries', identifier: ''} as ProjectResponse
+			projectsFixture.push(project)
 
 			const store = useTaskStore()
 			const created = await store.createNewTask({title: 'Buy milk +groceries', projectId: 7}, {projectId: null})
@@ -160,8 +158,8 @@ describe('tasks store createNewTask', () => {
 		})
 
 		it('uses an explicit projectId override over both the parsed project and the passed-in projectId', async () => {
-			const project = new ProjectModel({id: 42, title: 'groceries'})
-			findProjectByExactnameMock.mockReturnValue(project)
+			const project = {id: 42, title: 'groceries', identifier: ''} as ProjectResponse
+			projectsFixture.push(project)
 
 			const store = useTaskStore()
 			const created = await store.createNewTask({title: 'Buy milk +groceries', projectId: 7}, {projectId:99})

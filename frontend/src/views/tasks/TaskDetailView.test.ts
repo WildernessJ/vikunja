@@ -32,8 +32,9 @@ vi.mock('@/components/input/Reactions.vue', () => ({
 import TaskDetailView from './TaskDetailView.vue'
 import {useAuthStore} from '@/stores/auth'
 import {useBaseStore} from '@/stores/base'
-import {useProjectStore} from '@/stores/projects'
-import ProjectModel from '@/models/project'
+import {VueQueryPlugin} from '@tanstack/vue-query'
+import {queryClient} from '@/client/queryClient'
+import {normalizeProject, projectKeys} from '@/client/queries/projects'
 
 const i18n = createI18n({legacy: false, locale: 'en', messages: {en}})
 
@@ -142,7 +143,7 @@ async function mountTaskDetail(maxPermission: number, navigation: string[] = ['/
 
 	const wrapper = mount(Harness, {
 		global: {
-			plugins: [router, i18n],
+			plugins: [router, i18n, [VueQueryPlugin, {queryClient}]],
 			stubs: CHILD_STUBS,
 		},
 	})
@@ -157,6 +158,7 @@ async function mountTaskDetail(maxPermission: number, navigation: string[] = ['/
 describe('TaskDetailView field-open shortcut buttons (F-C)', () => {
 	beforeEach(() => {
 		setActivePinia(createPinia())
+		queryClient.clear()
 		useAuthStore().setAuthenticated(true)
 		getMock.mockReset()
 	})
@@ -186,6 +188,7 @@ function spyOnNavigation(router: Router) {
 describe('TaskDetailView back button', () => {
 	beforeEach(() => {
 		setActivePinia(createPinia())
+		queryClient.clear()
 		useAuthStore().setAuthenticated(true)
 		getMock.mockReset()
 	})
@@ -266,13 +269,21 @@ describe('TaskDetailView back button', () => {
 })
 
 function projectFixture(id: number) {
-	return new ProjectModel({id, title: `Project ${id}`})
+	return normalizeProject({id, title: `Project ${id}`})
+}
+
+function seedProjects(ids: number[]) {
+	ids.forEach(id => queryClient.setQueryData(projectKeys.detail(id), projectFixture(id)))
+	queryClient.setQueryData(projectKeys.list(), {
+		projects: ids.map(projectFixture),
+		favoriteProject: null,
+		savedFilterProjects: [],
+	})
 }
 
 // Rendering through a RouterView is what makes `onBeforeRouteLeave` register:
 // it needs the matched-route key RouterView provides, which a plain mount lacks.
-// `seedProjectIds` are put in the store from the wrapping component's setup, the
-// only place they can land before the view's first task load runs.
+// `seedProjectIds` go into the project query cache before the view's first task load runs.
 async function mountInRouterView(navigation: string[], seedProjectIds: number[] = []) {
 	getMock.mockResolvedValue(taskFixture(PERMISSIONS.READ_WRITE))
 
@@ -301,10 +312,9 @@ async function mountInRouterView(navigation: string[], seedProjectIds: number[] 
 	}
 	await router.isReady()
 
+	seedProjects(seedProjectIds)
 	const App = defineComponent({
 		setup() {
-			const projectStore = useProjectStore()
-			seedProjectIds.forEach(id => projectStore.setProject(projectFixture(id)))
 			return () => h(RouterView)
 		},
 	})
@@ -336,23 +346,22 @@ async function goBackAndSettle(router: Router, expectedPath: string) {
 	expect(router.currentRoute.value.fullPath).toBe(expectedPath)
 }
 
-// The base and project stores both call useI18n/useRouter in their setup, so they
-// can only be instantiated from inside a component - hence spying after the mount.
+// The base store calls useI18n/useRouter in its setup, so it can only be
+// instantiated from inside a component - hence spying after the mount.
 function spyOnPreSet() {
-	return vi.spyOn(useBaseStore(), 'handleSetCurrentProjectIfNotSet')
-		.mockImplementation(async () => {})
+	return vi.spyOn(useBaseStore(), 'setCurrentProjectIfNotSet')
 }
 
 describe('TaskDetailView leave guard', () => {
 	beforeEach(() => {
 		setActivePinia(createPinia())
+		queryClient.clear()
 		useAuthStore().setAuthenticated(true)
 		getMock.mockReset()
 	})
 
 	it('does not pre-set the current project when going back to a non-project view', async () => {
-		const {router} = await mountInRouterView(['/tasks/today', '/tasks/1'])
-		useProjectStore().setProject(projectFixture(1))
+		const {router} = await mountInRouterView(['/tasks/today', '/tasks/1'], [1])
 		const preSet = spyOnPreSet()
 
 		await goBackAndSettle(router, '/tasks/today')
@@ -361,10 +370,7 @@ describe('TaskDetailView leave guard', () => {
 	})
 
 	it('pre-sets the destination project, not the history entry before it', async () => {
-		const {router} = await mountInRouterView(['/projects/2/20', '/projects/1/10', '/tasks/1'])
-		const projectStore = useProjectStore()
-		projectStore.setProject(projectFixture(1))
-		projectStore.setProject(projectFixture(2))
+		const {router} = await mountInRouterView(['/projects/2/20', '/projects/1/10', '/tasks/1'], [1, 2])
 		const preSet = spyOnPreSet()
 
 		await goBackAndSettle(router, '/projects/1/10')
@@ -372,19 +378,21 @@ describe('TaskDetailView leave guard', () => {
 		expect(preSet).toHaveBeenCalledWith(expect.objectContaining({id: 1}))
 	})
 
-	it('does not pre-set anything when the destination project is not in the store', async () => {
+	// The pre-set needs only the id, so it no longer waits for the project to be cached.
+	it('pre-sets the destination project id even before that project is cached', async () => {
 		const {router} = await mountInRouterView(['/projects/1/10', '/tasks/1'])
 		const preSet = spyOnPreSet()
 
 		await goBackAndSettle(router, '/projects/1/10')
 
-		expect(preSet).not.toHaveBeenCalled()
+		expect(preSet).toHaveBeenCalledWith({id: 1})
 	})
 })
 
 describe('TaskDetailView current project on load', () => {
 	beforeEach(() => {
 		setActivePinia(createPinia())
+		queryClient.clear()
 		useAuthStore().setAuthenticated(true)
 		getMock.mockReset()
 	})
@@ -392,7 +400,7 @@ describe('TaskDetailView current project on load', () => {
 	it('sets the current project from the project view the task was opened from', async () => {
 		await mountInRouterView(['/projects/7/70', '/tasks/1'], [7])
 
-		expect(useBaseStore().currentProject?.id).toBe(7)
+		expect(useBaseStore().currentProjectId).toBe(7)
 	})
 
 	// The create-project route names its param parentProjectId, so a plain projectId read
@@ -400,7 +408,7 @@ describe('TaskDetailView current project on load', () => {
 	it('sets the current project from the parent of a project create form', async () => {
 		await mountInRouterView(['/projects/5/new', '/tasks/1'], [5])
 
-		expect(useBaseStore().currentProject?.id).toBe(5)
+		expect(useBaseStore().currentProjectId).toBe(5)
 	})
 
 	it('does not re-apply that project when the reused instance loads a task opened from elsewhere', async () => {
@@ -418,12 +426,12 @@ describe('TaskDetailView current project on load', () => {
 	// from the one cached at mount - which is what changing a task's project does.
 	it('does not overwrite a project set since, when the reused instance loads another task', async () => {
 		const {router} = await mountInRouterView(['/projects/7/70', '/tasks/1'], [7, 9])
-		useBaseStore().setCurrentProject(projectFixture(9))
+		useBaseStore().setCurrentProject({id: 9})
 
 		await router.push('/tasks/2')
 		await flushPromises()
 
-		expect(useBaseStore().currentProject?.id).toBe(9)
+		expect(useBaseStore().currentProjectId).toBe(9)
 	})
 })
 
@@ -432,6 +440,7 @@ const BREADCRUMB_LINK = 'nav[aria-label="Breadcrumb"] a'
 describe('TaskDetailView breadcrumb', () => {
 	beforeEach(() => {
 		setActivePinia(createPinia())
+		queryClient.clear()
 		useAuthStore().setAuthenticated(true)
 		getMock.mockReset()
 	})

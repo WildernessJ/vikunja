@@ -422,15 +422,14 @@ import {useTitle} from '@/composables/useTitle'
 import {usePushNotifications} from '@/composables/usePushNotifications'
 import {success, error} from '@/message'
 
-import {useProjectStore} from '@/stores/projects'
+import {useProjects} from '@/composables/useProjects'
 import {useAuthStore} from '@/stores/auth'
 import {useConfigStore} from '@/stores/config'
 import type {IUserSettings} from '@/modelTypes/IUserSettings'
 import type {IUser} from '@/modelTypes/IUser'
-import type {IProject} from '@/modelTypes/IProject'
-import {isSavedFilter} from '@/services/savedFilter'
+import {isSavedFilterProject, type ProjectResponse} from '@/client/queries/projects'
 import {normalizeOverviewProjectIds} from '@/helpers/overviewTaskFilter'
-import {DEFAULT_PROJECT_VIEW_SETTINGS} from '@/modelTypes/IProjectView'
+import {DEFAULT_PROJECT_VIEW_SETTINGS} from '@/constants/projectView'
 import {PRIORITIES} from '@/constants/priorities'
 import {DATE_DISPLAY} from '@/constants/dateDisplay'
 import {TIME_FORMAT} from '@/constants/timeFormat'
@@ -720,10 +719,10 @@ watch(
 	{immediate: true},
 )
 
-const projectStore = useProjectStore()
+const projectList = useProjects()
 const defaultProject = computed({
 	get: () => settings.value.defaultProjectId !== undefined
-		? projectStore.projects[settings.value.defaultProjectId] as IProject
+		? projectList.projects[settings.value.defaultProjectId]
 		: undefined,
 	set(l) {
 		settings.value.defaultProjectId = l ? l.id : DEFAULT_PROJECT_ID
@@ -731,18 +730,18 @@ const defaultProject = computed({
 })
 const filterUsedInOverview = computed({
 	get: () => settings.value.frontendSettings.filterIdUsedOnOverview !== null
-		? projectStore.projects[settings.value.frontendSettings.filterIdUsedOnOverview] as IProject
+		? projectList.projects[settings.value.frontendSettings.filterIdUsedOnOverview]
 		: undefined,
 	set(l) {
 		settings.value.frontendSettings.filterIdUsedOnOverview = l ? l.id : null
 	},
 })
-const hasFilters = computed(() => typeof projectStore.projectsArray.find(p => isSavedFilter(p as IProject)) !== 'undefined')
-const overviewProjects = computed<IProject[]>({
+const hasFilters = computed(() => projectList.projectsArray.some(isSavedFilterProject))
+const overviewProjects = computed<ProjectResponse[]>({
 	get: () => normalizeOverviewProjectIds(settings.value.frontendSettings.overviewProjectIds)
-		.map((id): IProject | undefined => projectStore.projects[id] as IProject | undefined)
-		.filter((p): p is IProject => typeof p !== 'undefined'),
-	set: (projects: IProject[]) => {
+		.map((id): ProjectResponse | undefined => projectList.projects[id])
+		.filter((p): p is ProjectResponse => typeof p !== 'undefined'),
+	set: (projects: ProjectResponse[]) => {
 		// Rebuild from the displayed selection only — an id whose project no longer resolves
 		// (deleted / access revoked) is dropped here so it self-heals on the next edit.
 		// Do NOT preserve unresolved ids: the getter hides them, so a preserved id would be

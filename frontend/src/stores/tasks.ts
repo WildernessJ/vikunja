@@ -14,22 +14,21 @@ import TaskAssigneeModel from '@/models/taskAssignee'
 import TaskModel from '@/models/task'
 import TaskReminderModel from '@/models/taskReminder'
 
-import type {IAbstract} from '@/modelTypes/IAbstract'
 import type {ITask} from '@/modelTypes/ITask'
 import type {ITaskReminder} from '@/modelTypes/ITaskReminder'
-import type {IUser} from '@/modelTypes/IUser'
+import type {User as IUser} from '@/client/generated'
+import type {UserWithId} from '@/models/user'
 import type {IAttachment} from '@/modelTypes/IAttachment'
-import type {IProject} from '@/modelTypes/IProject'
 
 import {REMINDER_PERIOD_RELATIVE_TO_TYPES} from '@/types/IReminderPeriodRelativeTo'
 
 import {setModuleLoading} from '@/stores/helper'
 import {useConfigStore} from '@/stores/config'
-import {useProjectStore} from '@/stores/projects'
+import {ensureProjects, findProjectByExactTitle, refreshProjects} from '@/client/queries/projects'
 import {useKanbanStore} from '@/stores/kanban'
-import {useProjectCountsStore} from '@/stores/projectCounts'
+import {refreshProjectCounts} from '@/client/queries/projectCounts'
 import {useBaseStore} from '@/stores/base'
-import ProjectUserService from '@/services/projectUsers'
+import {searchProjectUsers} from '@/client/queries/userSearch'
 import {useAuthStore} from '@/stores/auth'
 import TaskCollectionService, {type TaskFilterParams} from '@/services/taskCollection'
 import {getRandomColorHex} from '@/helpers/color/randomColor'
@@ -60,7 +59,7 @@ export interface CreateNewTaskOverrides {
 	dueDate?: Date | string | null,
 	priority?: number | null,
 	labels?: Label[],
-	projectId?: IProject['id'] | null,
+	projectId?: number | null,
 	description?: string,
 	reminders?: ITaskReminder[],
 }
@@ -101,7 +100,7 @@ function findPropertyByValue<T>(object: T[], key: keyof T, value: string, fuzzy 
 // Check if the user exists in the search results
 function validateUser<T extends IUser>(
 	users: T[],
-	query: IUser['username'] | IUser['name'] | IUser['email'],
+	query: string,
 ): T | undefined {
 	if (users.length === 1) {
 		return (
@@ -141,16 +140,13 @@ async function findAssignees(parsedTaskAssignees: string[], projectId: number): 
 		return []
 	}
 
-	const userService = new ProjectUserService()
 	const assignees = parsedTaskAssignees.map(async a => {
-		// ProjectUserService is untyped (extends AbstractService with the default
-		// IAbstract model), but its modelFactory always returns UserModel instances.
-		const users = (await userService.getAll({projectId} as unknown as IAbstract, {s: a})) as IUser[]
-		const matchedUsers = users.map(u => ({
-			...u,
-			match: a,
-		}))
-		return validateUser(matchedUsers, a)
+		const users = (await searchProjectUsers(projectId, a))
+			.map(u => ({
+				...u,
+				match: a,
+			}))
+		return validateUser(users, a)
 	})
 
 	const validatedUsers = await Promise.all(assignees)
@@ -160,11 +156,6 @@ async function findAssignees(parsedTaskAssignees: string[], projectId: number): 
 export const useTaskStore = defineStore('task', () => {
 	const baseStore = useBaseStore()
 	const kanbanStore = useKanbanStore()
-	// Sidebar/Today count refresh is wired into this store's create/update/delete.
-	// Call sites that reschedule tasks (DeferTask, Gantt drag) route through
-	// update() rather than hitting taskService directly, so the badges stay current.
-	const projectCountsStore = useProjectCountsStore()
-	const projectStore = useProjectStore()
 	const authStore = useAuthStore()
 	// Explicit client: store setup may run outside a component, where inject() is unavailable.
 	const createLabelMutation = useMutation(createLabelMutationOptions(), queryClient)
@@ -193,7 +184,7 @@ export const useTaskStore = defineStore('task', () => {
 
 	async function loadTasks(
 		params: TaskFilterParams, 
-		projectId: IProject['id'] | null = null,
+		projectId: number | null = null,
 	) {
 		
 		if (!params.filter_timezone || params.filter_timezone === '') {
@@ -226,7 +217,7 @@ export const useTaskStore = defineStore('task', () => {
 			lastUpdatedTask.value = updatedTask
 			// Keep the sidebar/Today badges current after done-toggles and
 			// due-date edits. Fire-and-forget so it never blocks the update.
-			void projectCountsStore.loadCounts()
+			void refreshProjectCounts()
 			return updatedTask
 		} finally {
 			cancel()
@@ -237,7 +228,7 @@ export const useTaskStore = defineStore('task', () => {
 		const taskService = new TaskService()
 		const response = await taskService.delete(task)
 		kanbanStore.removeTaskInBucket(task)
-		void projectCountsStore.loadCounts()
+		void refreshProjectCounts()
 		return response
 	}
 
@@ -274,7 +265,7 @@ export const useTaskStore = defineStore('task', () => {
 		user,
 		taskId,
 	}: {
-		user: IUser,
+		user: UserWithId,
 		taskId: ITask['id']
 	}) {
 		const cancel = setModuleLoading(setIsLoading)
@@ -316,7 +307,7 @@ export const useTaskStore = defineStore('task', () => {
 		user,
 		taskId,
 	}: {
-		user: IUser,
+		user: UserWithId,
 		taskId: ITask['id']
 	}) {
 		const taskAssigneeService = new TaskAssigneeService()
@@ -481,18 +472,19 @@ export const useTaskStore = defineStore('task', () => {
 		return task
 	}
 
-	function findProjectId(
+	async function findProjectId(
 		{ project: projectName, projectId }:
-		{ project: string | null, projectId: IProject['id'] }) {
+		{ project: string | null, projectId: number }) {
 		let foundProjectId = null
 
 		// Uses the following ways to get the project id of the new task:
 		//  1. If specified in quick add magic, look in store if it exists and use it if it does
 		if (typeof projectName !== 'undefined' && projectName !== null) {
-			let project = projectStore.findProjectByExactname(projectName)
+			const {projects} = await ensureProjects()
+			let project = findProjectByExactTitle(projects, projectName)
 			
 			if (project === null) {
-				project = projectStore.findProjectByIdentifier(projectName)
+				project = projects.find(p => p.identifier.toLowerCase() === projectName.toLowerCase()) ?? null
 			}
 			
 			foundProjectId = project === null ? null : project.id
@@ -646,7 +638,7 @@ export const useTaskStore = defineStore('task', () => {
 
 			const taskService = new TaskService()
 			const createdTask = await taskService.create(task)
-			void projectCountsStore.loadCounts()
+			void refreshProjectCounts()
 			return await addLabelsToTask({
 				task: createdTask,
 				parsedLabels,
@@ -672,7 +664,7 @@ export const useTaskStore = defineStore('task', () => {
 
 			const taskService = new TaskService()
 			const {tasks, error: bulkError} = await taskService.bulkCreate(built.map(b => b.task))
-			void projectCountsStore.loadCounts()
+			void refreshProjectCounts()
 
 			const withLabels = built
 				.map(({parsedLabels}, index) => ({task: tasks[index], parsedLabels}))
@@ -715,7 +707,7 @@ export const useTaskStore = defineStore('task', () => {
 		}
 
 		// reloading the projects list so that the Favorites project shows up or is hidden when there are (or are not) favorite tasks
-		await projectStore.loadAllProjects()
+		await refreshProjects()
 
 		return task
 	}

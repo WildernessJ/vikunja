@@ -100,7 +100,7 @@
 					<Multiselect
 						v-model="selectedUser"
 						:placeholder="$t('timeTracking.browse.userSearch')"
-						:loading="userService.loading"
+						:loading="usersLoading"
 						:search-results="foundUsers"
 						label="username"
 						@search="findUsers"
@@ -131,15 +131,16 @@ import TimeEntryList from '@/components/time-tracking/TimeEntryList.vue'
 
 import TaskService from '@/services/task'
 import TaskModel from '@/models/task'
-import UserService from '@/services/user'
+import {searchUsers} from '@/client/queries/userSearch'
+import {useUserSearch} from '@/composables/useUserSearch'
 import {useTitle} from '@/composables/useTitle'
 import {useTimeTrackingStore} from '@/stores/timeTracking'
 import {useBaseStore} from '@/stores/base'
-import {useProjectStore} from '@/stores/projects'
+import {useProjects} from '@/composables/useProjects'
 
-import type {IProject} from '@/modelTypes/IProject'
+import type {ProjectResponse} from '@/client/queries/projects'
 import type {ITask} from '@/modelTypes/ITask'
-import type {IUser} from '@/modelTypes/IUser'
+import type {User as IUser} from '@/client/generated'
 import type {ITimeEntry} from '@/modelTypes/ITimeEntry'
 
 const {t} = useI18n()
@@ -147,7 +148,7 @@ const route = useRoute()
 const router = useRouter()
 const timeTrackingStore = useTimeTrackingStore()
 const baseStore = useBaseStore()
-const projectStore = useProjectStore()
+const projectList = useProjects()
 
 useTitle(() => t('timeTracking.title'))
 
@@ -172,7 +173,7 @@ const dateRange = ref<{dateFrom: Date | string | null, dateTo: Date | string | n
 	dateFrom: 'now/d',
 	dateTo: 'now/d+1d',
 })
-const selectedProject = ref<IProject | null>(null)
+const selectedProject = ref<ProjectResponse | null>(null)
 const selectedTask = ref<ITask | null>(null)
 const selectedUser = ref<IUser | null>(null)
 const filterModalOpen = ref(false)
@@ -210,14 +211,10 @@ async function findTasks(query: string) {
 	foundTasks.value = await taskService.getAll({} as ITask, {s: query, sort_by: 'done'}) as ITask[]
 }
 
-const userService = shallowReactive(new UserService())
-const foundUsers = ref<IUser[]>([])
-async function findUsers(query: string) {
-	if (query === '') {
-		foundUsers.value = []
-		return
-	}
-	foundUsers.value = await userService.getAll({} as IUser, {s: query}) as IUser[]
+const userSearch = ref('')
+const {users: foundUsers, isFetching: usersLoading} = useUserSearch(userSearch)
+function findUsers(query: string) {
+	userSearch.value = query
 }
 
 // Datemath preset strings (now/M) pass through unchanged; a custom Date becomes
@@ -268,7 +265,7 @@ const filterQuery = computed(() => {
 		q.task = String(selectedTask.value.id)
 	}
 	if (selectedUser.value !== null) {
-		q.user = selectedUser.value.username
+		q.user = selectedUser.value.username ?? ''
 	}
 	return q
 })
@@ -288,8 +285,8 @@ async function restoreFromQuery() {
 	// already carries the full filter — and the modal shows the real names.
 	await Promise.all([
 		typeof q.project === 'string'
-			? projectStore.loadProject(Number(q.project))
-				.then(p => { selectedProject.value = p as IProject })
+			? projectList.loadProject(Number(q.project))
+				.then(p => { selectedProject.value = p })
 				.catch(() => { /* project gone — drop the filter */ })
 			: Promise.resolve(),
 		typeof q.task === 'string'
@@ -298,9 +295,9 @@ async function restoreFromQuery() {
 				.catch(() => { /* task gone — drop the filter */ })
 			: Promise.resolve(),
 		typeof q.user === 'string'
-			? userService.getAll({} as IUser, {s: q.user})
+			? searchUsers(q.user)
 				.then(users => {
-					selectedUser.value = (users as IUser[]).find(u => u.username === q.user) ?? null
+					selectedUser.value = users.find(u => u.username === q.user) ?? null
 				})
 				.catch(() => { /* user not found — drop the filter */ })
 			: Promise.resolve(),
@@ -310,7 +307,7 @@ async function restoreFromQuery() {
 onMounted(async () => {
 	// Standalone page: drop any stale project so the app header shows this
 	// page's title instead of the last visited project.
-	baseStore.handleSetCurrentProject({project: null})
+	baseStore.setCurrentProject(null)
 	await restoreFromQuery()
 	ready.value = true
 	// One request with the fully-restored filter — no flicker through partial filters.

@@ -79,7 +79,7 @@
 					</template>
 				</Popup>
 				<FilterPopup
-					v-if="!isSavedFilter({id: projectId} as IProject)"
+					v-if="!isSavedFilterProject({id: projectId})"
 					v-model="params"
 					:view-id="viewId"
 					:project-id="projectId"
@@ -257,10 +257,10 @@
 									</td>
 									<td v-if="activeColumns.project">
 										<RouterLink
-											v-if="projectStore.projects[t.projectId]"
+											v-if="projectList.projects[t.projectId]"
 											:to="{ name: 'project.index', params: { projectId: t.projectId } }"
 										>
-											{{ projectStore.projects[t.projectId].title }}
+											{{ projectList.projects[t.projectId].title }}
 										</RouterLink>
 									</td>
 									<td v-if="activeColumns.title">
@@ -368,21 +368,19 @@ import type {SortBy} from '@/composables/useTaskList'
 import {useTaskList} from '@/composables/useTaskList'
 import type {ExpandTaskFilterParam} from '@/services/taskCollection'
 import type {ITask} from '@/modelTypes/ITask'
-import type {IProject} from '@/modelTypes/IProject'
 import AssigneeList from '@/components/tasks/partials/AssigneeList.vue'
-import type {IProjectView} from '@/modelTypes/IProjectView'
 import {getTaskIdentifier} from '@/models/task'
 import { camelCase } from 'change-case'
-import {isSavedFilter} from '@/services/savedFilter'
-import {useProjectStore} from '@/stores/projects'
+import {isSavedFilterProject} from '@/client/queries/projects'
+import {useProjects} from '@/composables/useProjects'
 
 const props = defineProps<{
 	isLoadingProject: boolean,
-	projectId: IProject['id'],
-	viewId: IProjectView['id'],
+	projectId: number,
+	viewId: number,
 }>()
 
-const projectStore = useProjectStore()
+const projectList = useProjects()
 
 const columnsTrigger = ref<ComponentPublicInstance | null>(null)
 const columnsTriggerEl = computed<HTMLElement | null>(() => (columnsTrigger.value?.$el as HTMLElement) ?? null)
