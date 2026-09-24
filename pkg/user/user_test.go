@@ -759,7 +759,7 @@ func TestRequestPasswordResetTokenDisabledUser(t *testing.T) {
 }
 
 func TestCleanupOldTokens(t *testing.T) {
-	for _, name := range []string{"UTC", "America/New_York"} {
+	for _, name := range []string{"UTC", "America/New_York", "Asia/Tokyo"} {
 		location, err := time.LoadLocation(name)
 		require.NoError(t, err)
 
@@ -826,6 +826,11 @@ func TestCleanupOldTokens(t *testing.T) {
 				require.NoError(t, err)
 
 				recentWithPending, err := generateToken(s, &User{ID: 1}, TokenEmailConfirm)
+				require.NoError(t, err)
+				// Inside the 24h cutoff, but past it if the cutoff shifts by a zone east of UTC.
+				_, err = s.Where("id = ?", recentWithPending.ID).
+					Cols("created").
+					Update(&Token{Created: time.Now().Add(-20 * time.Hour)})
 				require.NoError(t, err)
 
 				_, err = CleanupOldTokens(s)

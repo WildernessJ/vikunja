@@ -323,3 +323,22 @@ failure remains a documented limitation, so this is not an overall-green,
 reviewed, audited, merge-ready, picheck, or D1 result. The candidate is to be
 committed locally and left unmerged; no live verification, service, deployment,
 remote, review, verifier, or auditor work is part of this continuation.
+
+### Post-merge record (2026-09-24)
+
+The earlier entries are history. The candidate was committed as `23a654566` and
+merged to `main` through `integrate/utc-frontend-repairs` (`29f2530a2`,
+`303f2c88e`) without the review this spec requires. A fresh-context verifier
+(Opus) then reviewed `origin/main..303f2c88e`. It confirmed the fix on SQLite,
+Postgres and MySQL, and it confirmed that the tests fail without the fix for
+zones west of UTC. It also found that no test failed without the fix for zones
+east of UTC. The "recent" fixtures were 1h old, so a +9h cutoff shift could not
+reach them.
+
+The follow-up commit adds `Asia/Tokyo` to both zone lists. It ages the retained
+claim in `TestClaimMigrationRecentClaimIsNotTakenOver` and `recentWithPending`
+to 20h, inside the 24h cutoff. Result: with the fix reverted, the Tokyo cases
+of both tests fail; with the fix, all cases pass (`TZ=UTC mage test:filter`).
+
+Six sibling cutoff queries still compare a local-zone `time.Now()` against UTC
+columns. They are out of this spec's scope and are tracked in a separate issue.

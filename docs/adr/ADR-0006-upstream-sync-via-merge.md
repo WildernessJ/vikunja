@@ -26,7 +26,7 @@ Sync by **merging `upstream/main` in full**, as a single merge commit, taking
 every upstream change unless one directly conflicts with the fork's purpose.
 Resolution happens in a dedicated worktree branch, is reviewed as the merge
 commit's combined diff (`git show --cc` — exactly the manually-resolved lines),
-and must pass the full verification bar (both test suites, typecheck ratchet,
+and must pass the full verification bar (both test suites, `pnpm typecheck`,
 lint, production build, live browser verification of the fork's features) before
 fast-forwarding `main`.
 

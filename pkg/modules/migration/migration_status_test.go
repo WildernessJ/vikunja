@@ -65,7 +65,7 @@ func assertIsAlreadyRunning(t *testing.T, err error, migratorName string) {
 func runInCleanupTimezones(t *testing.T, test func(t *testing.T)) {
 	t.Helper()
 
-	for _, name := range []string{"UTC", "America/New_York"} {
+	for _, name := range []string{"UTC", "America/New_York", "Asia/Tokyo"} {
 		location, err := time.LoadLocation(name)
 		require.NoError(t, err)
 
@@ -217,7 +217,7 @@ func TestClaimMigrationRecentClaimIsNotTakenOver(t *testing.T) {
 		s := db.NewSession()
 		_, err = s.Where("id = ?", status.ID).
 			Cols("started_at").
-			Update(&Status{StartedAt: time.Now().Add(-time.Hour)})
+			Update(&Status{StartedAt: time.Now().Add(-20 * time.Hour)}) // inside the 24h timeout, but past it if the cutoff shifts by a zone east of UTC
 		require.NoError(t, err)
 		require.NoError(t, s.Commit())
 

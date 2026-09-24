@@ -14,9 +14,9 @@ it is not a new planning cycle or an ADR.
   `frontend/src/components/misc/CreateEdit.vue`, and
   `frontend/src/services/task.test.ts`, plus this execution record.
 - Target branch: `fix/frontend-typecheck`, in
-  `/Volumes/ext-ssd/Github/coding-workflow/.worktrees/vikunja-frontend-typecheck`.
-- Main checkout confirmed through Git: `/Volumes/ext-ssd/Github/vikunja`.
-  Its local-only memory spine is `/Volumes/ext-ssd/Github/vikunja/docs/context/`
+  `<coding-workflow>/.worktrees/vikunja-frontend-typecheck`.
+- Main checkout confirmed through Git: `<repo>`.
+  Its local-only memory spine is `<repo>/docs/context/`
   (`PROJECT_STATE.md`, `RUN_LOG.md`, and `PITFALLS.md`); this repair does not
   modify it.
 - The backend candidate at `23a6545661533f3ff23e6e0e2adfdf516374f071` and its
@@ -30,7 +30,7 @@ it is not a new planning cycle or an ADR.
 
 The supplied failing baseline is preserved byte-for-byte at:
 
-`/Volumes/ext-ssd/Github/coding-workflow/.artifacts/vikunja-timezone-pilot/evidence/frontend-typecheck-correction.{stdout.log,stderr.log,exit,meta}`
+`<coding-workflow>/.artifacts/vikunja-timezone-pilot/evidence/frontend-typecheck-correction.{stdout.log,stderr.log,exit,meta}`
 
 It records `cd frontend && pnpm typecheck` exit `2` with six distinct
 diagnostics (the output repeats them):
@@ -84,7 +84,7 @@ assertions and do not edit production payload construction.
 
 Run from `frontend/`, with each command's stdout, stderr, exit status, and
 metadata saved separately under the new private directory
-`/Volumes/ext-ssd/Github/coding-workflow/.artifacts/vikunja-frontend-typecheck/`:
+`<coding-workflow>/.artifacts/vikunja-frontend-typecheck/`:
 
 ```text
 pnpm test:unit --run src/client/queries/labels.test.ts src/components/misc/CreateEdit.test.ts src/services/task.test.ts
@@ -139,7 +139,7 @@ Commit placeholder: pending execution.
 
 Implementation completed in the three approved product/test files. The exact
 commands were run from `frontend/`; each has independent evidence under
-`/Volumes/ext-ssd/Github/coding-workflow/.artifacts/vikunja-frontend-typecheck/`.
+`<coding-workflow>/.artifacts/vikunja-frontend-typecheck/`.
 
 - `pnpm test:unit --run src/client/queries/labels.test.ts src/components/misc/CreateEdit.test.ts src/services/task.test.ts`
   exited `0`. Evidence: `focused-tests.stdout.log`, `focused-tests.stderr.log`,
@@ -162,7 +162,7 @@ scope expansion, generated-code edit, dependency action, or rerun was attempted.
 The candidate is preserved with the three source/test changes and this record
 uncommitted; no commit is claimed because the authoritative check did not pass.
 The copied `frontend/node_modules/` directory is ignored and was copied from
-`/Volumes/ext-ssd/Github/vikunja/frontend/node_modules` solely to run these
+`<repo>/frontend/node_modules` solely to run these
 checks; no package installation, download, upgrade, lockfile edit, or tracked
 dependency change occurred.
 
@@ -197,7 +197,7 @@ Approved type-only corrections:
   config, lockfile, or generated-code change was made.
 
 Continuation evidence, all under
-`/Volumes/ext-ssd/Github/coding-workflow/.artifacts/vikunja-frontend-typecheck/`:
+`<coding-workflow>/.artifacts/vikunja-frontend-typecheck/`:
 
 - The original focused command exited `0`: 3 files and 39 tests passed.
   Evidence: `amendment-focused-tests.{stdout.log,stderr.log,exit,meta}`.
@@ -248,7 +248,7 @@ the optional declaration reported `semantic diagnostics: 0`. Evidence:
 `optionality-after.{stdout.log,stderr.log,exit,meta}`.
 
 Fresh validation was run from `frontend/`, with output saved and read under
-`/Volumes/ext-ssd/Github/coding-workflow/.artifacts/vikunja-frontend-typecheck/`:
+`<coding-workflow>/.artifacts/vikunja-frontend-typecheck/`:
 
 - `pnpm test:unit --run src/components/input/Multiselect.test.ts` exited `0`;
   1 file and 9 tests passed, including omitted-slot runtime fallback coverage.
@@ -271,3 +271,15 @@ plus pre-existing ignored `frontend/dist/`, `frontend/node_modules/`, and
 lockfile, generated-code, backend, toolkit, OMP, service, browser, E2E, or
 live-project work was performed. The correction is ready for an explicit-path
 local follow-up commit and remains **UNMERGED**.
+
+### Post-merge record (2026-09-24)
+
+The earlier entries are history. The repair was committed as `0cd524f5e` and
+`855918746` and merged to `main` through `integrate/utc-frontend-repairs`
+(`303f2c88e`) without a review. A fresh-context verifier (Opus) then reviewed
+it. It found no runtime change and no suppressed error, and `pnpm typecheck`
+exits 0 with no diagnostics. Because plain `pnpm typecheck` now passes, the
+follow-up commit deletes the per-file typecheck ratchet (`typecheck-baseline.json`,
+`scripts/typecheck-ratchet.mjs` and its two package scripts). CI gates on
+`pnpm typecheck` again. Absolute local paths in this record were replaced with
+`<coding-workflow>` and `<repo>` placeholders.
