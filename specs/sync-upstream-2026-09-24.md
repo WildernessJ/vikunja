@@ -412,10 +412,30 @@ Rationale: 289 commits, 153 direct-merge conflicts, irreversible migrations, sec
   - The fork's `translate()` wrapper in `message/index.ts` is now redundant with the i18n cast; left in place (out of scope).
 - Build report producer: session `18a66fd6-b0d8-4f19-bf4d-790e540019c4` (Phases A–B).
 
+### Build — Phase C (`a913bf479`) — 2026-09-24
+
+- Identity revalidated: `upstream/main` = `06c451da4`, base ancestor of HEAD, 34 incoming commits. Merge commit `c913e5132`.
+- 59 conflicted files: 17 upstream-deleted legacy task/kanban layers (taken as deleted), 42 content.
+- **Data-loss fix (same class as the Phase B view whitelist):** `taskWriteBody`'s `writableFields` omitted `deadline`, `estimated_duration`, `repeat_rrule`, `repeat_from_completion`. Every task save (PATCH) and bulk create would have dropped them. Added all four; `deadline: ''` maps to the API zero date like the other dates. Reminder `repeat_rrule` survives through the existing spread. A detail-view test checks `estimated_duration` in the PATCH body (mutation-checked).
+- **Counts seam:** `invalidateTaskMembership` (every task mutation's settle step) now also invalidates `projectCountsKey`. That covers create/update/delete/move/labels/assignees/relations in one place. `projectCounts.test.ts` rewritten on the real mutation options: update, create, delete, and bucket move each refresh sidebar count, Today count, and app badge together (mutation-checked: all four fail without the line). Websocket is Phase D.
+- **Quick-add:** ported into upstream `useQuickAddTask`/`buildQuickAddTask` (`helpers/task.ts`): chip overrides (`QuickAddOverrides`, tri-state via `resolveOverride`), date-only parse, RRULE → mode 3, parsed deadline, `~` reminders replacing the defaults, the "starting <date>" due anchor, a raw title for pure-magic input with overrides, and a bulk `labels` override. `reminderParser` now emits generated `TaskReminder`. The fork's store test became `useQuickAddTask.overrides.test.ts` (asserts on the `tasksCreate` payload). Label failures are reported once via upstream's `reportSkippedLabels`.
+  - **Deviation:** AddTask keeps the fork's single-task `createNewTask` path (so chip overrides apply). Upstream routes every submission through the bulk endpoint.
+- Rewritten on upstream queries/mutations, fork UI kept: `SingleTaskInProject` (two-row urgency layout, deadline, duration, project on right, context menu), `TaskDetailView` (property chips, title-field token accepts, breadcrumb/back/leave logic; upstream draft model with `followServerFields` extended to the fork fields), `TaskPropertyChips` (Date↔ISO computed models), `TaskContextMenu`, `ProjectCalendar` (two `useTasks` queries replace the hand-sequenced services; reschedule through the optimistic update mutation), `DeferTask`, `RepeatAfter`/`ReminderDetail` (RRULE pickers), `KanbanCard`/`BucketSelect`/`ProjectTable`/`ShowTasks` (overview scope, date-only).
+  - `useTaskList`: upstream query-backed version plus the fork's `defaultSortToSortBy`/`sortByToDefaultArrays`, the sort-default getter, array-safe route params, and the logged-out guard (now `enabled`).
+- **Silent breaks found:**
+  - `Comments.vue` still takes the camelCase comment model until Phase D. The fork passed `task.comments` as `initialComments`, which would now be raw API objects. Dropped the `comments` expand and the prop, as upstream did. The component loads comments itself.
+  - `EditLabels` lost the fork's `update:modelValue` emit after a persisted add. The context menu relies on it; restored.
+- Removed as implementation-only tests: the `stores/tasks.*` tests, `useTaskList.requestSequencing`/`authGuard` (covered by upstream's stale-project test and a new logged-out case in `useTaskList.test.ts`), and `runBucketMoveWithCountRevert` plus its test (the upstream move mutation is optimistic and rolls back). The `TaskDetailView.test.ts` add/add conflict: fork tests moved to the generated-client mock, plus upstream's three draft tests adapted to the chip layout.
+- Upstream tests adapted to fork UI: `ProjectsNavigation.test` passes the Sortable event (the fork reads the dragged item for nest drop-zones); `ProjectKanban.test` stubs the fork's typed `BucketDraggable`/`TaskDraggable` aliases.
+- Client regenerated: one doc-string change on the fork templates-list `per_page` (upstream `ListParams` change).
+- Gate (all uncached, exit 0): `check:frontendClient` (post-commit), `check:golangciFix` 0 issues, `mage build`, `test:feature`, `pnpm lint:fix` (0 errors), `lint:styles:fix`, `typecheck` 0 errors, `test:unit` 203 files / 2468 tests, `pnpm build`. Logs `/tmp/sync-c-*.log`.
+- Reviewer note: two sidebar drag-state holders now coexist, the fork's `draggedProjectId` (which project, for nest drop-zones) and upstream's `isDraggingProject` (boolean, deferred list patching). They could merge; left as-is.
+- Test noise: `ECONNREFUSED localhost:3000` from happy-dom resource loads, as in Phase B.
+
 ### Reports
 
 - Planner: this spec; producer `01a0d3a9-f676-7412-9c93-a7ca184f9c4e`.
-- Executor/build report: Phases A–B in the Execution Log above; producer `18a66fd6-b0d8-4f19-bf4d-790e540019c4`. Phases C–D pending.
+- Executor/build report: Phases A–B in the Execution Log above; producer `18a66fd6-b0d8-4f19-bf4d-790e540019c4`. Phase C producer `08db9c30-8a45-4f9c-a373-c4a833f13032`. Phase D pending.
 - Reviewer report: pending; record producer session ID beside the report.
 - Verifier report: pending; record producer session ID beside the report.
 - Cold-audit Pass 1/Pass 2 report: pending; record the same auditor session ID beside both passes.
