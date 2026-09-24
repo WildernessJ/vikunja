@@ -1,19 +1,5 @@
 import {describe, it, expect} from 'vitest'
 
-import TaskModel from './task'
-
-// Regression guard for the type-error burndown (#21): replacing `field: T = null`
-// defaults with `field!: T` silently changed the runtime default from null to
-// undefined. That broke `subscription` (undefined tripped a `[Object, null]`
-// prop validator) and every `new Date(this.field)` date column (undefined ->
-// Invalid Date instead of the epoch that `new Date(null)` produced on main).
-
-describe('model construction defaults', () => {
-	it('leaves an absent subscription as null, not undefined', () => {
-		expect(new TaskModel({}).subscription).toBeNull()
-	})
-})
-
 // #47 — one convention for every model's non-null Date column: default to the
 // epoch sentinel `new Date(0)` AND convert an incoming API string to a Date in
 // the constructor. Auto-enumerates the model directory so a new (or edited)

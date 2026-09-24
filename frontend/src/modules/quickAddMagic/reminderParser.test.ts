@@ -20,8 +20,8 @@ describe('Parse reminders from ~ syntax', () => {
 		const result = parseTaskText('Buy milk +Home ~1d', PrefixMode.Default)
 
 		expect(result.reminders).toHaveLength(1)
-		expect(result.reminders[0].relativePeriod).toBe(-86400)
-		expect(result.reminders[0].relativeTo).toBe('due_date')
+		expect(result.reminders[0].relative_period).toBe(-86400)
+		expect(result.reminders[0].relative_to).toBe('due_date')
 		expect(result.text).toBe('Buy milk')
 	})
 
@@ -29,24 +29,24 @@ describe('Parse reminders from ~ syntax', () => {
 		const result = parseTaskText('Ping ~2m', PrefixMode.Default)
 
 		expect(result.reminders).toHaveLength(1)
-		expect(result.reminders[0].relativePeriod).toBe(-120)
-		expect(result.reminders[0].relativeTo).toBe('due_date')
+		expect(result.reminders[0].relative_period).toBe(-120)
+		expect(result.reminders[0].relative_to).toBe('due_date')
 	})
 
 	it('parses ~3h into a relative reminder in hours', () => {
 		const result = parseTaskText('Ping ~3h', PrefixMode.Default)
 
 		expect(result.reminders).toHaveLength(1)
-		expect(result.reminders[0].relativePeriod).toBe(-3 * 3600)
-		expect(result.reminders[0].relativeTo).toBe('due_date')
+		expect(result.reminders[0].relative_period).toBe(-3 * 3600)
+		expect(result.reminders[0].relative_to).toBe('due_date')
 	})
 
 	it('parses ~2w into a relative reminder in weeks', () => {
 		const result = parseTaskText('Ping ~2w', PrefixMode.Default)
 
 		expect(result.reminders).toHaveLength(1)
-		expect(result.reminders[0].relativePeriod).toBe(-2 * 604800)
-		expect(result.reminders[0].relativeTo).toBe('due_date')
+		expect(result.reminders[0].relative_period).toBe(-2 * 604800)
+		expect(result.reminders[0].relative_to).toBe('due_date')
 	})
 
 	it('parses an absolute reminder from ~next friday at 9am', () => {
@@ -55,8 +55,8 @@ describe('Parse reminders from ~ syntax', () => {
 		const result = parseTaskText('Call dentist ~next friday at 9am', PrefixMode.Default)
 
 		expect(result.reminders).toHaveLength(1)
-		expect(result.reminders[0].relativeTo).toBeNull()
-		expect(result.reminders[0].reminder?.getTime()).toBe(expected?.getTime())
+		expect(result.reminders[0].relative_to).toBeUndefined()
+		expect(new Date(result.reminders[0].reminder!).getTime()).toBe(expected?.getTime())
 		expect(result.text).toBe('Call dentist')
 	})
 
@@ -73,11 +73,11 @@ describe('Parse reminders from ~ syntax', () => {
 
 		expect(result.reminders).toHaveLength(2)
 
-		const relative = result.reminders.find(r => r.relativeTo === 'due_date')
-		const absolute = result.reminders.find(r => r.relativeTo === null)
+		const relative = result.reminders.find(r => r.relative_to === 'due_date')
+		const absolute = result.reminders.find(r => r.relative_to === undefined)
 
-		expect(relative?.relativePeriod).toBe(-2 * 3600)
-		expect(absolute?.reminder?.getTime()).toBe(expectedAbsolute?.getTime())
+		expect(relative?.relative_period).toBe(-2 * 3600)
+		expect(new Date(absolute!.reminder!).getTime()).toBe(expectedAbsolute?.getTime())
 
 		expect(result.deadline).not.toBeNull()
 		expect(result.text).toBe('Ship it')
@@ -108,7 +108,7 @@ describe('Parse reminders from ~ syntax', () => {
 		const result = parseTaskText('Call ~1d mom ~2h', PrefixMode.Default)
 
 		expect(result.reminders).toHaveLength(1)
-		expect(result.reminders[0].relativePeriod).toBe(-2 * 3600)
+		expect(result.reminders[0].relative_period).toBe(-2 * 3600)
 		expect(result.text).toBe('Call ~1d mom')
 	})
 

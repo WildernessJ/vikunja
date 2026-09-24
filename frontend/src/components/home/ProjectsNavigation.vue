@@ -11,7 +11,7 @@
 		filter=".drag-disabled"
 		:component-data="{
 			type: 'transition-group',
-			name: !drag ? 'flip-list' : null,
+			name: !isDraggingProject ? 'flip-list' : null,
 			class: [
 				'menu-list can-be-hidden',
 				{ 'dragging-disabled': !canEditOrder, 'nest-drop-zone': dropZone }
@@ -45,6 +45,7 @@ import {useUpdateProjectMutation, type ProjectResponse} from '@/client/queries/p
 
 import {useProjects} from '@/composables/useProjects'
 import {draggedProjectId} from '@/composables/useDraggedProject'
+import {useProjectDragState} from '@/composables/useProjectDragState'
 
 const props = defineProps<{
 	modelValue?: ProjectResponse[],
@@ -76,7 +77,7 @@ const ProjectDraggable = draggable as unknown as new () => Omit<InstanceType<typ
 	},
 }
 
-const drag = ref(false)
+const {isDraggingProject} = useProjectDragState()
 
 const projectList = useProjects()
 const updateMutation = useUpdateProjectMutation()
@@ -84,24 +85,38 @@ const updateMutation = useUpdateProjectMutation()
 // Vue draggable will modify the projects list as it changes their position which will not work on a prop.
 // Hence, we'll clone the prop and work on the clone.
 const availableProjects = ref<ProjectResponse[]>([])
+// Mid-drag, Sortable has moved the dragged item's DOM node, possibly into another list. Patching
+// the list then anchors on that node, throws NotFoundError and leaves the sidebar half patched.
+let projectsChangedDuringDrag: ProjectResponse[] | null = null
 watch(
 	() => props.modelValue,
 	projects => {
+		if (isDraggingProject.value) {
+			projectsChangedDuringDrag = projects || []
+			return
+		}
 		availableProjects.value = projects || []
 	},
 	{immediate: true},
 )
+watch(isDraggingProject, dragging => {
+	if (dragging || projectsChangedDuringDrag === null) {
+		return
+	}
+	availableProjects.value = projectsChangedDuringDrag
+	projectsChangedDuringDrag = null
+})
 
 const projectUpdating = ref<Record<number, boolean>>({})
 
 function onDragStart(e: SortableEvent) {
-	drag.value = true
+	isDraggingProject.value = true
 	const id = e.item.dataset.projectId
 	draggedProjectId.value = id ? parseInt(id) : null
 }
 
 async function saveProjectPosition(e: SortableEvent) {
-	drag.value = false
+	isDraggingProject.value = false
 	// Clear before the early-return below so a cancelled drag never leaves the
 	// nest drop-zones stuck visible.
 	draggedProjectId.value = null

@@ -159,10 +159,9 @@
 </template>
 
 <script setup lang="ts">
-import {computed, ref, watch, shallowReactive, type ComponentPublicInstance} from 'vue'
+import {computed, ref, type ComponentPublicInstance} from 'vue'
 import {useRouter} from 'vue-router'
 import {onClickOutside} from '@vueuse/core'
-import {klona} from 'klona/lite'
 
 import ProjectWrapper from '@/components/project/ProjectWrapper.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
@@ -172,17 +171,18 @@ import Message from '@/components/misc/Message.vue'
 
 import {useCurrentProject} from '@/composables/useCurrentProject'
 import {useAuthStore} from '@/stores/auth'
-import {useTaskStore} from '@/stores/tasks'
+import {useTasks} from '@/composables/useTasks'
+import {useUpdateTaskMutation} from '@/client/queries/taskMutations'
+import type {TaskFilterParams, TaskResponse} from '@/client/queries/tasks'
+import type {Task} from '@/client/generated'
+import {parseDateOrNull} from '@/helpers/parseDateOrNull'
 
-import TaskCollectionService, {type TaskFilterParams} from '@/services/taskCollection'
 import {buildDateWindowFilterQuery} from '@/helpers/time/dateWindowFilterQuery'
 import {calendarDueDateForDay} from '@/components/project/views/calendarDueDate'
 import {formatDate} from '@/helpers/time/formatDate'
 import {useDateOnly} from '@/composables/useDateOnly'
 import {PERMISSIONS} from '@/constants/permissions'
-import {error} from '@/message'
 
-import type {ITask} from '@/modelTypes/ITask'
 import type {DateKebab} from '@/types/DateKebab'
 
 const props = defineProps<{
@@ -202,19 +202,11 @@ const UNSCHEDULED_FILTER = 'due_date > "9999-12-31" && start_date > "9999-12-31"
 
 const router = useRouter()
 const authStore = useAuthStore()
-const taskStore = useTaskStore()
+const updateTask = useUpdateTaskMutation(true)
 const {store: dateOnly} = useDateOnly()
-
-// Two decoupled services so each keeps its own totalPages for the truncation guard.
-const windowTaskService = shallowReactive(new TaskCollectionService())
-const unscheduledTaskService = shallowReactive(new TaskCollectionService())
 
 const mode = ref<'month' | 'week'>('month')
 const anchor = ref<Date>(startOfDay(new Date()))
-const taskById = ref<Map<ITask['id'], ITask>>(new Map())
-const windowTruncated = ref(false)
-const unscheduledTruncated = ref(false)
-const loading = computed(() => windowTaskService.loading || unscheduledTaskService.loading)
 
 const {currentProject} = useCurrentProject()
 const canWrite = computed(() => (currentProject.value?.max_permission ?? PERMISSIONS.READ) > PERMISSIONS.READ)
@@ -307,28 +299,29 @@ const periodLabel = computed(() => {
 	return `${formatDate(gridStart.value, 'MMM D')} – ${formatDate(end, 'MMM D, YYYY')}`
 })
 
-function taskAnchorDate(task: ITask): Date | null {
-	if (task.startDate && task.endDate) {
-		return task.startDate
+function taskDates(task: TaskResponse) {
+	return {
+		due: parseDateOrNull(task.due_date),
+		start: parseDateOrNull(task.start_date),
+		end: parseDateOrNull(task.end_date),
 	}
-	if (task.dueDate) {
-		return task.dueDate
-	}
-	if (task.startDate) {
-		return task.startDate
-	}
-	if (task.endDate) {
-		return task.endDate
-	}
-	return null
 }
 
-function taskDayKeys(task: ITask): DateKebab[] {
-	if (task.startDate && task.endDate) {
+function taskAnchorDate(task: TaskResponse): Date | null {
+	const {due, start, end} = taskDates(task)
+	if (start && end) {
+		return start
+	}
+	return due ?? start ?? end ?? null
+}
+
+function taskDayKeys(task: TaskResponse): DateKebab[] {
+	const {start, end} = taskDates(task)
+	if (start && end) {
 		const keys: DateKebab[] = []
-		const span = calendarDayDelta(task.startDate, task.endDate)
+		const span = calendarDayDelta(start, end)
 		for (let i = 0; i <= span; i++) {
-			keys.push(dayKey(addDays(task.startDate, i)))
+			keys.push(dayKey(addDays(start, i)))
 		}
 		return keys
 	}
@@ -336,10 +329,47 @@ function taskDayKeys(task: ITask): DateKebab[] {
 	return anchorDate ? [dayKey(anchorDate)] : []
 }
 
-const allTasks = computed<ITask[]>(() => [...taskById.value.values()])
+// The grid: one windowed request for the tasks intersecting the visible days,
+// with include_nulls OFF so dateless tasks never compete for its page budget.
+const windowQuery = useTasks(() => ({
+	project: props.projectId,
+	view: props.viewId,
+	params: {
+		sort_by: ['due_date', 'start_date', 'id'],
+		order_by: ['asc', 'asc', 'asc'],
+		filter: buildDateWindowFilterQuery(windowFrom.value, windowTo.value),
+		filter_include_nulls: false,
+		filter_timezone: authStore.settings.timezone,
+		per_page: 250,
+	} satisfies TaskFilterParams,
+}), {enabled: () => Boolean(props.projectId && props.viewId)})
 
-const tasksByDay = computed<Map<DateKebab, ITask[]>>(() => {
-	const map = new Map<DateKebab, ITask[]>()
+// The panel: a separate, window-independent request returning only fully-dateless
+// tasks (due AND start AND end all null).
+const unscheduledQuery = useTasks(() => ({
+	project: props.projectId,
+	view: props.viewId,
+	params: {
+		sort_by: ['id'],
+		order_by: ['asc'],
+		filter: UNSCHEDULED_FILTER,
+		filter_include_nulls: true,
+		filter_timezone: authStore.settings.timezone,
+		per_page: 250,
+	} satisfies TaskFilterParams,
+}), {enabled: () => Boolean(props.projectId && props.viewId)})
+
+const windowTruncated = computed(() => windowQuery.totalPages.value > 1)
+const unscheduledTruncated = computed(() => unscheduledQuery.totalPages.value > 1)
+const loading = computed(() => windowQuery.isFetching.value || unscheduledQuery.isFetching.value)
+
+// Both sets merged by id: a task dropped from the panel onto a day is still only in the
+// unscheduled result until the next fetch, and must show on the grid right away.
+const allTasks = computed<TaskResponse[]>(() => [...new Map(
+	[...unscheduledQuery.tasks.value, ...windowQuery.tasks.value].map(task => [task.id, task]),
+).values()])
+const tasksByDay = computed<Map<DateKebab, TaskResponse[]>>(() => {
+	const map = new Map<DateKebab, TaskResponse[]>()
 	for (const task of allTasks.value) {
 		for (const key of taskDayKeys(task)) {
 			const bucket = map.get(key)
@@ -356,111 +386,8 @@ const tasksByDay = computed<Map<DateKebab, ITask[]>>(() => {
 // Only fully-dateless tasks belong in the panel. The server fetch keys on due_date
 // being null, so a task with a start/end but no due_date would leak in — this
 // predicate is the authoritative filter, never the server response alone.
-const unscheduledTasks = computed<ITask[]>(() =>
+const unscheduledTasks = computed<TaskResponse[]>(() =>
 	allTasks.value.filter(task => taskAnchorDate(task) === null),
-)
-
-// Merge one fetched set into taskById while preserving the other set. We classify
-// existing entries by their dates (dateless = unscheduled, dated = windowed) so a
-// refetch of one set only replaces its own category and never wipes the other —
-// and the two watchers below can run independently without clobbering each other.
-function mergeTasks(fetched: ITask[], keepDateless: boolean) {
-	const next = new Map<ITask['id'], ITask>()
-	for (const task of taskById.value.values()) {
-		if ((taskAnchorDate(task) === null) === keepDateless) {
-			next.set(task.id, task)
-		}
-	}
-	for (const task of fetched) {
-		next.set(task.id, task)
-	}
-	taskById.value = next
-}
-
-// This component is reused (not remounted) across project/view navigation, since
-// the router keeps the same route component and only swaps params — see
-// ProjectView.vue. Each loader below is guarded by its own sequence number,
-// bumped every time its watcher fires, so a response that lands after a newer
-// request has already started (project switch, or rapid window/project nav)
-// is discarded instead of being merged into the wrong project's state.
-let unscheduledLoadSeq = 0
-let windowLoadSeq = 0
-
-// The grid: one windowed request for the tasks intersecting the visible days,
-// with include_nulls OFF so dateless tasks never compete for its page budget.
-async function loadWindowTasks(seq: number, projectId: number, viewId: number) {
-	const params: TaskFilterParams = {
-		sort_by: ['due_date', 'start_date', 'id'],
-		order_by: ['asc', 'asc', 'asc'],
-		filter: buildDateWindowFilterQuery(windowFrom.value, windowTo.value),
-		filter_include_nulls: false,
-		filter_timezone: authStore.settings.timezone,
-		s: '',
-		per_page: 250,
-	}
-	const loaded = await windowTaskService.getAll({projectId, viewId} as unknown as ITask, params) as ITask[]
-	if (seq !== windowLoadSeq || projectId !== props.projectId || viewId !== props.viewId) {
-		return
-	}
-	windowTruncated.value = windowTaskService.totalPages > 1
-	// keepDateless: preserve the unscheduled set, replace the windowed one.
-	mergeTasks(loaded, true)
-}
-
-// The panel: a separate, window-independent request returning only fully-dateless
-// tasks (due AND start AND end all null). Refetched only on project/view change.
-async function loadUnscheduledTasks(seq: number, projectId: number, viewId: number) {
-	const params: TaskFilterParams = {
-		sort_by: ['id'],
-		order_by: ['asc'],
-		filter: UNSCHEDULED_FILTER,
-		filter_include_nulls: true,
-		filter_timezone: authStore.settings.timezone,
-		s: '',
-		per_page: 250,
-	}
-	const loaded = await unscheduledTaskService.getAll({projectId, viewId} as unknown as ITask, params) as ITask[]
-	if (seq !== unscheduledLoadSeq || projectId !== props.projectId || viewId !== props.viewId) {
-		return
-	}
-	unscheduledTruncated.value = unscheduledTaskService.totalPages > 1
-	// keepDateless false: preserve the windowed set, replace the unscheduled one.
-	mergeTasks(loaded, false)
-}
-
-// Window-independent panel fetch — only on project/view change. This is the
-// single place taskById gets reset: it fires exactly once per navigation
-// (unlike the windowed watcher below, which also refires on window-only
-// changes), so resetting here can't race a second reset from the other watcher.
-watch(
-	() => [props.projectId, props.viewId],
-	() => {
-		unscheduledLoadSeq += 1
-		taskById.value = new Map()
-		windowTruncated.value = false
-		unscheduledTruncated.value = false
-		if (!props.projectId || !props.viewId) {
-			return
-		}
-		void loadUnscheduledTasks(unscheduledLoadSeq, props.projectId, props.viewId)
-	},
-	{immediate: true},
-)
-
-// Windowed grid fetch — also refires as the visible date range changes. Bumps
-// its own sequence on every trigger (project/view change *or* window nav) so
-// rapid window navigation within the same project is guarded too, not just
-// project switches.
-watch(
-	() => [props.projectId, props.viewId, windowFrom.value, windowTo.value],
-	() => {
-		windowLoadSeq += 1
-		if (!props.projectId || !props.viewId) {
-			return
-		}
-		void loadWindowTasks(windowLoadSeq, props.projectId, props.viewId)
-	},
-	{immediate: true},
 )
 
 function goToday() {
@@ -479,7 +406,7 @@ function goNext() {
 		: new Date(anchor.value.getFullYear(), anchor.value.getMonth() + 1, 1)
 }
 
-function openTask(task: ITask) {
+function openTask(task: TaskResponse) {
 	router.push({
 		name: 'task.detail',
 		params: {id: task.id},
@@ -487,10 +414,10 @@ function openTask(task: ITask) {
 	})
 }
 
-const draggedTask = ref<ITask | null>(null)
+const draggedTask = ref<TaskResponse | null>(null)
 const dropTargetKey = ref<DateKebab | null>(null)
 
-function onTaskDragStart(task: ITask, event: DragEvent) {
+function onTaskDragStart(task: TaskResponse, event: DragEvent) {
 	if (!canWrite.value) {
 		event.preventDefault()
 		return
@@ -535,14 +462,14 @@ async function onDrop(day: CalendarDay, event: DragEvent) {
 	await rescheduleTask(task, day.date)
 }
 
-async function rescheduleTask(task: ITask, targetDay: Date) {
-	const updated = klona(task)
+async function rescheduleTask(task: TaskResponse, targetDay: Date) {
 	const anchorDate = taskAnchorDate(task)
+	const updated: TaskResponse = {...task}
 
 	if (anchorDate === null) {
 		// Dateless task dropped from the unscheduled panel: give it a due date on
 		// the target day.
-		updated.dueDate = calendarDueDateForDay(targetDay, dateOnly.value)
+		updated.due_date = calendarDueDateForDay(targetDay, dateOnly.value).toISOString()
 	} else {
 		const delta = calendarDayDelta(anchorDate, targetDay)
 		if (delta === 0) {
@@ -550,31 +477,20 @@ async function rescheduleTask(task: ITask, targetDay: Date) {
 		}
 		// Shift every present date by the same whole-day delta, preserving each
 		// one's time-of-day and the start↔end span.
-		if (task.dueDate) {
-			updated.dueDate = addDays(task.dueDate, delta)
+		const {due, start, end} = taskDates(task)
+		if (due) {
+			updated.due_date = addDays(due, delta).toISOString()
 		}
-		if (task.startDate) {
-			updated.startDate = addDays(task.startDate, delta)
+		if (start) {
+			updated.start_date = addDays(start, delta).toISOString()
 		}
-		if (task.endDate) {
-			updated.endDate = addDays(task.endDate, delta)
+		if (end) {
+			updated.end_date = addDays(end, delta).toISOString()
 		}
 	}
 
-	replaceTask(updated)
-	try {
-		const saved = await taskStore.update(updated)
-		replaceTask(saved)
-	} catch (e) {
-		replaceTask(task)
-		error(e)
-	}
-}
-
-function replaceTask(task: ITask) {
-	const next = new Map(taskById.value)
-	next.set(task.id, task)
-	taskById.value = next
+	// Optimistic: the mutation moves the task in every cached list and rolls back (and reports) on failure.
+	await updateTask.mutateAsync(updated).catch(() => undefined)
 }
 
 const quickCreateKey = ref<DateKebab | null>(null)
@@ -599,17 +515,13 @@ function openQuickCreate(day: CalendarDay) {
 	quickCreateKey.value = day.key
 }
 
-async function onQuickTaskAdded(day: CalendarDay, task: ITask) {
+async function onQuickTaskAdded(day: CalendarDay, task: Task) {
 	quickCreateKey.value = null
-	const updated = klona(task)
-	updated.dueDate = calendarDueDateForDay(day.date, dateOnly.value)
-	replaceTask(updated)
-	try {
-		const saved = await taskStore.update(updated)
-		replaceTask(saved)
-	} catch (e) {
-		error(e)
-	}
+	await updateTask.mutateAsync({
+		...task,
+		id: task.id!,
+		due_date: calendarDueDateForDay(day.date, dateOnly.value).toISOString(),
+	}).catch(() => undefined)
 }
 </script>
 

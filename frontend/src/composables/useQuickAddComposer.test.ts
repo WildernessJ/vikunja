@@ -6,7 +6,6 @@ import {useQuickAddComposer} from './useQuickAddComposer'
 import {PrefixMode} from '@/modules/quickAddMagic'
 import {PRIORITIES} from '@/constants/priorities'
 import {normalizeProject} from '@/client/queries/projects'
-import TaskReminderModel from '@/models/taskReminder'
 
 describe('useQuickAddComposer', () => {
 	// The composer reads the date-only setting from the auth store.
@@ -105,9 +104,9 @@ describe('useQuickAddComposer', () => {
 		const {effectiveReminders, setOverride} = useQuickAddComposer(title, mode)
 
 		expect(effectiveReminders.value).toHaveLength(1)
-		expect(effectiveReminders.value[0].relativePeriod).toBe(-86400)
+		expect(effectiveReminders.value[0].relative_period).toBe(-86400)
 
-		const chipReminder = new TaskReminderModel({reminder: new Date('2026-08-01T09:00:00Z'), relativeTo: null})
+		const chipReminder = {reminder: '2026-08-01T09:00:00.000Z'}
 		setOverride('reminders', [chipReminder])
 		expect(effectiveReminders.value).toEqual([chipReminder])
 	})

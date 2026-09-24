@@ -1,4 +1,4 @@
-import type {IBucket} from '@/modelTypes/IBucket'
+import type {BucketResponse} from '@/client/queries/kanban'
 import type {ProjectView} from '@/client/generated'
 
 export type BucketRole = 'done' | 'default'
@@ -8,7 +8,7 @@ export type BucketRole = 'done' | 'default'
 // yet hold is blocked when it already holds the other one; un-setting a role the
 // bucket already has is always allowed.
 export function bucketRoleToggleDisabled(
-	bucket: Pick<IBucket, 'id'>,
+	bucket: Pick<BucketResponse, 'id'>,
 	view: Pick<ProjectView, 'default_bucket_id' | 'done_bucket_id'> | null | undefined,
 	role: BucketRole,
 ): boolean {

@@ -12,7 +12,6 @@ import {registerViaInviteLink} from '@/client/inviteLink'
 import {parseValidationErrors, type ValidationError} from '@/helpers/parseValidationErrors'
 import UserSettingsService from '@/services/userSettings'
 import {getToken, refreshToken, removeToken, saveToken} from '@/helpers/auth'
-import {clearTaskCache} from '@/helpers/taskCache'
 import {useWebSocket} from '@/composables/useWebSocket'
 import {dropDevicePushSubscription} from '@/composables/usePushNotifications'
 import {setModuleLoading} from '@/stores/helper'
@@ -154,7 +153,6 @@ export const useAuthStore = defineStore('auth', () => {
 
 	// Identity-bound caches survive same-user object replacements.
 	watch(identityKey, () => {
-		clearTaskCache()
 		queryClient.clear()
 	}, {flush: 'sync'})
 

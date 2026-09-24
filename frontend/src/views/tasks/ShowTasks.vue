@@ -93,7 +93,7 @@
 					<SingleTaskInProject
 						:show-project="true"
 						:the-task="task"
-						:can-mark-as-done="(projectList.projects[task.projectId]?.max_permission ?? 0) > PERMISSIONS.READ"
+						:can-mark-as-done="(projectList.projects[task.project_id]?.max_permission ?? 0) > PERMISSIONS.READ"
 						@taskUpdated="updateTasks"
 					/>
 				</li>
@@ -124,13 +124,12 @@ import DatepickerWithRange from '@/components/date/DatepickerWithRange.vue'
 import XLabel from '@/components/tasks/partials/Label.vue'
 import {DATE_RANGES} from '@/components/date/dateRanges'
 import LlamaCool from '@/assets/llama-cool.svg?component'
-import type {ITask} from '@/modelTypes/ITask'
 import {useAuthStore} from '@/stores/auth'
-import {useTaskStore} from '@/stores/tasks'
 import {useProjects} from '@/composables/useProjects'
 import {useLabels} from '@/composables/useLabels'
-import type {TaskFilterParams, ExpandTaskFilterParam} from '@/services/taskCollection'
-import TaskCollectionService from '@/services/taskCollection'
+import type {TaskFilterParams} from '@/client/queries/tasks'
+import {useTasks} from '@/composables/useTasks'
+import type {TaskScope} from '@/client/queries/tasks'
 import {PERMISSIONS} from '@/constants/permissions'
 import {normalizeOverviewProjectIds, resolveOverviewProjectScope} from '@/helpers/overviewTaskFilter'
 
@@ -154,7 +153,6 @@ const emit = defineEmits<{
 }>()
 
 const authStore = useAuthStore()
-const taskStore = useTaskStore()
 const projectList = useProjects()
 const {getLabelById} = useLabels()
 
@@ -162,9 +160,14 @@ const route = useRoute()
 const router = useRouter()
 const {t} = useI18n({useScope: 'global'})
 
-const tasks = ref<ITask[]>([])
+const taskScope = ref<TaskScope | null>(null)
+const taskQuery = useTasks(
+	() => taskScope.value ?? {},
+	{enabled: () => authStore.authenticated && taskScope.value !== null},
+)
+const tasks = taskQuery.tasks
 const showNothingToDo = ref<boolean>(false)
-const taskCollectionService = ref(new TaskCollectionService())
+
 
 setTimeout(() => showNothingToDo.value = true, 100)
 
@@ -203,7 +206,7 @@ const pageTitle = computed(() => {
 })
 const hasTasks = computed(() => tasks.value && tasks.value.length > 0)
 const userAuthenticated = computed(() => authStore.authenticated)
-const loading = computed(() => taskStore.isLoading || taskCollectionService.value.loading)
+const loading = taskQuery.isFetching
 const filterIdUsedOnOverview = computed(() => authStore.settings?.frontendSettings?.filterIdUsedOnOverview)
 const overviewProjectIds = computed(() => normalizeOverviewProjectIds(authStore.settings?.frontendSettings?.overviewProjectIds))
 const overviewProjectsExclude = computed(() => authStore.settings?.frontendSettings?.overviewProjectsExclude ?? false)
@@ -270,9 +273,8 @@ async function loadPendingTasks(from: Date|string, to: Date|string, filterId: nu
 		order_by: ['asc', 'desc'],
 		filter: 'done = false',
 		filter_include_nulls: props.showNulls,
-		s: '',
-		// ExpandTaskFilterParam is typed as a single value; the API accepts multiple, comma-joined server-side.
-		expand: ['comment_count', 'is_unread'] as unknown as ExpandTaskFilterParam,
+		q: '',
+		expand: ['comment_count', 'is_unread'],
 	}
 
 	if (!showAll.value) {
@@ -305,29 +307,26 @@ async function loadPendingTasks(from: Date|string, to: Date|string, filterId: nu
 		params.filter += params.filter ? ` && ${projectFilterClause}` : projectFilterClause
 	}
 
-	tasks.value = Object.values(await taskStore.loadTasks(params, projectId))
-	emit('tasksLoaded', true)
+	taskScope.value = {project: projectId, params: {...params, filter_timezone: authStore.settings.timezone}}
 }
 
-// FIXME: this modification should happen in the store
-function updateTasks(updatedTask: ITask) {
-	for (let t = 0; t < tasks.value.length; t++) {
-		if (tasks.value[t].id === updatedTask.id) {
-			tasks.value[t] = updatedTask
-			// Move the task to the end of the done tasks if it is now done
-			if (updatedTask.done) {
-				tasks.value.splice(t, 1)
-				tasks.value.push(updatedTask)
-			}
-			break
-		}
-	}
-}
+watch(taskQuery.data, data => { if (data) emit('tasksLoaded', true) })
+
+function updateTasks() { return taskQuery.refetch() }
 
 // Keep sidebar setting changes from reloading tasks.
 watch(
-	// join to a stable string so a fresh-but-equal ids array doesn't retrigger the reload
-	[() => props.dateFrom, () => props.dateTo, filterIdUsedOnOverview, () => props.showOverdue, () => props.showNulls, () => overviewProjectIds.value.join(','), overviewProjectsExclude],
+	[
+		() => props.dateFrom,
+		() => props.dateTo,
+		filterIdUsedOnOverview,
+		() => props.showOverdue,
+		() => props.showNulls,
+		() => props.labelIds,
+		// join to a stable string so a fresh-but-equal ids array doesn't retrigger the reload
+		() => overviewProjectIds.value.join(','),
+		overviewProjectsExclude,
+	],
 	([from, to, filterId]) => loadPendingTasks(from ?? '', to ?? '', filterId),
 	{immediate: true},
 )

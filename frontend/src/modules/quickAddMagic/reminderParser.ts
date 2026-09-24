@@ -1,11 +1,10 @@
-import TaskReminderModel from '@/models/taskReminder'
-import type {ITaskReminder} from '@/modelTypes/ITaskReminder'
+import type {TaskReminder} from '@/client/generated'
 import {REMINDER_PERIOD_RELATIVE_TO_TYPES} from '@/types/IReminderPeriodRelativeTo'
 import {parseDate} from './dateParser'
 
 export interface reminderParseResult {
 	textWithoutMatched: string,
-	reminders: ITaskReminder[],
+	reminders: TaskReminder[],
 }
 
 const UNIT_SECONDS: Record<string, number> = {
@@ -39,7 +38,7 @@ const isWordBoundary = (text: string, tildeIndex: number): boolean =>
  * ("Ship it ~2h ~tomorrow at 8am") each qualify and are kept in title order.
  */
 export const getReminders = (text: string, now: Date = new Date()): reminderParseResult => {
-	const reminders: ITaskReminder[] = []
+	const reminders: TaskReminder[] = []
 	let result = text
 
 	while (true) {
@@ -54,11 +53,10 @@ export const getReminders = (text: string, now: Date = new Date()): reminderPars
 		if (offsetMatch !== null) {
 			const amount = parseInt(offsetMatch[1], 10)
 			const unit = offsetMatch[2].toLowerCase()
-			reminders.unshift(new TaskReminderModel({
-				reminder: null,
-				relativePeriod: -(amount * UNIT_SECONDS[unit]),
-				relativeTo: REMINDER_PERIOD_RELATIVE_TO_TYPES.DUEDATE,
-			}))
+			reminders.unshift({
+				relative_period: -(amount * UNIT_SECONDS[unit]),
+				relative_to: REMINDER_PERIOD_RELATIVE_TO_TYPES.DUEDATE,
+			})
 			result = result.slice(0, tildeIndex).trimEnd()
 			continue
 		}
@@ -68,10 +66,7 @@ export const getReminders = (text: string, now: Date = new Date()): reminderPars
 		// Never date-only: a reminder is an alarm, and 23:59 is not a time to be alerted at.
 		const {newText, date} = parseDate(afterTilde, now, false)
 		if (date !== null && newText.trim() === '') {
-			reminders.unshift(new TaskReminderModel({
-				reminder: date,
-				relativeTo: null,
-			}))
+			reminders.unshift({reminder: date.toISOString()})
 			result = result.slice(0, tildeIndex).trimEnd()
 			continue
 		}

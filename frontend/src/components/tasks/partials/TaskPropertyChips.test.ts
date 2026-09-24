@@ -3,7 +3,7 @@ import {mount} from '@vue/test-utils'
 
 import {PRIORITIES} from '@/constants/priorities'
 import {TASK_REPEAT_MODES} from '@/types/IRepeatMode'
-import type {ITask} from '@/modelTypes/ITask'
+import type {Task as ITask} from '@/client/generated'
 
 vi.mock('@/stores/projects', () => ({
 	useProjectStore: () => ({
@@ -27,21 +27,17 @@ HTMLElement.prototype.hidePopover ??= function hidePopover() {}
 function baseTask(): ITask {
 	return {
 		id: 1,
-		projectId: 1,
+		project_id: 1,
 		priority: PRIORITIES.UNSET,
 		labels: [],
 		assignees: [],
 		reminders: [],
-		repeatAfter: {amount: 0, type: 'days'},
-		repeatMode: TASK_REPEAT_MODES.REPEAT_MODE_DEFAULT,
-		percentDone: 0,
-		estimatedDuration: 0,
-		dueDate: null,
-		startDate: null,
-		endDate: null,
-		deadline: null,
-		hexColor: '',
-	} as unknown as ITask
+		repeat_after: 0,
+		repeat_mode: TASK_REPEAT_MODES.REPEAT_MODE_DEFAULT,
+		percent_done: 0,
+		estimated_duration: 0,
+		hex_color: '',
+	}
 
 }
 

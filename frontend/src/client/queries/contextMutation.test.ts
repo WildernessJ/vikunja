@@ -4,7 +4,11 @@ import {error, success} from '@/message'
 
 const session = vi.hoisted(() => ({epoch: 1}))
 vi.mock('@/message', () => ({success: vi.fn(), error: vi.fn()}))
-vi.mock('@/helpers/auth', () => ({getAuthSessionEpoch: () => session.epoch, getToken: () => null, getTokenIdentity: () => null}))
+vi.mock('@/helpers/auth', () => ({
+	getAuthSessionEpoch: () => session.epoch,
+	getToken: () => null,
+	getTokenIdentity: () => null,
+}))
 vi.mock('@/helpers/fetcher', () => ({getApiV2BaseUrl: () => '/api/v2/'}))
 
 import {contextMutationOptions} from './contextMutation'
@@ -16,8 +20,12 @@ beforeEach(() => {
 	client = new QueryClient()
 })
 
-function execute<TData, TOptimistic = undefined>(options: Parameters<typeof contextMutationOptions<TData, number, TOptimistic>>[0]) {
-	return client.getMutationCache().build(client, contextMutationOptions(options)).execute(1)
+function execute<TData, TOptimistic = undefined>(
+	options: Parameters<typeof contextMutationOptions<TData, number, TOptimistic>>[0],
+) {
+	return client.getMutationCache()
+		.build(client, contextMutationOptions(options))
+		.execute(1)
 }
 
 const listKey = ['items', 'list'] as const
@@ -97,6 +105,22 @@ describe('contextMutationOptions optimistic updates', () => {
 			onSuccess,
 		})
 		expect(onSuccess).toHaveBeenCalledWith('done', 1, client, 'snapshot')
+	})
+
+	it('rolls back only the keys the factory fenced off', async () => {
+		await expect(execute({
+			mutationFn: async () => { throw new Error('denied') },
+			optimistic: {
+				queryKeys: () => [listKey],
+				update: (_input: number, queryClient: QueryClient) => {
+					queryClient.setQueryData<string[]>(listKey, [])
+					queryClient.setQueryData<string>(detailKey, 'optimistic')
+				},
+			},
+		})).rejects.toThrow('denied')
+
+		expect(client.getQueryData(listKey)).toEqual(['before'])
+		expect(client.getQueryData(detailKey)).toBe('optimistic')
 	})
 
 	it('rolls back cached queries after a failure in the same context', async () => {

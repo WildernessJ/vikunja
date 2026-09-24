@@ -1,6 +1,6 @@
 <template>
 	<div
-		:class="{ 'is-loading': saving }"
+		:class="{ 'is-loading': update.isPending.value }"
 		class="defer-task loading-container"
 		@click.stop
 		@mousedown.stop
@@ -40,13 +40,14 @@
 </template>
 
 <script setup lang="ts">
+import {parseDateOrNull} from '@/helpers/parseDateOrNull'
 import {ref, watch, onBeforeUnmount} from 'vue'
 import {useDebounceFn} from '@vueuse/core'
 
 import DatepickerInline from '@/components/input/DatepickerInline.vue'
 
-import {useTaskStore} from '@/stores/tasks'
-import type {ITask} from '@/modelTypes/ITask'
+import {useUpdateTaskMutation} from '@/client/queries/taskMutations'
+import type {Task as ITask} from '@/client/generated'
 import {useDateOnly} from '@/composables/useDateOnly'
 import {roundToNaturalDayBoundary} from '@/helpers/time/roundToNaturalDayBoundary'
 import {createDateFromString} from '@/helpers/time/createDateFromString'
@@ -61,11 +62,8 @@ const emit = defineEmits<{
 
 const {store: dateOnly} = useDateOnly()
 
-const taskStore = useTaskStore()
+const update = useUpdateTaskMutation()
 const task = ref<ITask>()
-// Scope the loading indicator to this widget's own save; taskStore.isLoading is
-// global and would flip on any app-wide task activity.
-const saving = ref(false)
 
 // We're saving the due date separately to prevent null errors in very short periods where the task is null.
 const dueDate = ref<Date | null>(null)
@@ -85,8 +83,8 @@ watch(
 	() => props.modelValue,
 	(value) => {
 		task.value = { ...value }
-		dueDate.value = value.dueDate
-		lastValue.value = normalise(value.dueDate)
+		dueDate.value = parseDateOrNull(value.due_date)
+		lastValue.value = normalise(value.due_date)
 	},
 	{immediate: true},
 )
@@ -117,18 +115,14 @@ async function updateDueDate() {
 		return
 	}
 
-	saving.value = true
-	try {
-		const newTask = await taskStore.update({
-			...task.value,
-			dueDate: next,
-		})
-		lastValue.value = normalise(newTask.dueDate)
-		task.value = newTask
-		emit('update:modelValue', newTask)
-	} finally {
-		saving.value = false
-	}
+	const newTask = await update.mutateAsync({
+		...task.value,
+		id: task.value.id!,
+		due_date: next.toISOString(),
+	})
+	lastValue.value = normalise(newTask.due_date)
+	task.value = newTask
+	emit('update:modelValue', newTask)
 }
 </script>
 

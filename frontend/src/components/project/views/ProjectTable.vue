@@ -257,10 +257,10 @@
 									</td>
 									<td v-if="activeColumns.project">
 										<RouterLink
-											v-if="projectList.projects[t.projectId]"
-											:to="{ name: 'project.index', params: { projectId: t.projectId } }"
+											v-if="projectList.projects[t.project_id]"
+											:to="{ name: 'project.index', params: { projectId: t.project_id } }"
 										>
-											{{ projectList.projects[t.projectId].title }}
+											{{ projectList.projects[t.project_id].title }}
 										</RouterLink>
 									</td>
 									<td v-if="activeColumns.title">
@@ -291,7 +291,7 @@
 									</td>
 									<DateTableCell
 										v-if="activeColumns.dueDate"
-										:date="t.dueDate ?? undefined"
+										:date="t.due_date"
 										:date-only="dateOnly"
 									/>
 									<td v-if="activeColumns.commentCount">
@@ -299,20 +299,20 @@
 									</td>
 									<DateTableCell
 										v-if="activeColumns.startDate"
-										:date="t.startDate ?? undefined"
+										:date="t.start_date"
 										:date-only="dateOnly"
 									/>
 									<DateTableCell
 										v-if="activeColumns.endDate"
-										:date="t.endDate ?? undefined"
+										:date="t.end_date"
 										:date-only="dateOnly"
 									/>
 									<td v-if="activeColumns.percentDone">
-										{{ t.percentDone * 100 }}%
+										{{ t.percent_done * 100 }}%
 									</td>
 									<DateTableCell
 										v-if="activeColumns.doneAt"
-										:date="t.doneAt ?? undefined"
+										:date="t.done_at"
 									/>
 									<DateTableCell
 										v-if="activeColumns.created"
@@ -326,7 +326,7 @@
 										<User
 											:avatar-size="27"
 											:show-username="false"
-											:user="t.createdBy"
+											:user="t.created_by ?? {}"
 										/>
 									</td>
 								</tr>
@@ -366,10 +366,9 @@ import Popup from '@/components/misc/Popup.vue'
 
 import type {SortBy} from '@/composables/useTaskList'
 import {useTaskList} from '@/composables/useTaskList'
-import type {ExpandTaskFilterParam} from '@/services/taskCollection'
-import type {ITask} from '@/modelTypes/ITask'
+import type {TaskResponse} from '@/client/queries/tasks'
 import AssigneeList from '@/components/tasks/partials/AssigneeList.vue'
-import {getTaskIdentifier} from '@/models/task'
+import {getTaskIdentifier} from '@/helpers/task'
 import { camelCase } from 'change-case'
 import {isSavedFilterProject} from '@/client/queries/projects'
 import {useProjects} from '@/composables/useProjects'
@@ -416,8 +415,7 @@ const taskList = useTaskList(
 	() => props.projectId, 
 	() => props.viewId, 
 	sortBy.value,
-	// TaskFilterParams.expand is typed as a single value, but the query serializer accepts arrays at runtime
-	() => ['comment_count', 'is_unread'] as unknown as ExpandTaskFilterParam,
+	() => ['comment_count', 'is_unread'],
 )
 
 const {
@@ -427,7 +425,7 @@ const {
 	currentPage,
 	sortByParam,
 } = taskList
-const tasks: Ref<ITask[]> = taskList.tasks
+const tasks: Ref<TaskResponse[]> = taskList.tasks
 
 watch(
 	() => activeColumns.value,

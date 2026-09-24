@@ -10,7 +10,7 @@ import {parseBooleanProp} from '@/helpers/time/parseBooleanProp'
 import {useRouteFilters, type UseRouteFiltersReturn} from '@/composables/useRouteFilters'
 import {useGanttTaskList, type UseGanttTaskListReturn} from './useGanttTaskList'
 
-import type {TaskFilterParams} from '@/services/taskCollection'
+import type {TaskFilterParams} from '@/client/queries/tasks'
 
 import type {DateISO} from '@/types/DateISO'
 import type {DateKebab} from '@/types/DateKebab'
@@ -90,8 +90,7 @@ function ganttFiltersToApiParams(filters: GanttFilters): TaskFilterParams {
 		order_by: ['asc', 'asc', 'desc'],
 		filter: buildDateWindowFilterQuery(dateFrom, dateTo),
 		filter_include_nulls: filters.showTasksWithoutDates,
-		s: '',
-		expand: 'subtasks',
+		expand: ['subtasks'],
 	}
 }
 

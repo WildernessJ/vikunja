@@ -15,11 +15,12 @@ import {LINK_SHARE_HASH_PREFIX} from '@/constants/linkShareHash'
 // (gated behind canWrite there). Full-mounting the real view is the seam that
 // matters since the bug is about what actually lands in the DOM.
 const getMock = vi.hoisted(() => vi.fn())
-vi.mock('@/services/task', () => ({
-	default: class {
-		loading = false
-		get = getMock
-	},
+const patchMock = vi.hoisted(() => vi.fn())
+vi.mock('@/client/generated', async importOriginal => ({
+	...await importOriginal<typeof import('@/client/generated')>(),
+	tasksRead: getMock,
+	patchTasksRead: patchMock,
+	tasksMarkRead: vi.fn(async () => ({data: {}})),
 }))
 
 // Reactions.vue pulls in vuemoji-picker, which drags a browser-only
@@ -35,35 +36,33 @@ import {useBaseStore} from '@/stores/base'
 import {VueQueryPlugin} from '@tanstack/vue-query'
 import {queryClient} from '@/client/queryClient'
 import {normalizeProject, projectKeys} from '@/client/queries/projects'
+import {mapTaskEverywhere} from '@/client/queries/taskCache'
+import TaskPropertyChips from '@/components/tasks/partials/TaskPropertyChips.vue'
 
 const i18n = createI18n({legacy: false, locale: 'en', messages: {en}})
 
-function taskFixture(maxPermission: number) {
+function taskFixture(maxPermission: number, overrides: Record<string, unknown> = {}) {
 	return {
 		id: 1,
 		title: 'Test task',
-		projectId: 1,
-		maxPermission,
+		project_id: 1,
+		max_permission: maxPermission,
 		labels: [],
 		assignees: [],
 		reminders: [],
 		attachments: [],
-		relatedTasks: {},
+		related_tasks: {},
 		reactions: {},
 		comments: [],
-		repeatAfter: {amount: 0, type: 'days'},
-		repeatMode: 0,
-		percentDone: 0,
-		estimatedDuration: 0,
-		dueDate: null,
-		startDate: null,
-		endDate: null,
-		deadline: null,
-		hexColor: '',
+		repeat_after: 0,
+		repeat_mode: 0,
+		percent_done: 0,
+		estimated_duration: 0,
+		hex_color: '',
 		done: false,
-		isFavorite: false,
-		subscription: null,
-		isUnread: false,
+		is_favorite: false,
+		is_unread: false,
+		...overrides,
 	}
 }
 
@@ -110,7 +109,7 @@ const CATCH_ALL_ROUTES = [
 ]
 
 async function mountTaskDetail(maxPermission: number, navigation: string[] = ['/']) {
-	getMock.mockResolvedValue(taskFixture(maxPermission))
+	getMock.mockImplementation(async ({path}: {path: {task: number}}) => ({data: taskFixture(maxPermission, {id: path.task})}))
 
 	// Memory history never populates `state.back`, which is exactly what the back
 	// button reads - so the router has to run on the real History API here.
@@ -285,7 +284,7 @@ function seedProjects(ids: number[]) {
 // it needs the matched-route key RouterView provides, which a plain mount lacks.
 // `seedProjectIds` go into the project query cache before the view's first task load runs.
 async function mountInRouterView(navigation: string[], seedProjectIds: number[] = []) {
-	getMock.mockResolvedValue(taskFixture(PERMISSIONS.READ_WRITE))
+	getMock.mockImplementation(async ({path}: {path: {task: number}}) => ({data: taskFixture(PERMISSIONS.READ_WRITE, {id: path.task})}))
 
 	window.history.replaceState(null, '', '/')
 
@@ -321,7 +320,7 @@ async function mountInRouterView(navigation: string[], seedProjectIds: number[] 
 
 	const wrapper = mount(App, {
 		global: {
-			plugins: [router, i18n],
+			plugins: [router, i18n, [VueQueryPlugin, {queryClient}]],
 			stubs: CHILD_STUBS,
 		},
 	})
@@ -521,5 +520,66 @@ describe('TaskDetailView breadcrumb', () => {
 
 		expect(back).not.toHaveBeenCalled()
 		expect(push).not.toHaveBeenCalled()
+	})
+})
+
+// The view keeps an editable draft over the cached task: fields the chips edit stay local until
+// saved, the rest follows the cache, and a save or a different task reseeds the draft.
+describe('TaskDetailView draft', () => {
+	beforeEach(() => {
+		setActivePinia(createPinia())
+		queryClient.clear()
+		useAuthStore().setAuthenticated(true)
+		getMock.mockReset()
+		patchMock.mockReset()
+	})
+
+	function chipsTask(wrapper: Awaited<ReturnType<typeof mountTaskDetail>>['wrapper']) {
+		return wrapper.findComponent(TaskPropertyChips).props('task') as Record<string, unknown>
+	}
+
+	it('keeps an unsaved chip edit when the cached task changes and follows cache-owned fields', async () => {
+		const {wrapper} = await mountTaskDetail(PERMISSIONS.READ_WRITE, ['/tasks/1'])
+		const chips = wrapper.findComponent(TaskPropertyChips)
+
+		chips.vm.$emit('update:task', {...chipsTask(wrapper), due_date: '2024-02-02T10:00:00.000Z'})
+		await flushPromises()
+
+		mapTaskEverywhere(queryClient, 1, task => ({...task, labels: [{id: 2, title: 'Second'}]}))
+		await flushPromises()
+
+		expect(patchMock).not.toHaveBeenCalled()
+		expect(chipsTask(wrapper).due_date).toBe('2024-02-02T10:00:00.000Z')
+		expect(chipsTask(wrapper).labels).toEqual([{id: 2, title: 'Second'}])
+	})
+
+	it('reseeds the draft when the task id changes', async () => {
+		const {wrapper, router} = await mountTaskDetail(PERMISSIONS.READ_WRITE, ['/tasks/1'])
+		wrapper.findComponent(TaskPropertyChips).vm.$emit('update:task', {...chipsTask(wrapper), due_date: '2024-02-02T10:00:00.000Z'})
+		await flushPromises()
+
+		await router.push('/tasks/2')
+		await flushPromises()
+
+		expect(chipsTask(wrapper).id).toBe(2)
+		expect(chipsTask(wrapper).due_date).toBeUndefined()
+	})
+
+	it('reseeds the draft from the response of a save, keeping the fork fields', async () => {
+		patchMock.mockResolvedValue({data: taskFixture(PERMISSIONS.READ_WRITE, {
+			estimated_duration: 5400,
+			deadline: '2024-03-03T10:00:00Z',
+		})})
+		const {wrapper} = await mountTaskDetail(PERMISSIONS.READ_WRITE, ['/tasks/1'])
+
+		const saveEstimatedDuration = wrapper.findComponent(TaskPropertyChips).props('saveEstimatedDuration') as (value: number) => Promise<void>
+		await saveEstimatedDuration(5400)
+		await flushPromises()
+
+		expect(patchMock).toHaveBeenCalledOnce()
+		const body = patchMock.mock.calls[0][0].body as {path: string, value: unknown}[]
+		expect(body).toContainEqual({op: 'add', path: '/estimated_duration', value: 5400})
+		expect(chipsTask(wrapper).estimated_duration).toBe(5400)
+		expect(chipsTask(wrapper).deadline).toBe('2024-03-03T10:00:00Z')
 	})
 })

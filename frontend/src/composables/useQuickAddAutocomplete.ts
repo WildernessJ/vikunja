@@ -15,7 +15,7 @@ import {useLabels} from '@/composables/useLabels'
 import {useProjects} from '@/composables/useProjects'
 import {searchProjectUsers} from '@/client/queries/userSearch'
 import {getDisplayName} from '@/models/user'
-import {getHexColor} from '@/models/task'
+import {getHexColor} from '@/helpers/task'
 import type {UserWithId} from '@/models/user'
 
 export type AutocompleteKind = 'project' | 'label' | 'assignee'

@@ -40,7 +40,9 @@ describe('ProjectGantt.addGanttTask', () => {
 
 		await (wrapper.vm as unknown as {addGanttTask: (title: string) => Promise<void>}).addGanttTask('x')
 
-		const {startDate, endDate} = addTask.mock.calls[0][0] as {startDate: Date, endDate: Date}
+		const {start_date, end_date} = addTask.mock.calls[0][0] as {start_date: string, end_date: string}
+		const startDate = new Date(start_date)
+		const endDate = new Date(end_date)
 		expect(startDate.getHours()).toBe(0)
 		expect(dayjs(endDate).diff(startDate, 'day')).toBe(7)
 		expect([endDate.getHours(), endDate.getMinutes(), endDate.getSeconds(), endDate.getMilliseconds()])

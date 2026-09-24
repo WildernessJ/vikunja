@@ -84,7 +84,7 @@
 						<Multiselect
 							v-model="selectedTask"
 							:placeholder="$t('timeTracking.form.taskSearch')"
-							:loading="taskService.loading"
+							:loading="taskQuery.isFetching.value"
 							:search-results="foundTasks"
 							label="title"
 							@search="findTasks"
@@ -116,7 +116,7 @@
 </template>
 
 <script setup lang="ts">
-import {ref, computed, shallowReactive, watch, nextTick, onMounted} from 'vue'
+import {ref, computed, watch, nextTick, onMounted} from 'vue'
 import {useRoute, useRouter} from 'vue-router'
 import {useI18n} from 'vue-i18n'
 
@@ -129,8 +129,8 @@ import ProjectSearch from '@/components/tasks/partials/ProjectSearch.vue'
 import TimeEntryForm from '@/components/time-tracking/TimeEntryForm.vue'
 import TimeEntryList from '@/components/time-tracking/TimeEntryList.vue'
 
-import TaskService from '@/services/task'
-import TaskModel from '@/models/task'
+import {useTasks} from '@/composables/useTasks'
+import {ensureTask} from '@/client/queries/tasks'
 import {searchUsers} from '@/client/queries/userSearch'
 import {useUserSearch} from '@/composables/useUserSearch'
 import {useTitle} from '@/composables/useTitle'
@@ -139,7 +139,7 @@ import {useBaseStore} from '@/stores/base'
 import {useProjects} from '@/composables/useProjects'
 
 import type {ProjectResponse} from '@/client/queries/projects'
-import type {ITask} from '@/modelTypes/ITask'
+import type {TaskResponse} from '@/client/queries/tasks'
 import type {User as IUser} from '@/client/generated'
 import type {ITimeEntry} from '@/modelTypes/ITimeEntry'
 
@@ -174,7 +174,7 @@ const dateRange = ref<{dateFrom: Date | string | null, dateTo: Date | string | n
 	dateTo: 'now/d+1d',
 })
 const selectedProject = ref<ProjectResponse | null>(null)
-const selectedTask = ref<ITask | null>(null)
+const selectedTask = ref<TaskResponse | null>(null)
 const selectedUser = ref<IUser | null>(null)
 const filterModalOpen = ref(false)
 
@@ -201,15 +201,11 @@ const rangeLabel = computed(() => {
 	return t('input.datepickerRange.fromto', {from: dateValue(dateFrom), to: dateValue(dateTo)})
 })
 
-const taskService = shallowReactive(new TaskService())
-const foundTasks = ref<ITask[]>([])
-async function findTasks(query: string) {
-	if (query === '') {
-		foundTasks.value = []
-		return
-	}
-	foundTasks.value = await taskService.getAll({} as ITask, {s: query, sort_by: 'done'}) as ITask[]
-}
+const taskSearch = ref('')
+const taskQuery = useTasks(() => ({params: {q: taskSearch.value, sort_by: ['done']}}), {enabled: () => taskSearch.value !== ''})
+const foundTasks = taskQuery.tasks
+function findTasks(query: string) { taskSearch.value = query }
+
 
 const userSearch = ref('')
 const {users: foundUsers, isFetching: usersLoading} = useUserSearch(userSearch)
@@ -290,8 +286,8 @@ async function restoreFromQuery() {
 				.catch(() => { /* project gone — drop the filter */ })
 			: Promise.resolve(),
 		typeof q.task === 'string'
-			? taskService.get(new TaskModel({id: Number(q.task)}))
-				.then(t => { selectedTask.value = t as ITask })
+			? ensureTask(Number(q.task))
+				.then(t => { selectedTask.value = t })
 				.catch(() => { /* task gone — drop the filter */ })
 			: Promise.resolve(),
 		typeof q.user === 'string'

@@ -209,7 +209,7 @@ import {useI18n} from 'vue-i18n'
 
 import Message from '@/components/misc/Message.vue'
 import SingleTaskInProject from '@/components/tasks/partials/SingleTaskInProject.vue'
-import TaskModel from '@/models/task'
+import {createTaskDraft} from '@/helpers/task'
 
 import CSVMigrationService, {
 	type DetectionResult,
@@ -223,8 +223,7 @@ import CSVMigrationService, {
 import {useTitle} from '@/composables/useTitle'
 import {useMigrationStore} from '@/stores/migration'
 import {getErrorText} from '@/message'
-import type {Priority} from '@/constants/priorities'
-import type {Label} from '@/client/generated'
+import {CSV_ATTRIBUTE_LABEL_KEYS} from './csvAttributeLabels'
 
 type Step = 'upload' | 'mapping' | 'success'
 
@@ -264,16 +263,16 @@ const config = ref<ImportConfig>({
 
 const previewTasks = computed(() => {
 	if (!previewResult.value) return []
-	return previewResult.value.tasks.map((pt, i) => new TaskModel({
+	return previewResult.value.tasks.map((pt, i) => createTaskDraft({
 		id: -(i + 1),
 		title: pt.title || t('migrate.csv.untitled'),
 		description: pt.description || '',
 		done: pt.done,
-		dueDate: (pt.due_date || null) as unknown as Date | null,
-		startDate: (pt.start_date || null) as unknown as Date | null,
-		endDate: (pt.end_date || null) as unknown as Date | null,
-		priority: pt.priority as Priority,
-		labels: (pt.labels || []).map((l, li) => ({id: -(li + 1), title: l})) as Label[],
+		due_date: pt.due_date || undefined,
+		start_date: pt.start_date || undefined,
+		end_date: pt.end_date || undefined,
+		priority: pt.priority,
+		labels: (pt.labels || []).map((l, li) => ({id: -(li + 1), title: l})),
 	}))
 })
 
@@ -285,22 +284,8 @@ const hasValidMapping = computed(() => {
 	return config.value.mapping.some(m => m.attribute === 'title')
 })
 
-// Map snake_case attribute names to translation keys
 function getAttributeLabel(attribute: string): string {
-	const attributeMap: Record<string, string> = {
-		title: 'task.attributes.title',
-		description: 'task.attributes.description',
-		due_date: 'task.attributes.dueDate',
-		start_date: 'task.attributes.startDate',
-		end_date: 'task.attributes.endDate',
-		done: 'task.attributes.done',
-		priority: 'task.attributes.priority',
-		labels: 'task.attributes.labels',
-		reminder: 'task.attributes.reminders',
-		project: 'task.attributes.project',
-		ignore: 'migrate.csv.ignore',
-	}
-	return t(attributeMap[attribute] || attribute)
+	return t(CSV_ATTRIBUTE_LABEL_KEYS[attribute] || attribute)
 }
 
 function getDelimiterLabel(delimiter: string): string {

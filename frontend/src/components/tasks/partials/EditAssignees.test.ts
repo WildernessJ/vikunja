@@ -20,11 +20,9 @@ vi.mock('@/stores/auth', () => ({
 	useAuthStore: () => ({info: {id: 1}}),
 }))
 
-vi.mock('@/stores/tasks', () => ({
-	useTaskStore: () => ({
-		addAssignee: vi.fn(() => Promise.resolve()),
-		removeAssignee: vi.fn(() => Promise.resolve()),
-	}),
+vi.mock('@/client/queries/taskMutations', () => ({
+	useAddTaskAssigneeMutation: () => ({isPending: {value: false}, mutateAsync: vi.fn(() => Promise.resolve())}),
+	useRemoveTaskAssigneeMutation: () => ({isPending: {value: false}, mutateAsync: vi.fn(() => Promise.resolve())}),
 }))
 
 vi.mock('vue-i18n', async (importOriginal) => {

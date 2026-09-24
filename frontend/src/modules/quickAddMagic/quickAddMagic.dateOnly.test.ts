@@ -33,7 +33,7 @@ describe('parseTaskText with dateOnly', () => {
 		const withoutFlag = parseTaskText('call bob ~tomorrow', PrefixMode.Default, new Date(NOW), false)
 
 		expect(withFlag.reminders[0].reminder).toEqual(withoutFlag.reminders[0].reminder)
-		expect(withFlag.reminders[0].reminder?.getHours()).toBe(9)
+		expect(new Date(withFlag.reminders[0].reminder!).getHours()).toBe(9)
 	})
 
 	it('is a no-op when the flag is off', () => {

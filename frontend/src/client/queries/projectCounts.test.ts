@@ -2,26 +2,23 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 import {defineComponent, h} from 'vue'
 import {flushPromises, mount} from '@vue/test-utils'
 import {createPinia, setActivePinia} from 'pinia'
+import {VueQueryPlugin} from '@tanstack/vue-query'
 
-import type {ITask} from '@/modelTypes/ITask'
-
-const {getProjectCountsMock, taskUpdateMock} = vi.hoisted(() => ({
+const {getProjectCountsMock, sdk} = vi.hoisted(() => ({
 	getProjectCountsMock: vi.fn(),
-	taskUpdateMock: vi.fn(),
+	sdk: {
+		patchTasksRead: vi.fn(),
+		tasksCreate: vi.fn(),
+		tasksDelete: vi.fn(),
+		taskBucketUpdate: vi.fn(),
+	},
 }))
 
 vi.mock('@/services/projectCounts', () => ({getProjectCounts: getProjectCountsMock}))
-vi.mock('@/services/task', () => ({
-	default: class {
-		update = taskUpdateMock
-	},
-}))
+vi.mock('@/client/generated', () => sdk)
 vi.mock('@/stores/auth', () => ({
 	useAuthStore: () => ({authUser: {id: 1}, settings: {timezone: 'UTC'}}),
 }))
-vi.mock('@/stores/base', () => ({useBaseStore: () => ({})}))
-vi.mock('@/stores/kanban', () => ({useKanbanStore: () => ({ensureTaskIsInCorrectBucket: vi.fn()})}))
-vi.mock('@/stores/config', () => ({useConfigStore: () => ({})}))
 vi.mock('@/composables/useGlobalNow', async () => {
 	const {ref} = await import('vue')
 	return {useGlobalNow: () => ({now: ref(new Date()), update: vi.fn()})}
@@ -30,7 +27,12 @@ vi.mock('@/composables/useGlobalNow', async () => {
 import {queryClient} from '@/client/queryClient'
 import {useProjectCounts} from './projectCounts'
 import {useAppBadge} from '@/composables/useAppBadge'
-import {useTaskStore} from '@/stores/tasks'
+import {
+	createTaskMutationOptions,
+	deleteTaskMutationOptions,
+	moveTaskMutationOptions,
+	updateTaskMutationOptions,
+} from './taskMutations'
 
 const SidebarCount = defineComponent({
 	setup() {
@@ -47,6 +49,13 @@ const TodayBadge = defineComponent({
 	},
 })
 
+// Runs a mutation through the shared client exactly like a component's useMutation would.
+function run<TInput>(options: {mutationFn?: unknown}, input: TInput) {
+	return queryClient.getMutationCache().build(queryClient, options as never).execute(input as never)
+}
+
+const TASK = {id: 1, title: 'Task', project_id: 1, done: true}
+
 describe('project counts seam', () => {
 	const setAppBadge = vi.fn().mockResolvedValue(undefined)
 
@@ -54,7 +63,7 @@ describe('project counts seam', () => {
 		setActivePinia(createPinia())
 		queryClient.clear()
 		getProjectCountsMock.mockReset()
-		taskUpdateMock.mockReset()
+		Object.values(sdk).forEach(mock => mock.mockReset())
 		setAppBadge.mockClear()
 		Object.defineProperty(navigator, 'setAppBadge', {value: setAppBadge, configurable: true})
 	})
@@ -63,20 +72,27 @@ describe('project counts seam', () => {
 		queryClient.clear()
 	})
 
-	it('refreshes the sidebar count, Today count and app badge together after a task update', async () => {
+	it.each([
+		['update', () => run(updateTaskMutationOptions(), TASK)],
+		['create', () => run(createTaskMutationOptions(), {title: 'New', project_id: 1})],
+		['delete', () => run(deleteTaskMutationOptions(), 1)],
+		['bucket move', () => run(moveTaskMutationOptions(), {project: 1, view: 1, bucket: 2, task: TASK})],
+	])('refreshes the sidebar count, Today count and app badge together after a task %s', async (_label, mutate) => {
 		getProjectCountsMock.mockResolvedValueOnce({1: {open: 3, dueOverdue: 2}})
-		const sidebar = mount(SidebarCount)
-		const today = mount(TodayBadge)
+		const sidebar = mount(SidebarCount, {global: {plugins: [[VueQueryPlugin, {queryClient}]]}})
+		const today = mount(TodayBadge, {global: {plugins: [[VueQueryPlugin, {queryClient}]]}})
 		await flushPromises()
 
 		expect(sidebar.text()).toBe('2')
 		expect(today.text()).toBe('2')
 		expect(setAppBadge).toHaveBeenLastCalledWith(2)
 
-		// The task is marked done, so one fewer task is due.
-		taskUpdateMock.mockImplementationOnce(async (task: ITask) => task)
+		sdk.patchTasksRead.mockResolvedValue({data: TASK})
+		sdk.tasksCreate.mockResolvedValue({data: {...TASK, id: 2, done: false}})
+		sdk.tasksDelete.mockResolvedValue({data: {}})
+		sdk.taskBucketUpdate.mockResolvedValue({data: {bucket_id: 2, task: TASK}})
 		getProjectCountsMock.mockResolvedValueOnce({1: {open: 2, dueOverdue: 1}})
-		await useTaskStore().update({id: 1, done: true} as ITask)
+		await mutate()
 		await flushPromises()
 
 		expect(getProjectCountsMock).toHaveBeenCalledTimes(2)

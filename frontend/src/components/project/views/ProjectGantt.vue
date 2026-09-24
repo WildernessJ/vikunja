@@ -85,7 +85,7 @@ import {useGanttFilters} from '../../../views/project/helpers/useGanttFilters'
 import {PERMISSIONS} from '@/constants/permissions'
 
 import type {DateISO} from '@/types/DateISO'
-import type {ITask} from '@/modelTypes/ITask'
+import type {Task as ITask} from '@/client/generated'
 
 const props = defineProps<{
 	isLoadingProject: boolean,
@@ -125,9 +125,9 @@ const defaultTaskEndDate: DateISO = roundToNaturalDayBoundary(new Date(
 async function addGanttTask(title: ITask['title']) {
 	return await addTask({
 		title,
-		projectId: filters.value.projectId,
-		startDate: new Date(defaultTaskStartDate),
-		endDate: new Date(defaultTaskEndDate),
+		project_id: filters.value.projectId,
+		start_date: defaultTaskStartDate,
+		end_date: defaultTaskEndDate,
 	})
 }
 

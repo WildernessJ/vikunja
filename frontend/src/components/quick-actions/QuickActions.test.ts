@@ -11,14 +11,15 @@ import {useBaseStore} from '@/stores/base'
 import {normalizeProject, type ProjectResponse} from '@/client/queries/projects'
 import en from '@/i18n/lang/en.json'
 
-vi.mock('@/services/task', () => ({
-	default: class {
-		loading = false
-		getAll = vi.fn(async () => [])
-	},
+const sdk = vi.hoisted(() => ({
+	teamsList: vi.fn(async () => ({data: {items: []}})),
+	tasksList: vi.fn(async () => ({data: {items: []}})),
+	labelsList: vi.fn(async () => ({data: {items: [], total_pages: 1}})),
+	projectsList: vi.fn(async () => ({data: {items: [], total_pages: 1}})),
+	projectsRead: vi.fn(async () => ({data: {id: 1, title: 'Test'}})),
 }))
 
-vi.mock('@/client/generated', () => ({teamsList: vi.fn(async () => ({data: {items: []}}))}))
+vi.mock('@/client/generated', () => sdk)
 
 const i18n = createI18n({legacy: false, locale: 'en', messages: {en}})
 

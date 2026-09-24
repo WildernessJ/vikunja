@@ -5572,7 +5572,7 @@ export type AdminInviteLinksListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -5690,7 +5690,7 @@ export type AdminProjectsListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -5758,7 +5758,7 @@ export type AdminTeamsListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -5796,7 +5796,7 @@ export type AdminUsersListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -6417,7 +6417,7 @@ export type LabelsListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -7288,7 +7288,7 @@ export type NotificationsListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -7478,7 +7478,7 @@ export type ProjectsListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -7705,7 +7705,7 @@ export type ProjectTimeEntriesListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -7968,7 +7968,7 @@ export type SharesListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -8112,7 +8112,7 @@ export type ProjectTasksListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -8319,7 +8319,7 @@ export type ProjectTeamsListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -8442,7 +8442,7 @@ export type ProjectUsersListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -8597,7 +8597,7 @@ export type ProjectViewsListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -8795,7 +8795,7 @@ export type BucketsListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -8870,7 +8870,7 @@ export type ProjectViewBucketsTasksListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -9040,7 +9040,7 @@ export type ProjectViewTasksListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -9116,7 +9116,7 @@ export type WebhooksListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -9441,7 +9441,7 @@ export type TasksListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -9547,7 +9547,7 @@ export type TaskTimeEntriesListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -9730,7 +9730,7 @@ export type TaskAssigneesListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -9855,7 +9855,7 @@ export type TaskAttachmentsListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -10008,7 +10008,7 @@ export type TaskCommentsListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -10250,7 +10250,7 @@ export type TaskLabelsListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -10501,7 +10501,7 @@ export type TeamsListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -10802,7 +10802,7 @@ export type TemplatesListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -10990,7 +10990,7 @@ export type TimeEntriesListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -11262,7 +11262,7 @@ export type TokensListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -11381,7 +11381,7 @@ export type BotsListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -11820,7 +11820,7 @@ export type SessionsListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -12093,7 +12093,7 @@ export type CaldavTokensListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -12311,7 +12311,7 @@ export type UserWebhooksListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**

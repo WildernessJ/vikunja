@@ -4,10 +4,9 @@ import {parseTaskText, PrefixMode} from '@/modules/quickAddMagic'
 import {useDateOnly} from '@/composables/useDateOnly'
 import {parseSubtasksViaIndention} from '@/helpers/parseSubtasksViaIndention'
 import {resolveOverride} from '@/helpers/resolveOverride'
-import type {Label} from '@/client/generated'
+import type {Label, TaskReminder} from '@/client/generated'
 import type {ProjectResponse} from '@/client/queries/projects'
-import type {ITaskReminder} from '@/modelTypes/ITaskReminder'
-import type {CreateNewTaskOverrides} from '@/stores/tasks'
+import type {QuickAddOverrides} from '@/helpers/task'
 
 // See resolveOverride for the present-vs-absent precedence rule this composer's
 // chips rely on.
@@ -17,11 +16,11 @@ export interface ComposerOverrides {
 	labels?: Label[],
 	project?: ProjectResponse | null,
 	description?: string,
-	reminders?: ITaskReminder[],
+	reminders?: TaskReminder[],
 }
 
 const EMPTY_LABEL_LIST: Label[] = []
-const EMPTY_REMINDER_LIST: ITaskReminder[] = []
+const EMPTY_REMINDER_LIST: TaskReminder[] = []
 
 export function useQuickAddComposer(title: Ref<string>, mode: Ref<PrefixMode>) {
 	const {store: dateOnly} = useDateOnly()
@@ -55,7 +54,7 @@ export function useQuickAddComposer(title: Ref<string>, mode: Ref<PrefixMode>) {
 		() => overrides.project !== undefined ? null : parsed.value.project,
 	)
 	const effectiveRepeats = computed(() => parsed.value.repeats ?? parsed.value.rruleRepeat)
-	const effectiveReminders = computed<ITaskReminder[]>(
+	const effectiveReminders = computed<TaskReminder[]>(
 		() => overrides.reminders ?? (parsed.value.reminders.length > 0
 			? parsed.value.reminders
 			: EMPTY_REMINDER_LIST),
@@ -73,8 +72,8 @@ export function useQuickAddComposer(title: Ref<string>, mode: Ref<PrefixMode>) {
 		(Object.keys(overrides) as (keyof ComposerOverrides)[]).forEach(key => delete overrides[key])
 	}
 
-	function toStoreOverrides(): CreateNewTaskOverrides {
-		const result: CreateNewTaskOverrides = {}
+	function toStoreOverrides(): QuickAddOverrides {
+		const result: QuickAddOverrides = {}
 		if (overrides.dueDate !== undefined) {
 			result.dueDate = overrides.dueDate
 		}

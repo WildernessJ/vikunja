@@ -119,12 +119,12 @@
 </template>
 
 <script setup lang="ts">
-import {type ComponentPublicInstance, computed, ref, shallowReactive, watch, watchEffect, onBeforeUnmount} from 'vue'
+import {type ComponentPublicInstance, computed, ref, watch, watchEffect, onBeforeUnmount} from 'vue'
 import {useQuickAddMode} from '@/composables/useQuickAddMode'
 import {useI18n} from 'vue-i18n'
 import {useRouter} from 'vue-router'
 
-import TaskService from '@/services/task'
+import {useTasks} from '@/composables/useTasks'
 import {useQueries} from '@tanstack/vue-query'
 import {teamsQuery, useCreateTeamMutation} from '@/client/queries/teams'
 import type {Label, Team as ITeam} from '@/client/generated'
@@ -133,13 +133,12 @@ import {refDebounced} from '@vueuse/core'
 import BaseButton from '@/components/base/BaseButton.vue'
 import QuickAddMagic from '@/components/tasks/partials/QuickAddMagic.vue'
 import XLabel from '@/components/tasks/partials/Label.vue'
-import TaskModel from '@/models/task'
 import SingleTaskInlineReadonly from '@/components/tasks/partials/SingleTaskInlineReadonly.vue'
 
 import {useBaseStore} from '@/stores/base'
 import {useProjects} from '@/composables/useProjects'
 import {useCurrentProject} from '@/composables/useCurrentProject'
-import {useTaskStore} from '@/stores/tasks'
+import {useQuickAddTask} from '@/composables/useQuickAddTask'
 import {useAuthStore} from '@/stores/auth'
 import {useLabels} from '@/composables/useLabels'
 
@@ -147,8 +146,8 @@ import {getHistory} from '@/modules/projectHistory'
 import {parseTaskText, PREFIXES, PrefixMode} from '@/modules/quickAddMagic'
 import {success} from '@/message'
 
-import type {ITask} from '@/modelTypes/ITask'
-import type {TaskFilterParams} from '@/services/taskCollection'
+import type {Task as ITask} from '@/client/generated'
+import type {TaskFilterParams} from '@/client/queries/tasks'
 import {
 	createProjectDraft,
 	isSavedFilterProject,
@@ -164,7 +163,7 @@ const projectList = useProjects()
 const createProjectMutation = useCreateProjectMutation()
 const {currentProject: selectedProject} = useCurrentProject()
 const {filterLabelsByQuery, getLabelsByExactTitles} = useLabels()
-const taskStore = useTaskStore()
+const {createNewTask} = useQuickAddTask()
 const authStore = useAuthStore()
 
 const {isQuickAddMode} = useQuickAddMode()
@@ -195,8 +194,14 @@ enum SEARCH_MODE {
 const query = ref('')
 const selectedCmd = ref<Command | null>(null)
 
-const foundTasks = ref<DoAction<ITask>[]>([])
-const taskService = shallowReactive(new TaskService())
+const taskSearchParams = ref<TaskFilterParams | null>(null)
+const taskQuery = useTasks(
+	() => ({params: taskSearchParams.value ?? {}}),
+	{enabled: () => taskSearchParams.value !== null},
+)
+const foundTasks = computed(() => taskSearchParams.value
+	? taskQuery.tasks.value.map(task => ({...task, type: ACTION_TYPE.TASK}))
+	: [])
 
 const createTeamMutation = useCreateTeamMutation()
 
@@ -340,7 +345,7 @@ function isDone(item: unknown): boolean {
 }
 
 const loading = computed(() =>
-	taskService.loading ||
+	taskQuery.isFetching.value ||
 	projectList.isLoading ||
 	teamSearchLoading.value || createTeamMutation.isPending.value,
 )
@@ -463,7 +468,7 @@ function searchTasks() {
 		searchMode.value !== SEARCH_MODE.TASKS &&
 		searchMode.value !== SEARCH_MODE.PROJECTS
 	) {
-		foundTasks.value = []
+		taskSearchParams.value = null
 		return
 	}
 
@@ -497,7 +502,7 @@ function searchTasks() {
 	}
 
 	const params: Partial<TaskFilterParams> = {
-		s: text,
+		q: text,
 		// undone tasks first, most relevant first within each group (relevance is
 		// only honored on backends that can score the search, see the API docs)
 		sort_by: ['done', 'relevance'],
@@ -505,11 +510,7 @@ function searchTasks() {
 	}
 
 	taskSearchTimeout.value = setTimeout(async () => {
-		const r = await taskService.getAll(new TaskModel(), params) as DoAction<ITask>[]
-		foundTasks.value = r.map((t) => {
-			t.type = ACTION_TYPE.TASK
-			return t
-		})
+		taskSearchParams.value = params
 	}, 150)
 }
 
@@ -636,9 +637,9 @@ async function newTask() {
 	if (currentProject.value?.id && currentProject.value.id > 0) {
 		projectId = currentProject.value.id
 	}
-	const task = await taskStore.createNewTask({
+	const task = await createNewTask({
 		title: query.value,
-		projectId,
+		project_id: projectId,
 	})
 	success({message: t('task.createSuccess')})
 

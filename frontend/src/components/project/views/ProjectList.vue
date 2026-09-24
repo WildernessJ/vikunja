@@ -85,7 +85,6 @@
 								:show-project="!isPseudoProject && isTaskFromSubproject(getItemSlotProps(itemSlotProps).element, projectId)"
 								:all-tasks="allTasks"
 								@taskUpdated="updateTasks"
-								@taskDeleted="onTaskDeleted"
 							>
 								<span
 									v-if="canDragTasks && isPositionSorting"
@@ -109,6 +108,7 @@
 
 
 <script setup lang="ts">
+import {useUpdateTaskPositionMutation} from '@/client/queries/taskMutations'
 import {ref, computed, nextTick, onMounted, onBeforeUnmount, watch, toRef} from 'vue'
 import {useI18n} from 'vue-i18n'
 import draggable from 'zhyswan-vuedraggable'
@@ -124,7 +124,6 @@ import Pagination from '@/components/misc/Pagination.vue'
 import SortPopup from '@/components/project/partials/SortPopup.vue'
 
 import {useTaskList, defaultSortToSortBy, sortByToDefaultArrays, type SortBy} from '@/composables/useTaskList'
-import type {ExpandTaskFilterParam} from '@/services/taskCollection'
 import {createProjectViewUpdate, useUpdateProjectViewMutation} from '@/client/queries/projectViews'
 import {useProjects} from '@/composables/useProjects'
 import {useTaskDragToProject} from '@/composables/useTaskDragToProject'
@@ -133,15 +132,13 @@ import {shouldShowTaskInListView, isTaskFromSubproject} from '@/composables/useT
 import {getSubprojectRollupState, saveSubprojectRollupState, type SubprojectRollupState} from '@/helpers/subprojectRollupState'
 import {PERMISSIONS as Permissions} from '@/constants/permissions'
 import {calculateItemPosition} from '@/helpers/calculateItemPosition'
-import type {ITask} from '@/modelTypes/ITask'
+import type {TaskResponse} from '@/client/queries/tasks'
 import {isSavedFilterProject, type ProjectResponse} from '@/client/queries/projects'
 
 import {useAuthStore} from '@/stores/auth'
 import {useBaseStore} from '@/stores/base'
-import {useTaskStore} from '@/stores/tasks'
+import {useTaskDragState} from '@/composables/useTaskDragState'
 
-import TaskPositionService from '@/services/taskPosition'
-import TaskPositionModel from '@/models/taskPosition'
 
 const props = defineProps<{
 	isLoadingProject: boolean,
@@ -177,9 +174,9 @@ const {
 	() => projectId.value,
 	() => props.viewId,
 	() => defaultSortToSortBy(currentView.value?.default_sort_by ?? [], currentView.value?.default_order_by ?? []) ?? {position: 'asc'},
-	() => (projectId.value === -1
+	() => projectId.value === -1
 		? ['comment_count', 'is_unread']
-		: ['subtasks', 'comment_count', 'is_unread']) as unknown as ExpandTaskFilterParam,
+		: ['subtasks', 'comment_count', 'is_unread'],
 )
 const currentUserId = computed(() => authStore.info?.id ?? 0)
 
@@ -211,20 +208,19 @@ watch(rollupState, state => {
 	saveSubprojectRollupState(currentUserId.value, projectId.value, state)
 }, {immediate: true, deep: true})
 
-const taskPositionService = ref(new TaskPositionService())
+const positionMutation = useUpdateTaskPositionMutation()
 
-const tasks = ref<ITask[]>([])
-watch(
-	allTasks,
-	() => {
-		tasks.value = ([...allTasks.value]).filter(t => shouldShowTaskInListView(t, allTasks.value))
-	},
-)
+const dragTasks = ref<TaskResponse[] | null>(null)
+const tasks = computed({
+	get: () => dragTasks.value ?? allTasks.value.filter(task => shouldShowTaskInListView(task, allTasks.value)),
+	set: value => { dragTasks.value = value },
+})
+watch([projectId, () => props.viewId], () => { dragTasks.value = null })
 
 const isPositionSorting = computed(() => 'position' in sortByParam.value)
 
 const baseStore = useBaseStore()
-const taskStore = useTaskStore()
+const {setDraggedTask} = useTaskDragState()
 const {handleTaskDropToProject} = useTaskDragToProject()
 const {currentProject: project} = useCurrentProject()
 
@@ -288,97 +284,68 @@ async function saveDefaultSort(newSortBy: SortBy) {
 	sortByParam.value = newSortBy
 }
 
-function updateTaskList(newTasks: ITask[]) {
-	if (!isPositionSorting.value) {
-		// reload tasks with current filter and sorting
-		loadTasks()
-	} else {
-		allTasks.value = [
-			...newTasks,
-			...allTasks.value,
-		]
-	}
-
+function updateTaskList() {
 	baseStore.setHasTasks(true)
 }
 
-function updateTasks(updatedTask: ITask) {
-	if (projectId.value < 0) {
-		// Reload tasks to keep saved filter results in sync
-		loadTasks(false)
-		return
-	}
-
-	const idx = tasks.value.findIndex(t => t.id === updatedTask.id)
-	if (idx === -1) {
-		return
-	}
-
-	// Moved out of this project (e.g. via the context menu) — drop it rather than
-	// leave it visible here, matching the drag-to-project path in saveTaskPosition.
-	// Guard on the row's *previous* projectId so a cross-project subtask that was
-	// always foreign to this view isn't dropped on an unrelated edit.
-	if (tasks.value[idx].projectId === projectId.value && updatedTask.projectId !== projectId.value) {
-		tasks.value = tasks.value.filter(t => t.id !== updatedTask.id)
-		return
-	}
-
-	tasks.value[idx] = updatedTask
-}
-
-function onTaskDeleted(deletedTask: ITask) {
-	tasks.value = tasks.value.filter(t => t.id !== deletedTask.id)
+function updateTasks() {
+	if (projectId.value < 0) void loadTasks()
 }
 
 function handleDragStart(e: { item: HTMLElement }) {
 	drag.value = true
+	dragTasks.value = [...tasks.value]
 	const taskId = parseInt(e.item.dataset.taskId ?? '', 10)
 	const task = tasks.value.find(t => t.id === taskId)
 
 	if (task) {
-		taskStore.setDraggedTask(task)
+		setDraggedTask(task)
 	}
 }
 
 async function saveTaskPosition(e: { originalEvent?: MouseEvent, to: HTMLElement, from: HTMLElement, item: HTMLElement, newIndex: number }) {
 	drag.value = false
+	try {
 
-	// Check if dropped on a sidebar project
-	const {moved} = await handleTaskDropToProject(e, (task) => {
-		tasks.value = tasks.value.filter(t => t.id !== task.id)
-	})
+		// Check if dropped on a sidebar project
+		const {moved} = await handleTaskDropToProject(e, (task) => {
+			tasks.value = tasks.value.filter(t => t.id !== task.id)
+		})
 
-	if (moved) {
-		return
+		if (moved) {
+			return
+		}
+
+		// If dropped outside this list
+		if (e.to !== e.from) {
+			return
+		}
+
+		// e.newIndex is a DOM index: it counts elements still leaving the transition group, so it can
+		// point past the last task. The list is already reordered here, so resolve the task by its id.
+		const movedTaskId = parseInt(e.item.dataset.taskId ?? '', 10)
+		const newIndex = tasks.value.findIndex(t => t.id === movedTaskId)
+
+		if (newIndex === -1) {
+			return
+		}
+
+		const taskBefore = tasks.value[newIndex - 1] ?? null
+		const taskAfter = tasks.value[newIndex + 1] ?? null
+
+		const position = calculateItemPosition(
+			taskBefore !== null ? taskBefore.position : null,
+			taskAfter !== null ? taskAfter.position : null,
+		)
+
+		await positionMutation.mutateAsync({
+			position,
+			project_view_id: props.viewId,
+			taskId: movedTaskId,
+		})
+	} catch { /* Mutation reports the error. */ } finally {
+		dragTasks.value = null
 	}
-
-	// If dropped outside this list
-	if (e.to !== e.from) {
-		return
-	}
-
-	// e.newIndex is a DOM index: it counts elements still leaving the transition group, so it can
-	// point past the last task. The list is already reordered here, so resolve the task by its id.
-	const movedTaskId = parseInt(e.item.dataset.taskId ?? '', 10)
-	const newIndex = tasks.value.findIndex(t => t.id === movedTaskId)
-
-	if (newIndex === -1) {
-		return
-	}
-
-	const taskBefore = tasks.value[newIndex - 1] ?? null
-	const taskAfter = tasks.value[newIndex + 1] ?? null
-
-	const position = calculateItemPosition(taskBefore !== null ? taskBefore.position : null, taskAfter !== null ? taskAfter.position : null)
-
-	await taskPositionService.value.update(new TaskPositionModel({
-		position,
-		projectViewId: props.viewId,
-		taskId: movedTaskId,
-	}))
-	tasks.value = tasks.value.map(t => t.id === movedTaskId
-		? {...t, position}
-		: t)
 }
 
 const taskRefs = ref<(InstanceType<typeof SingleTaskInProject> | null)[]>([])
@@ -387,7 +354,7 @@ const focusedIndex = ref(-1)
 // zhyswan-vuedraggable ships no slot types, so the #item scoped slot props type as {}.
 // This reflects the shape it actually passes at runtime (SortableJS list item + index).
 interface ItemSlotProps {
-	element: ITask,
+	element: TaskResponse,
 	index: number,
 }
 

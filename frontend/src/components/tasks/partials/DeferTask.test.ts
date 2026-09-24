@@ -3,16 +3,9 @@ import {mount, flushPromises} from '@vue/test-utils'
 import {setActivePinia, createPinia} from 'pinia'
 import {createI18n} from 'vue-i18n'
 
-import type {ITask} from '@/modelTypes/ITask'
+import type {Task as ITask} from '@/client/generated'
 import en from '@/i18n/lang/en.json'
 
-const taskServiceUpdateMock = vi.fn()
-vi.mock('@/services/task', () => ({
-	default: class {
-		loading = false
-		update = taskServiceUpdateMock
-	},
-}))
 
 // A real ref: DeferTask reads the toggle through a computed, so a plain object would
 // let the first test's value stick.
@@ -24,11 +17,10 @@ vi.mock('@/composables/useDateOnly', async () => {
 })
 
 const taskStoreUpdateMock = vi.fn()
-vi.mock('@/stores/tasks', () => ({
-	useTaskStore: () => ({
-		update: taskStoreUpdateMock,
-	}),
-}))
+vi.mock('@/client/queries/taskMutations', async () => {
+	const {ref} = await import('vue')
+	return {useUpdateTaskMutation: () => ({mutateAsync: taskStoreUpdateMock, isPending: ref(false)})}
+})
 
 import DeferTask from './DeferTask.vue'
 
@@ -55,16 +47,14 @@ function mountDeferTask(task: ITask) {
 }
 
 function savedDueDate(call = 0): Date {
-	return taskStoreUpdateMock.mock.calls[call][0].dueDate
+	return new Date(taskStoreUpdateMock.mock.calls[call][0].due_date)
 }
 
 describe('DeferTask', () => {
 	beforeEach(() => {
 		setActivePinia(createPinia())
-		taskServiceUpdateMock.mockReset()
-		taskServiceUpdateMock.mockResolvedValue({id: 1, dueDate: new Date('2026-07-02T10:00:00.000Z')})
 		taskStoreUpdateMock.mockReset()
-		// onBeforeUnmount calls updateDueDate(), which reads newTask.dueDate off this mock.
+		// onBeforeUnmount calls updateDueDate(), which reads newTask.due_date off this mock.
 		// Echoing the saved task keeps lastValue in step, so the unmount tick is a no-op.
 		taskStoreUpdateMock.mockImplementation(async (task: ITask) => task)
 		dateOnlyMock.ref.value = false
@@ -75,28 +65,23 @@ describe('DeferTask', () => {
 		wrappers.splice(0).forEach(wrapper => wrapper.unmount())
 	})
 
-	// Guards the routing: deferring must call taskStore.update, not the raw
-	// service — that store action is where loadCounts() (Today count/badge
-	// refresh) is wired. The refresh effect itself is covered by live-verify.
-	it('reschedules through the task store, not the raw service', async () => {
-		const task = {id: 1, dueDate: new Date('2026-07-01T10:00:00.000Z')} as ITask
-		taskStoreUpdateMock.mockResolvedValueOnce({
-			...task,
-			dueDate: new Date('2026-07-02T10:00:00.000Z'),
-		})
+	// Guards the routing: deferring must go through the update mutation — its settle step is
+	// where the Today count/badge refresh is wired (see projectCounts.test.ts).
+	it('reschedules through the task update mutation', async () => {
+		const task = {id: 1, due_date: '2026-07-01T10:00:00.000Z'} as ITask
 
 		const wrapper = mountDeferTask(task)
 		;(wrapper.vm as unknown as {deferDays: (days: number) => void}).deferDays(1)
 		await flushPromises()
 
 		expect(taskStoreUpdateMock).toHaveBeenCalledOnce()
-		expect(taskServiceUpdateMock).not.toHaveBeenCalled()
+		expect(savedDueDate().toISOString()).toBe('2026-07-02T10:00:00.000Z')
 	})
 
 	describe('date-only mode', () => {
 		it('snaps a deferred date to the canonical end of day', async () => {
 			dateOnlyMock.ref.value = true
-			const wrapper = mountDeferTask({id: 1, dueDate: new Date(2026, 8, 10, 10, 0)} as ITask)
+			const wrapper = mountDeferTask({id: 1, due_date: new Date(2026, 8, 10, 10, 0).toISOString()} as ITask)
 
 			;(wrapper.vm as unknown as DeferVm).deferDays(1)
 			await flushPromises()
@@ -111,7 +96,7 @@ describe('DeferTask', () => {
 
 		it('does not re-save when the picked value resolves to the stored day', async () => {
 			dateOnlyMock.ref.value = true
-			const wrapper = mountDeferTask({id: 1, dueDate: new Date(2026, 8, 10, 23, 59, 59, 999)} as ITask)
+			const wrapper = mountDeferTask({id: 1, due_date: new Date(2026, 8, 10, 23, 59, 59, 999).toISOString()} as ITask)
 
 			;(wrapper.vm as unknown as DeferVm).dueDate = new Date(2026, 8, 10, 12, 0)
 			await (wrapper.vm as unknown as DeferVm).updateDueDate()
@@ -121,7 +106,7 @@ describe('DeferTask', () => {
 		})
 
 		it('keeps the existing time when the toggle is off', async () => {
-			const wrapper = mountDeferTask({id: 1, dueDate: new Date(2026, 8, 10, 10, 0)} as ITask)
+			const wrapper = mountDeferTask({id: 1, due_date: new Date(2026, 8, 10, 10, 0).toISOString()} as ITask)
 
 			;(wrapper.vm as unknown as DeferVm).deferDays(1)
 			await flushPromises()
@@ -134,7 +119,7 @@ describe('DeferTask', () => {
 
 		it('opens on a task without a due date without saving', async () => {
 			dateOnlyMock.ref.value = true
-			const wrapper = mountDeferTask({id: 1, dueDate: null} as unknown as ITask)
+			const wrapper = mountDeferTask({id: 1} as ITask)
 
 			await (wrapper.vm as unknown as DeferVm).updateDueDate()
 			await flushPromises()

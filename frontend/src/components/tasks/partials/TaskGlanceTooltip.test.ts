@@ -21,12 +21,11 @@ vi.mock('@/helpers/time/formatDate', () => ({
 }))
 
 import TaskGlanceTooltip from './TaskGlanceTooltip.vue'
-import TaskModel from '@/models/task'
-import UserModel from '@/models/user'
+import {createTaskDraft} from '@/helpers/task'
 
 const HOVER_DELAY = 1000
 
-const task = new TaskModel({
+const task = createTaskDraft({
 	id: 1,
 	title: 'Test task',
 	identifier: '#1',
@@ -34,9 +33,9 @@ const task = new TaskModel({
 	description: '',
 	attachments: [],
 	labels: [],
-	dueDate: null,
-	created: new Date(),
-	createdBy: new UserModel({id: 1, username: 'test', name: 'Test User'}),
+	due_date: '',
+	created: new Date().toISOString(),
+	created_by: {id: 1, username: 'test', name: 'Test User'},
 })
 
 function mountTooltip() {

@@ -2,6 +2,8 @@ import {describe, it, expect, vi, beforeEach} from 'vitest'
 import {defineComponent, h} from 'vue'
 import {mount, flushPromises} from '@vue/test-utils'
 import {createPinia, setActivePinia} from 'pinia'
+
+const getAll = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => ({data: {items: [], page: 1, total_pages: 1}})))
 import {createRouter, createMemoryHistory, type Router} from 'vue-router'
 import {createI18n} from 'vue-i18n'
 import {VueQueryPlugin} from '@tanstack/vue-query'
@@ -28,21 +30,10 @@ vi.mock('@/client/generated', async (importOriginal) => {
 		...actual,
 		projectViewsUpdate: updateMock,
 		projectsRead: async () => ({data: server.project}),
+		projectViewTasksList: getAll,
 	}
 })
 
-const getAll = vi.fn(async (..._args: unknown[]) => [])
-vi.mock('@/services/taskCollection', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('@/services/taskCollection')>()
-	return {
-		...actual,
-		default: class {
-			loading = false
-			totalPages = 1
-			getAll = getAll
-		},
-	}
-})
 
 import ProjectList from './ProjectList.vue'
 import type {Project, ProjectView} from '@/client/generated'

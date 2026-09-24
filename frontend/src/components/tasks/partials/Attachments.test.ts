@@ -1,21 +1,26 @@
 import {describe, it, expect, vi, afterEach} from 'vitest'
 import {nextTick} from 'vue'
-import {mount, type VueWrapper} from '@vue/test-utils'
-import Attachments from './Attachments.vue'
+import {mount, flushPromises, type VueWrapper} from '@vue/test-utils'
+import {QueryClient, VueQueryPlugin} from '@tanstack/vue-query'
 import Modal from '@/components/misc/Modal.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
 import XButton from '@/components/input/Button.vue'
 import type {IAttachment} from '@/modelTypes/IAttachment'
-import type {ITask} from '@/modelTypes/ITask'
+import type {Task as ITask} from '@/client/generated'
+
+const sdk = vi.hoisted(() => ({
+	patchTasksRead: vi.fn(),
+}))
+
+vi.mock('@/client/generated', () => sdk)
 
 vi.mock('@/services/attachment', () => ({
 	default: class {
 		loading = false
 		uploadProgress = 0
+ getAll = async () => [attachment]
 	},
 }))
-
-vi.mock('@/stores/tasks', () => ({useTaskStore: () => ({isLoading: false})}))
 
 vi.mock('vue-i18n', async importOriginal => ({
 	...(await importOriginal<typeof import('vue-i18n')>()),
@@ -23,6 +28,8 @@ vi.mock('vue-i18n', async importOriginal => ({
 }))
 
 vi.mock('@/message', () => ({error: vi.fn(), success: vi.fn()}))
+
+import Attachments from './Attachments.vue'
 
 const attachment = {
 	id: 1,
@@ -42,6 +49,7 @@ function mountAttachments() {
 		attachTo: document.body,
 		props: {task},
 		global: {
+			plugins: [[VueQueryPlugin, {queryClient: new QueryClient({defaultOptions: {queries: {retry: false}}})}]],
 			components: {XButton, BaseButton, Modal},
 			stubs: {
 				Icon: true,
@@ -72,6 +80,7 @@ afterEach(() => {
 describe('Attachments delete modal', () => {
 	it('does not render the attachment name after the modal was closed', async () => {
 		const wrapper = mountAttachments()
+ await flushPromises()
 
 		await wrapper.find('.attachment-actions [aria-label="task.attachment.deleteTooltip"]').trigger('click')
 		await nextTick()

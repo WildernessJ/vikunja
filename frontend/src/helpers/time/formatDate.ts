@@ -37,11 +37,11 @@ export const formatDate = (date: Date | string | null | undefined, f: string) =>
 	return dayjs(parsed).locale(locale).format(f)
 }
 
-export function formatDateLong(date: Date | string | null, dateOnly = false) {
+export function formatDateLong(date: Date | string | null | undefined, dateOnly = false) {
 	return formatDate(date, dateOnly ? 'LL' : 'LLLL')
 }
 
-export function formatDateShort(date: Date | string | null) {
+export function formatDateShort(date: Date | string | null | undefined) {
 	return formatDate(date, 'lll')
 }
 

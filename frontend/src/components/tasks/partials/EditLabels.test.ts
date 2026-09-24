@@ -19,12 +19,9 @@ vi.mock('@/client/queries/labels', () => ({
 	}),
 }))
 
-vi.mock('@/stores/tasks', () => ({
-	useTaskStore: () => ({
-		isLoading: false,
-		addLabel: addLabelMock,
-		removeLabel: vi.fn(() => Promise.resolve()),
-	}),
+vi.mock('@/client/queries/taskMutations', () => ({
+	useAddTaskLabelMutation: () => ({isPending: {value: false}, mutateAsync: addLabelMock}),
+	useRemoveTaskLabelMutation: () => ({isPending: {value: false}, mutateAsync: vi.fn(() => Promise.resolve())}),
 }))
 
 vi.mock('vue-i18n', async (importOriginal) => {

@@ -1,4 +1,4 @@
-import {queryOptions, useMutation} from '@tanstack/vue-query'
+import {queryOptions, useMutation, type QueryClient} from '@tanstack/vue-query'
 
 import {
 	projectsCreate,
@@ -24,6 +24,7 @@ import {i18n} from '@/i18n'
 
 import {contextMutationOptions} from './contextMutation'
 import {fetchAllPages} from './fetchAllPages'
+import {API_MAX_PER_PAGE} from './pagination'
 
 export type ProjectResponse = Omit<Project,
 	'id' |
@@ -154,7 +155,7 @@ function partitionProjects(projects: Project[]): ProjectListResult {
 
 async function fetchAllProjects(): Promise<ProjectListResult> {
 	const projects = await fetchAllPages(async page => (await projectsList({
-		query: {is_archived: true, expand: 'permissions', page, per_page: 1000},
+		query: {is_archived: true, expand: 'permissions', page, per_page: API_MAX_PER_PAGE},
 	})).data)
 	return partitionProjects(projects)
 }
@@ -194,8 +195,8 @@ export function refreshProject(id: number): Promise<ProjectResponse> {
 	return queryClient.fetchQuery({...projectQuery(id), staleTime: 0})
 }
 
-export function getCachedProject(id: number): ProjectResponse | undefined {
-	const list = queryClient.getQueryData<ProjectListResult>(projectKeys.list())
+export function getCachedProject(id: number, client: QueryClient = queryClient): ProjectResponse | undefined {
+	const list = client.getQueryData<ProjectListResult>(projectKeys.list())
 
 	// Pseudo projects have no detail endpoint, so the navigation list is their only source.
 	if (id === -1) {
@@ -205,7 +206,7 @@ export function getCachedProject(id: number): ProjectResponse | undefined {
 		return list?.savedFilterProjects.find(project => project.id === id)
 	}
 
-	return queryClient.getQueryData<ProjectResponse>(projectKeys.detail(id))
+	return client.getQueryData<ProjectResponse>(projectKeys.detail(id))
 		?? list?.projects.find(project => project.id === id)
 }
 

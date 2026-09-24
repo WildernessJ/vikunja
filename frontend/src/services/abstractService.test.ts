@@ -2,21 +2,30 @@ import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest'
 import {AxiosError} from 'axios'
 import type {AxiosInstance, AxiosRequestConfig} from 'axios'
 
-import AbstractService from './abstractService'
 import AttachmentService from './attachment'
-import BucketService from './bucket'
-import TaskService from './task'
-import TaskModel from '@/models/task'
+import AbstractService from './abstractService'
+import AbstractModel from '@/models/abstractModel'
+
 import {removeToken, refreshToken, saveToken} from '@/helpers/auth'
 import type {IAttachment} from '@/modelTypes/IAttachment'
-import type {IBucket} from '@/modelTypes/IBucket'
+class TestModel extends AbstractModel {
+ id = 0
+ projectId = 0
+ title = ''
+ hexColor = ''
+ dueDate: Date | null = null
+ constructor(data: Partial<TestModel>) { super(); Object.assign(this, data) }
+}
+class TestService extends AbstractService<TestModel> {
+ constructor() { super({create: '/projects/{projectId}/test', update: '/test/{id}'}) }
+ modelFactory(data: Partial<TestModel>) { return new TestModel(data) }
+ beforeCreate(model: TestModel) { return new TestModel({...model, hexColor: model.hexColor.replace('#', '')}) }
+}
 
 vi.mock('@/helpers/auth', async (importActual) => ({
 	...await importActual<typeof import('@/helpers/auth')>(),
 	refreshToken: vi.fn(),
 }))
-
-class TestService extends AbstractService {}
 
 describe('AbstractService.setLoading ref-counting', () => {
 	beforeEach(() => {
@@ -186,7 +195,7 @@ describe('payload transforms on a retried request', () => {
 	afterEach(() => removeToken())
 
 	it('does not transform an already serialized payload again', async () => {
-		const service = new BucketService()
+		const service = new TestService()
 		const requests = failOnceWith401(service)
 
 		await service.update({
@@ -195,7 +204,7 @@ describe('payload transforms on a retried request', () => {
 			projectViewId: 400,
 			title: 'Doing',
 			tasks: [],
-		} as unknown as IBucket)
+		} as unknown as TestModel)
 
 		expect(requests).toHaveLength(2)
 		expect(requests[1].data).toBe(requests[0].data)
@@ -203,10 +212,10 @@ describe('payload transforms on a retried request', () => {
 	})
 
 	it('does not transform the payload of a retried create request again', async () => {
-		const service = new TaskService()
+		const service = new TestService()
 		const requests = failOnceWith401(service)
 
-		await service.create(new TaskModel({
+		await service.create(new TestModel({
 			projectId: 26,
 			title: 'test',
 			hexColor: '#ffffff',
