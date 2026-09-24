@@ -10,9 +10,6 @@ again with `/hooks`.
 
 ## Corrections to AGENTS.md
 
-- Frontend layout: `src/models/` holds **model classes**; the TypeScript interfaces for
-  them live in `src/modelTypes/` (`AGENTS.md` no longer lists either — upstream trimmed its
-  layout section in v2.6.0; kept here because the split still trips people up).
 - i18n: frontend strings (`frontend/src/i18n/lang`) and API strings (`pkg/i18n/lang`) are
   two independent trees with no shared keys and no cross-check — if a change surfaces text
   on **both** a UI element (toast/label) **and** an API/notification (email), add the
