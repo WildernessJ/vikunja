@@ -130,6 +130,11 @@ const router = createRouter({
 					},
 				},
 				{
+					path: '/user/settings/mcp',
+					name: 'user.settings.mcp',
+					component: () => import('@/views/user/settings/Mcp.vue'),
+				},
+				{
 					path: '/user/settings/data-export',
 					name: 'user.settings.data-export',
 					component: () => import('@/views/user/settings/DataExport.vue'),
@@ -537,6 +542,14 @@ const router = createRouter({
 					name: 'admin.projects',
 					component: () => import('@/views/admin/ProjectsView.vue'),
 				},
+				{
+					path: 'invite-links',
+					name: 'admin.inviteLinks',
+					component: () => import('@/views/admin/InviteLinksView.vue'),
+					meta: {
+						requiresUserInvites: true,
+					},
+				},
 			],
 		},
 	],
@@ -687,6 +700,15 @@ router.beforeEach(async (to, from) => {
 		}
 		const isAdmin = authStore.info?.isAdmin === true
 		if (!featureOn || !isAdmin) {
+			return {name: 'not-found'}
+		}
+	}
+
+	if (to.meta?.requiresUserInvites) {
+		const baseStore = useBaseStore()
+		await baseStore.appReady
+		const configStore = useConfigStore()
+		if (!configStore.isProFeatureEnabled(PRO_FEATURE.USER_INVITES)) {
 			return {name: 'not-found'}
 		}
 	}

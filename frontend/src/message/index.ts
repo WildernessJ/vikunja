@@ -27,6 +27,9 @@ interface ErrorLike {
 	message?: string
 	cause?: {
 		message?: string
+		response?: {
+			data?: ErrorResponseData
+		}
 	}
 }
 
@@ -51,8 +54,9 @@ export function getErrorText(r: unknown): string {
 	// v2 errors are RFC 9457 problem+json, which carries `detail` instead of `message`.
 	let message = data?.message || data?.detail || err.message || ''
 
-	if (typeof err.cause?.message !== 'undefined') {
-		message += ' ' + err.cause.message
+	const causeMessage = err.cause?.response?.data?.message ?? err.cause?.message
+	if (typeof causeMessage !== 'undefined') {
+		message += ' ' + causeMessage
 	}
 
 	return message

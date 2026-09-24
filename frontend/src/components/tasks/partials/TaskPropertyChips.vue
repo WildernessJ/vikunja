@@ -150,7 +150,6 @@
 			:label="remindersChipLabel"
 			:is-set="task.reminders.length > 0"
 			:disabled="!canWrite"
-			has-overflow
 			ghost-when-unset
 		>
 			<Reminders

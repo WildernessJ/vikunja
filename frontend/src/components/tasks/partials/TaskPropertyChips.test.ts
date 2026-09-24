@@ -20,6 +20,10 @@ vi.mock('vue-i18n', () => ({
 
 import TaskPropertyChips from './TaskPropertyChips.vue'
 
+// happy-dom has no Popover API; Popup only needs the calls to exist.
+HTMLElement.prototype.showPopover ??= function showPopover() {}
+HTMLElement.prototype.hidePopover ??= function hidePopover() {}
+
 function baseTask(): ITask {
 	return {
 		id: 1,

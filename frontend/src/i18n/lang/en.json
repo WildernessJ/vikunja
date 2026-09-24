@@ -125,7 +125,10 @@
       "registrationDisabled": "Registration is disabled.",
       "passwordResetTokenMissing": "Password reset token is missing.",
       "registrationFailed": "An error occurred during registration. Please check your input and try again.",
-      "registrationConfirmEmail": "Your account was created successfully! Please check your inbox and click the link in the confirmation email before logging in."
+      "registrationConfirmEmail": "Your account was created successfully! Please check your inbox and click the link in the confirmation email before logging in.",
+      "inviteInvalid": "This invite link is invalid or expired.",
+      "inviteLoadFailed": "Could not load this invitation. Please try again.",
+      "inviteTeams": "You will join: {teams}"
     },
     "settings": {
       "bots": {
@@ -335,6 +338,7 @@
         "90d": "90 Days",
         "permissionExplanation": "Permissions allow you to scope what an api token is allowed to do.",
         "titleRequired": "The title is required",
+        "expiryInvalid": "Please pick an expiry date in the future.",
         "permissionRequired": "Please select at least one permission from the list.",
         "expired": "This token has expired {ago}.",
         "tokenCreatedSuccess": "Here is your new api token: {token}",
@@ -371,6 +375,50 @@
         },
         "deleteSuccess": "Session revoked successfully. It may take up to 10 minutes for the session to fully expire.",
         "noOtherSessions": "No other active sessions."
+      },
+      "mcp": {
+        "intro": "Connect an AI assistant to your tasks, projects, and labels with the Model Context Protocol (MCP).",
+        "more": "More information about MCP in Vikunja",
+        "endpoint": "MCP endpoint",
+        "tokens": "MCP tokens",
+        "manageTokens": "Manage all API tokens",
+        "created": "Your MCP token is ready. Choose your client below to connect it.",
+        "client": "Which client do you use?",
+        "chooseClient": "Choose a client",
+        "clientHelp": "{client} setup guide",
+        "typedPreset": "Typed tools read + write",
+        "clients": {
+          "claudeCode": {
+            "command": "Run this command in a terminal: {value}",
+            "verify": "Start a Claude Code session and run /mcp to check the connection."
+          },
+          "codex": {
+            "environment": "Set the token in your shell environment: {value}",
+            "command": "Add the MCP server: {value}",
+            "config": "Alternatively, add this to ~/.codex/config.toml after setting the environment variable: {value}",
+            "note": "Start Codex from the shell where you set VIKUNJA_MCP_TOKEN. Set it again in each new shell, or store it securely in your shell environment."
+          },
+          "claudeDesktop": {
+            "open": "Open Customize → Connectors → Add custom connector. On Team or Enterprise, an owner adds it under Organization settings → Connectors.",
+            "url": "Name the connector Vikunja and enter this URL: {value}",
+            "auth": "Set Authentication to No sign-in.",
+            "header": "Under Request headers, choose authorization and paste this full value, including Bearer and the space, then add the connector: {value}",
+            "beta": "Request headers are in beta for a limited set of organizations. If this section is missing, connecting Vikunja is not available for your account yet."
+          },
+          "mistral": {
+            "open": "In the sidebar on the left open Context → Connectors → Add Connector → Add Custom Connector.",
+            "url": "Name the connector Vikunja, enter this URL, and select Connect: {value}",
+            "token": "Choose HTTP Bearer authentication and paste this token: {value}"
+          },
+          "chatgpt": {
+            "unavailable": "ChatGPT requires OAuth to connect to Vikunja. MCP OAuth is not supported yet, so this token cannot be used in ChatGPT."
+          },
+          "other": {
+            "title": "Other",
+            "url": "Use streamable HTTP transport with this endpoint: {value}",
+            "header": "Send this authorization header with every request: {value}"
+          }
+        }
       }
     },
     "deletion": {
@@ -819,6 +867,15 @@
     "importUpload": "To import data from {name} into Vikunja, click the button below to select a file.",
     "upload": "Upload file",
     "migrationStartedWillReciveEmail": "Vikunja will now import your lists/projects, tasks, notes, reminders and files from {service}. As this will take a while, we will send you an email once done. You can close this window now.",
+    "migrationFinished": "The import from {service} has finished. Everything it imported is now available in your projects.",
+    "migrationFailed": "The import from {service} failed: {reason}",
+    "failure": {
+      "reported": "The import from {service} failed. We have been notified about the error and are working on a fix.",
+      "interrupted": "The import from {service} was interrupted before it could finish. Please start it again.",
+      "credentials": "The credentials for {service} could not be verified. Please connect it again.",
+      "queue": "The import from {service} could not be queued. Please start it again.",
+      "upload": "The file you uploaded could not be stored. Please upload it again."
+    },
     "migrationInProgress": "A migration is currently in progress. Please wait until it is done.",
     "credentials": {
       "description": "Enter the address of your {name} instance and how Vikunja should log in. Vikunja imports all projects and boards you have access to; the credentials are only used for this import and are not stored.",
@@ -963,7 +1020,25 @@
       "thisWeekend": "This Weekend",
       "laterThisWeek": "Later This Week",
       "nextWeek": "Next Week",
-      "chooseDate": "Choose a date"
+      "nextWeekend": "Next Weekend",
+      "endOfMonth": "End of Month",
+      "inAMonth": "In a Month",
+      "chooseDate": "Choose a date",
+      "quickSelect": "Quick select",
+      "clear": "Clear",
+      "noDate": "No date set",
+      "previousMonth": "Previous month",
+      "nextMonth": "Next month",
+      "time": {
+        "hours": "Hours",
+        "minutes": "Minutes",
+        "hourUp": "One hour later",
+        "hourDown": "One hour earlier",
+        "minuteUp": "Five minutes later",
+        "minuteDown": "Five minutes earlier"
+      },
+      "month": "Month",
+      "year": "Year"
     },
     "editor": {
       "edit": "Edit",
@@ -1035,7 +1110,6 @@
       "from": "From",
       "fromto": "{from} to {to}",
       "date": "Date",
-      "openCalendar": "Open calendar",
       "ranges": {
         "today": "Today",
         "tomorrow": "Tomorrow",
@@ -1643,10 +1717,6 @@
       "newTeam": "New team"
     }
   },
-  "date": {
-    "altFormatLong": "j M Y, H:i",
-    "altFormatShort": "j M Y"
-  },
   "reaction": {
     "reactedWith": "{user} reacted with {value}",
     "reactedWithAnd": "{users} and {lastUser} reacted with {value}",
@@ -1683,9 +1753,14 @@
     "1035": "There is no pending email change to confirm.",
     "1036": "Please wait a minute before requesting another confirmation email.",
     "1038": "The custom scope set by the OIDC provider is malformed. Please make sure the openid provider sets the data correctly for your scope. Check especially to have set an oidcID.",
+    "1039": "This TOTP passcode has already been used. Please wait for the next passcode.",
+    "1040": "This account is locked due to too many failed login attempts. You can reset your password to unlock it.",
     "2001": "ID cannot be empty or 0.",
     "2002": "Some of the request data was invalid.",
     "2003": "The timezone '{timezone}' is invalid.",
+    "2005": "This invite link is invalid or expired.",
+    "2006": "This invite link does not exist.",
+    "2007": "Externally managed teams cannot be attached to an invite link.",
     "3001": "The project does not exist.",
     "3004": "You need to have read permissions on that project to perform that action.",
     "3005": "The project title cannot be empty.",
@@ -1753,6 +1828,7 @@
     "14011": "The provided file is not a valid zip file.",
     "14012": "The provided file does not contain any data.",
     "14013": "The export was created with a Vikunja version that is too old to import. Please create a new export with a more recent version.",
+    "14016": "The import configuration could not be parsed. Please make sure it is a valid JSON object.",
     "14201": "Planka rejected the provided credentials. Check the URL and the API key or username and password.",
     "14202": "The Planka account requires an extra login step (two-factor code or accepting the terms). Log in to Planka in the browser once, or use an API key instead of username and password.",
     "14203": "A Planka URL and either an API key or username and password are required.",
@@ -1864,6 +1940,28 @@
       "reassignTitle": "Reassign {title}",
       "reassignedSuccess": "Project owner reassigned.",
       "newOwnerLabel": "New owner"
+    },
+    "inviteLinks": {
+      "title": "Invite links",
+      "create": "Create invite link",
+      "name": "Link name",
+      "teams": "Teams to join",
+      "maxUses": "Maximum uses",
+      "unlimited": "Unlimited",
+      "uses": "Uses",
+      "expiresAt": "Expires at",
+      "neverExpires": "Never expires",
+      "createdBy": "Created by",
+      "skipEmailConfirm": "Skip email confirmation",
+      "shownOnce": "This link is shown only once. Copy it before closing this window.",
+      "url": "Invite link",
+      "copy": "Copy link",
+      "copied": "Link copied",
+      "delete": "Delete invite link",
+      "deleteConfirm": "Delete “{name}”? People will no longer be able to register with this link. Existing accounts will stay active.",
+      "deleted": "Invite link deleted.",
+      "empty": "No invite links yet. Create a link to invite people to this instance.",
+      "futureExpiry": "Choose an expiry in the future."
     }
   }
 }

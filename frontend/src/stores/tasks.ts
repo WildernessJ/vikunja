@@ -1,5 +1,6 @@
 import {computed, ref} from 'vue'
 import {acceptHMRUpdate, defineStore} from 'pinia'
+import {useMutation} from '@tanstack/vue-query'
 import router from '@/router'
 
 import TaskService from '@/services/task'
@@ -42,11 +43,12 @@ import {error, translate} from '@/message'
 import {taskLabelsCreate, taskLabelsDelete} from '@/client/generated'
 import type {Label} from '@/client/generated'
 import {
-	createLabel,
+	createLabelMutationOptions,
 	ensureLabels,
 	getLabelByExactTitle,
 	refreshLabels,
 } from '@/client/queries/labels'
+import {queryClient} from '@/client/queryClient'
 
 interface MatchedAssignee extends IUser {
 	match: string,
@@ -127,7 +129,7 @@ async function addLabelToTask(task: ITask, label: Label) {
 	}
 
 	const {data} = await taskLabelsCreate({
-		path: {projecttask: task.id},
+		path: {task: task.id},
 		body: {label_id: label.id},
 	})
 	task.labels.push(label)
@@ -164,6 +166,8 @@ export const useTaskStore = defineStore('task', () => {
 	const projectCountsStore = useProjectCountsStore()
 	const projectStore = useProjectStore()
 	const authStore = useAuthStore()
+	// Explicit client: store setup may run outside a component, where inject() is unavailable.
+	const createLabelMutation = useMutation(createLabelMutationOptions(), queryClient)
 	const configStore = useConfigStore()
 
 	const tasks = ref<{ [id: ITask['id']]: ITask }>({}) // TODO: or is this ITask[]
@@ -355,7 +359,7 @@ export const useTaskStore = defineStore('task', () => {
 		}
 
 		const {data} = await taskLabelsCreate({
-			path: {projecttask: taskId},
+			path: {task: taskId},
 			body: {label_id: label.id},
 		})
 		const {bucketIndex, taskIndex, task} = kanbanStore.getTaskById(taskId)
@@ -391,7 +395,7 @@ export const useTaskStore = defineStore('task', () => {
 		}
 
 		const {data} = await taskLabelsDelete({
-			path: {projecttask: taskId, label: label.id},
+			path: {task: taskId, label: label.id},
 		})
 		const {bucketIndex, taskIndex, task} = kanbanStore.getTaskById(taskId)
 		if (task === null || bucketIndex === null || taskIndex === null) {
@@ -441,7 +445,7 @@ export const useTaskStore = defineStore('task', () => {
 			let label = validateLabel(availableLabels, labelTitle)
 			if (typeof label === 'undefined') {
 				try {
-					label = await createLabel({
+					label = await createLabelMutation.mutateAsync({
 						title: labelTitle,
 						hex_color: getRandomColorHex(),
 					})

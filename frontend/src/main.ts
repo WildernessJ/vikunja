@@ -1,3 +1,4 @@
+import './client/inviteLink'
 import {createApp} from 'vue'
 import type {Component} from 'vue'
 import {VueQueryPlugin} from '@tanstack/vue-query'

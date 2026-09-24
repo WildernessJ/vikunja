@@ -40,6 +40,7 @@ const currentOldDatepickerValue = ref('')
 const currentDatepickerValue = ref('')
 const currentDatepickerPos = ref(0)
 const datePickerPopupOpen = ref(false)
+const datePickerAnchor = ref<HTMLElement | null>(null)
 
 // Create a custom extension for filter syntax highlighting
 const FilterHighlighter = Extension.create({
@@ -73,7 +74,13 @@ const DateClickHandler = Extension.create({
 							currentOldDatepickerValue.value = dateValue
 							currentDatepickerValue.value = dateValue
 							currentDatepickerPos.value = position
-							datePickerPopupOpen.value = true
+							datePickerAnchor.value = target
+							// This click light-dismissed an open picker on pointerup, but its toggle
+							// event only lands after us — reopen once that has settled.
+							datePickerPopupOpen.value = false
+							setTimeout(() => {
+								datePickerPopupOpen.value = true
+							})
 
 							return true
 						}
@@ -284,7 +291,7 @@ defineExpose({
 			v-model="currentDatepickerValue"
 			v-model:open="datePickerPopupOpen"
 			class="filter-datepicker"
-			:ignore-click-classes="['date-value']"
+			:anchor="datePickerAnchor"
 			@update:modelValue="updateDateInQuery"
 		/>
 	</div>

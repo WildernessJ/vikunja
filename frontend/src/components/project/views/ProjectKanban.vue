@@ -1170,6 +1170,8 @@ $filter-container-height: '1rem - #{$switch-view-height}';
 		border-end-start-radius: $radius;
 		border-end-end-radius: $radius;
 		transform: none;
+		// At fractional device pixel ratios the scroll clip ends below the sticky footer, showing a sliver of tasks
+		box-shadow: 0 1px 0 var(--grey-100);
 
 		.button {
 			background-color: transparent;

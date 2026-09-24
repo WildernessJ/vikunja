@@ -47,6 +47,7 @@ vi.mock('@/client/queries/labels', () => ({
 	ensureLabels: vi.fn().mockResolvedValue([]),
 	refreshLabels: vi.fn().mockResolvedValue([]),
 	createLabel: createLabelMock,
+	createLabelMutationOptions: () => ({mutationFn: createLabelMock}),
 	getLabelByExactTitle: (labels: Array<{title?: string}>, title: string) =>
 		labels.find(label => label.title?.toLowerCase() === title.toLowerCase()),
 }))

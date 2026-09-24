@@ -4,11 +4,13 @@
 		:class="{'is-unset': (ghostWhenUnset ?? false) && !(isSet ?? false)}"
 	>
 		<Popup
-			ref="popup"
-			:has-overflow="hasOverflow ?? false"
+			v-model:open="isOpen"
+			placement="bottom-start"
+			:anchor="triggerEl"
 		>
 			<template #trigger="{toggle}">
 				<SimpleButton
+					ref="triggerButton"
 					class="property-chip-button"
 					:disabled="disabled ?? false"
 					@click.stop="toggle()"
@@ -23,7 +25,10 @@
 				</SimpleButton>
 			</template>
 			<template #content="{close}">
-				<div class="property-chip-popup">
+				<div
+					v-if="isOpen"
+					class="property-chip-popup"
+				>
 					<slot :close="close" />
 				</div>
 			</template>
@@ -36,7 +41,7 @@
 </template>
 
 <script setup lang="ts">
-import {ref} from 'vue'
+import {computed, ref} from 'vue'
 import type {IconProp} from '@fortawesome/fontawesome-svg-core'
 
 import Popup from '@/components/misc/Popup.vue'
@@ -52,7 +57,6 @@ defineProps<{
 	isSet?: boolean,
 	disabled?: boolean,
 	showClear?: boolean,
-	hasOverflow?: boolean,
 	// Detail page's all-visible chip row needs a ghost/dashed look for unset
 	// properties; the composer keeps its current look unchanged (opt-in only).
 	ghostWhenUnset?: boolean,
@@ -62,12 +66,16 @@ defineEmits<{
 	clear: [],
 }>()
 
-const popup = ref<InstanceType<typeof Popup> | null>(null)
+const isOpen = ref(false)
+const triggerButton = ref<InstanceType<typeof SimpleButton> | null>(null)
+const triggerEl = computed<HTMLElement | null>(() => triggerButton.value?.$el ?? null)
 
 // Lets the field-open keyboard shortcuts (KeyL, KeyP, ...) open this chip's
 // popup imperatively, the same way clicking the trigger button does.
 defineExpose({
-	open: () => popup.value?.openImperatively(),
+	open: () => {
+		isOpen.value = true
+	},
 })
 </script>
 

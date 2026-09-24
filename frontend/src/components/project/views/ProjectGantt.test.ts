@@ -21,10 +21,6 @@ vi.mock('@/stores/base', () => ({
 	useBaseStore: () => ({currentProject: {id: 1, maxPermission: 2}}),
 }))
 
-vi.mock('@/helpers/useFlatpickrLanguage', () => ({
-	useFlatpickrLanguage: () => ({}),
-}))
-
 vi.mock('vue-i18n', async importOriginal => ({
 	...await importOriginal<typeof import('vue-i18n')>(),
 	useI18n: () => ({t: (key: string) => key}),

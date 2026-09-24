@@ -105,9 +105,14 @@
 				>
 					<Popup
 						v-if="task.dueDate !== null && task.dueDate.getTime() > 0"
+						placement="bottom-start"
+						:anchor="dueDateTriggerEl"
+						sheet-on-mobile
+						:sheet-title="$t('task.deferDueDate.title')"
 					>
 						<template #trigger="{toggle, isOpen}">
 							<BaseButton
+								ref="dueDateTrigger"
 								v-tooltip="formatDateLong(task.dueDate, dateOnly)"
 								class="dueDate"
 								:class="dueUrgency ? `urgency-${dueUrgency}` : undefined"
@@ -506,6 +511,8 @@ function onContextMenuTaskDeleted(deletedTask: ITask) {
 
 const taskRoot = ref<HTMLElement | null>(null)
 const taskLinkRef = ref<ComponentPublicInstance | null>(null)
+const dueDateTrigger = ref<InstanceType<typeof BaseButton> | null>(null)
+const dueDateTriggerEl = computed<HTMLElement | null>(() => dueDateTrigger.value?.$el ?? null)
 
 function hasTextSelected() {
 	const isTextSelected = window.getSelection()?.toString()
@@ -823,8 +830,10 @@ defineExpose({
 	background-color: var(--white);
 	box-shadow: var(--shadow-lg);
 	color: var(--text);
-	inset-block-start: unset;
-	padding: 1rem;
-	border: 1px solid var(--grey-200);
+
+	&.is-open {
+		padding: 1rem;
+		border: 1px solid var(--grey-200);
+	}
 }
 </style>

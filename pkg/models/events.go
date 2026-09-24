@@ -589,3 +589,17 @@ type TaskDoneChangedEvent struct {
 func (t *TaskDoneChangedEvent) Name() string {
 	return "task.done.changed"
 }
+
+type AdminInviteLinkCreatedEvent struct {
+	Link *UserInviteLink `json:"link"`
+	Doer *user.User      `json:"doer"`
+}
+
+func (e *AdminInviteLinkCreatedEvent) Name() string { return "admin.invite_link.created" }
+
+type AdminInviteLinkDeletedEvent struct {
+	Link *UserInviteLink `json:"link"`
+	Doer *user.User      `json:"doer"`
+}
+
+func (e *AdminInviteLinkDeletedEvent) Name() string { return "admin.invite_link.deleted" }

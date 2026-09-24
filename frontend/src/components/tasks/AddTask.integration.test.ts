@@ -31,11 +31,13 @@ const labelCache = vi.hoisted(() => ({value: [] as Array<{title?: string}>}))
 vi.mock('@/client/queries/labels', () => ({
 	ensureLabels: vi.fn(async () => labelCache.value),
 	refreshLabels: vi.fn(async () => labelCache.value),
-	createLabel: async (input: {title: string}) => {
-		const label = await labelCreateMock(input)
-		labelCache.value.push(label)
-		return label
-	},
+	createLabelMutationOptions: () => ({
+		mutationFn: async (input: {title: string}) => {
+			const label = await labelCreateMock(input)
+			labelCache.value.push(label)
+			return label
+		},
+	}),
 	getLabelByExactTitle: (labels: Array<{title?: string}>, title: string) =>
 		labels.find(label => label.title?.toLowerCase() === title.toLowerCase()),
 }))

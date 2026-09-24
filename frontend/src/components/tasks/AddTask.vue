@@ -141,7 +141,6 @@
 					:label="remindersChipLabel"
 					:is-set="overrides.reminders !== undefined"
 					:show-clear="overrides.reminders !== undefined"
-					has-overflow
 					@clear="clearOverride('reminders')"
 				>
 					<Reminders

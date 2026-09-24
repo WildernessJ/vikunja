@@ -7,6 +7,9 @@ import {getBrowserLanguage, i18n, setLanguage} from '@/i18n'
 import {objectToSnakeCase} from '@/helpers/case'
 import UserModel, {getDisplayName, invalidateAvatarCache} from '@/models/user'
 import AvatarService from '@/services/avatar'
+import type {RegisterUserRequestWritable} from '@/client/generated'
+import {registerViaInviteLink} from '@/client/inviteLink'
+import {parseValidationErrors, type ValidationError} from '@/helpers/parseValidationErrors'
 import UserSettingsService from '@/services/userSettings'
 import {getToken, refreshToken, removeToken, saveToken} from '@/helpers/auth'
 import {clearTaskCache} from '@/helpers/taskCache'
@@ -280,7 +283,7 @@ export const useAuthStore = defineStore('auth', () => {
 	 * Registers a new user and logs them in.
 	 * Not sure if this is the right place to put the logic in, maybe a separate js component would be better suited. 
 	 */
-	async function register(credentials: Credentials, language: string|null = null) {
+	async function register(credentials: Credentials, language: string|null = null, viaInvite = false) {
 		const HTTP = HTTPFactory()
 		setIsLoading(true)
 		
@@ -289,25 +292,33 @@ export const useAuthStore = defineStore('auth', () => {
 		}
 		
 		try {
-			await HTTP.post('register', {
-				...credentials,
-				language,
-			})
+			if (viaInvite) {
+				await registerViaInviteLink({...credentials, language})
+			} else {
+				await HTTP.post('register', {...credentials, language})
+			}
 			return await login(credentials)
 		} catch (e) {
-			const err = e as HTTPError
-			if (err.response?.data?.code === 2002 && err.response?.data?.invalid_fields?.[0]?.startsWith('language:')) {
-				return register(credentials, 'en')
+			const problem = ((e as HTTPError).response?.data ?? e) as ValidationError & {detail?: string}
+			if (problem.code === 2002 && parseValidationErrors(problem).language) {
+				return register(credentials, 'en', viaInvite)
 			}
 
-			if (err.response?.data?.message) {
-				throw err.response.data
+			if (problem.detail) {
+				throw {...problem, message: problem.detail}
+			}
+			if (problem.message) {
+				throw problem
 			}
 
 			throw e
 		} finally {
 			setIsLoading(false)
 		}
+	}
+
+	function registerWithInvite(credentials: RegisterUserRequestWritable) {
+		return register(credentials, null, true)
 	}
 
 	async function openIdAuth({provider, code, totpPasscode}: {provider: string, code: string, totpPasscode?: string}) {
@@ -497,18 +508,10 @@ export const useAuthStore = defineStore('auth', () => {
 				await logout()
 				return
 			}
-
-			const cause: {e: unknown, message?: string} = {e}
-
-			if (typeof err?.response?.data?.message !== 'undefined') {
-				cause.message = err.response.data.message
-			}
 			
 			console.error('Error refreshing user info:', e)
 
-			// cause keeps the {e, message} shape that message/index.ts reads as cause.message
-			// eslint-disable-next-line preserve-caught-error
-			throw new Error('Error while refreshing user info:', {cause})
+			throw new Error('Error while refreshing user info:', {cause: e})
 		}
 	}
 
@@ -696,6 +699,7 @@ export const useAuthStore = defineStore('auth', () => {
 
 		login,
 		register,
+		registerWithInvite,
 		openIdAuth,
 		handleDesktopOAuthTokens,
 		linkShareAuth,
