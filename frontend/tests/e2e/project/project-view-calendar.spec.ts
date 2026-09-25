@@ -164,8 +164,8 @@ test.describe('Project View Calendar', () => {
 		// Server-side proof: a start/end task (null due_date, but start/end set)
 		// must NOT be returned by the unscheduled fetch at all — the three-field
 		// null filter excludes it before the client guard ever runs.
-		const body = await (await unscheduledResponse).json() as Array<{id: number}>
-		expect(body.some(task => task.id === tasks[0].id)).toBe(false)
+		const body = await (await unscheduledResponse).json() as {items: Array<{id: number}> | null}
+		expect((body.items ?? []).some(task => task.id === tasks[0].id)).toBe(false)
 
 		// And it's absent from the panel.
 		await expect(page.locator('.calendar-unscheduled')).not.toContainText(tasks[0].title)
@@ -198,7 +198,7 @@ test.describe('Project View Calendar', () => {
 		await expect(chip).toBeVisible()
 
 		const updatePromise = page.waitForResponse(response =>
-			response.url().includes('/tasks/') && response.request().method() === 'POST',
+			response.url().includes('/tasks/') && response.request().method() === 'PATCH',
 		)
 		await html5DragTo(page, chip, target)
 		await updatePromise
@@ -223,7 +223,7 @@ test.describe('Project View Calendar', () => {
 		await expect(chip).toBeVisible()
 
 		const updatePromise = page.waitForResponse(response =>
-			response.url().includes('/tasks/') && response.request().method() === 'POST',
+			response.url().includes('/tasks/') && response.request().method() === 'PATCH',
 		)
 		await html5DragTo(page, chip, target)
 		await updatePromise
@@ -454,9 +454,8 @@ test.describe('Project View Calendar', () => {
 		}
 	})
 
-	// The truncation banners are driven by totalPages > 1, which the frontend
-	// reads from the x-pagination-total-pages response header
-	// (abstractService.ts). Real fixtures never paginate, so force the header.
+	// The truncation banners are driven by total_pages > 1 in the v2 list
+	// response body. Real fixtures never paginate, so force the field.
 	test('Shows the unscheduled truncation banner when that fetch is paginated', async ({authenticatedPage: page}) => {
 		const project = await createCalendarProject()
 
@@ -468,10 +467,7 @@ test.describe('Project View Calendar', () => {
 			const response = await route.fetch()
 			await route.fulfill({
 				response,
-				headers: {
-					...response.headers(),
-					'x-pagination-total-pages': '2',
-				},
+				json: {...await response.json(), total_pages: 2},
 			})
 		})
 
@@ -493,10 +489,7 @@ test.describe('Project View Calendar', () => {
 			const response = await route.fetch()
 			await route.fulfill({
 				response,
-				headers: {
-					...response.headers(),
-					'x-pagination-total-pages': '2',
-				},
+				json: {...await response.json(), total_pages: 2},
 			})
 		})
 
@@ -557,7 +550,7 @@ test.describe('Project View Calendar', () => {
 			await expect(chip).toBeVisible()
 
 			const updatePromise = page.waitForResponse(response =>
-				response.url().includes('/tasks/') && response.request().method() === 'POST',
+				response.url().includes('/tasks/') && response.request().method() === 'PATCH',
 			)
 			await html5DragTo(page, chip, target)
 			const updateResponse = await updatePromise

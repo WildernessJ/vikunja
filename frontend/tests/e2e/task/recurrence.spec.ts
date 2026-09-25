@@ -120,18 +120,18 @@ test.describe('Task recurrence', () => {
 
 		const create = page.waitForResponse(r =>
 			r.url().includes('/projects/1/tasks') &&
-			r.request().method() === 'PUT',
+			r.request().method() === 'POST',
 		)
 		await page.locator('.button').filter({hasText: 'Add'}).click()
 		const r = await create
-		const body = r.request().postDataJSON()
-		expect(body.title).toBe('water plants')
-		expect(body.repeat_mode).toBe(3)
-		expect(body.repeat_rrule).toBe('FREQ=WEEKLY;BYDAY=MO,FR')
+		// Asserted on the response: the v2 client re-wraps requests, so Playwright sees no post body.
+		const created = await r.json()
+		expect(created.title).toBe('water plants')
+		expect(created.repeat_mode).toBe(3)
+		expect(created.repeat_rrule).toBe('FREQ=WEEKLY;BYDAY=MO,FR')
 
 		// The backend anchors the due date to the first occurrence, so a quick-add
 		// pattern task is never left dateless and inert.
-		const created = await r.json()
 		expect(created.due_date).not.toBe('0001-01-01T00:00:00Z')
 		expect(new Date(created.due_date).getTime()).toBeGreaterThan(Date.now() - 60_000)
 	})
