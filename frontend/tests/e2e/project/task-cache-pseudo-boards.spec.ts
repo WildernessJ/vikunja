@@ -29,7 +29,7 @@ for (const scope of ['favorites', 'saved filter']) {
 		await page.goto(route)
 		await expect(page.locator(taskSelector).filter({hasText: task.title})).toBeVisible()
 		await page.locator(taskSelector).filter({hasText: task.title}).getByText(task.title, {exact: true}).click()
-		const heading = page.locator('.task-view h1[contenteditable]')
+		const heading = page.locator('.task-view .task-title-field textarea.title')
 		await heading.fill('After edit')
 		await heading.press('Enter')
 		await expect.poll(async () => {
@@ -78,12 +78,13 @@ test('moving a favourite task to another project keeps it in Favorites and drops
 	await expect(card).toBeVisible()
 	await card.click()
 
-	await page.locator('.task-view .action-buttons .button').filter({hasText: /^Move$/}).click()
-	const projectInput = page.locator('.task-view .content.details .field .multiselect.control .input-wrapper input')
+	// The fork moves a task through the project property chip, not a sidebar Move button.
+	await page.locator('.task-view .task-property-chips .property-chip-button').filter({hasText: source.title}).click()
+	const projectInput = page.locator('.task-view .property-chip-popup .multiselect.control .input-wrapper input')
 	await expect(projectInput).toBeVisible({timeout: 5000})
 	await projectInput.click()
 	await projectInput.pressSequentially(target.title, {delay: 20})
-	const searchResults = page.locator('.task-view .content.details .field .multiselect.control .search-results')
+	const searchResults = page.locator('.task-view .property-chip-popup .multiselect.control .search-results')
 	await searchResults.waitFor({state: 'visible'})
 	await searchResults.locator('> *').first().click()
 	await expect(page.locator('.global-notification')).toContainText('Success')

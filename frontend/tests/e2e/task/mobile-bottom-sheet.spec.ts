@@ -27,13 +27,11 @@ async function openDueDateSheet(page: Page) {
 
 	await page.goto(`/tasks/${TASK_ID}`)
 
-	const setDueDateButton = page.locator('.task-view .action-buttons .button').filter({hasText: 'Set Due Date'})
-	await expect(setDueDateButton).toBeVisible({timeout: 10000})
+	// The fork opens the due date picker from its property chip, not a sidebar action button.
+	const dueDateChip = page.locator('.task-view .task-property-chips .date-chip').filter({hasText: 'set a due date'}).locator('.datepicker .show')
+	await expect(dueDateChip).toBeVisible({timeout: 10000})
 	expect(await page.evaluate(() => document.documentElement.scrollHeight > window.innerHeight)).toBe(true)
-	await setDueDateButton.click()
-
-	const datepickerShow = page.locator('.task-view .columns.details .column').filter({hasText: 'Due Date'}).locator('.date-input .datepicker .show')
-	await expect(datepickerShow).toBeVisible()
+	await dueDateChip.click()
 
 	const panel = page.locator('.bottom-sheet__panel')
 	await expect(panel).toBeVisible()

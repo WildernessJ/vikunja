@@ -463,8 +463,8 @@ test.describe('Task', () => {
 			})
 
 			await page.goto(`/tasks/${task.id}`)
-			const heading = page.locator('.task-view h1[contenteditable]')
-			await expect(heading).toContainText('Before rename')
+			const heading = page.locator('.task-view .task-title-field textarea.title')
+			await expect(heading).toHaveValue('Before rename')
 			const renamed = page.waitForResponse(r =>
 				new URL(r.url()).pathname.endsWith(`/tasks/${task.id}`) && r.request().method() === 'PATCH',
 			)
@@ -512,7 +512,9 @@ test.describe('Task', () => {
 			await expect(card).toBeVisible()
 			await card.click()
 
-			await page.locator('.task-view .action-buttons .button').filter({hasText: 'Delete'}).click()
+			// The fork's delete action lives in the task detail's More Actions menu.
+			await page.locator('.task-view .task-detail-menu').getByRole('button', {name: 'More Actions'}).click()
+			await page.locator('.task-view .task-detail-menu .dropdown-content').getByText('Delete', {exact: true}).click()
 			await expect(page.locator('dialog[open] .modal-content .modal-header')).toContainText('Delete this task')
 			await page.locator('dialog[open] .modal-content .actions .button').filter({hasText: 'Do it!'}).click()
 			await expect(page.locator('.global-notification')).toContainText('Success')
@@ -653,7 +655,10 @@ test.describe('Task', () => {
 
 			await page.goto(`/tasks/${task.id}`)
 
-			const assignees = page.locator('.task-view .column.assignees .multiselect .input-wrapper span.assignee')
+			// The fork shows assignees in a property chip popup, not a sidebar column.
+			const assigneesChip = page.locator('.task-view .task-property-chips .property-chip-button:has(svg[data-icon="users"])')
+			const assignees = page.locator('.task-view .property-chip-popup .multiselect .input-wrapper span.assignee')
+			await assigneesChip.click()
 			await expect(assignees).toHaveCount(2)
 			await page.getByRole('button', {name: `Remove ${removed.username} as assignee`}).click()
 			await expect(page.locator('.global-notification')).toContainText('Success')
@@ -662,8 +667,8 @@ test.describe('Task', () => {
 			const saved = page.waitForResponse(r =>
 				r.url().includes(`/tasks/${task.id}`) && r.request().method() === 'PATCH',
 			)
-			await page.locator('.task-view .action-buttons .button').filter({hasText: 'Set Priority'}).click()
-			await page.locator('.task-view .columns.details .column').filter({hasText: 'Priority'}).locator('.select select').selectOption('Urgent')
+			await page.locator('.task-view .task-property-chips .property-chip-button').filter({hasText: 'No Priority'}).click()
+			await page.locator('.task-view .property-chip-popup .select select').selectOption('Urgent')
 			await saved
 
 			const resp = await apiContext.get(`tasks/${task.id}`, {
@@ -674,6 +679,7 @@ test.describe('Task', () => {
 			expect(apiAssignees.map((a: User) => a.id)).toEqual([kept.id])
 
 			await page.reload()
+			await assigneesChip.click()
 			await expect(assignees).toHaveCount(1)
 			await expect(assignees).toContainText(kept.username)
 		})
