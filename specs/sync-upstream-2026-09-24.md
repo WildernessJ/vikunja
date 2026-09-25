@@ -537,10 +537,41 @@ E3 — upstream-added, bound to upstream's `.action-buttons` sidebar (10):
 
 The bucket assignment is the planner's reading of the titles and the Phase D notes. If the build finds a test in the wrong bucket, it applies the rule for the correct bucket and logs the move. Routing is unchanged: one Opus executor, driver-run, serial. Next: `/flow build` resumes at Phase E, then closeout, then `/flow review` in a fresh session.
 
+### Build — Phase E (E2E triage) — 2026-09-25
+
+Commits: `260368474` (E1), `f77db4282` (E2), `e52a892ce` (product fixes), `22e6ec550` (E3), then the closeout commit that carries this entry. No bucket moves: every test stayed in its planned bucket.
+
+- **E1 (8), all pass.** Seven were test shape from the v1→v2 cutover, as planned:
+  - Calendar drag ×3 waited for a v1 `POST /tasks/`. They now wait for the v2 `PATCH /tasks/{id}` (`patchTasksRead`).
+  - Truncation banners ×2 injected a v1 `x-pagination-total-pages` header. v2 carries `total_pages` in the body, so the route rewrites the body. "Spans a ranged task" reads `body.items`.
+  - Quick-add "every mon, fri" waited for a v1 `PUT`. It now waits for the v2 `POST /projects/1/tasks`. Its body assertions moved to the response: `src/client/http.ts` re-wraps each request (`new Request(request, {headers})`), which makes the body a stream, and Playwright records no post data for a stream (`postDataJSON()` is `null` for every v2 write). The same fields are asserted on the created task, which is stronger evidence.
+  - `toolbar-navigation`: **not a product regression.** It passed 3/3 when run alone. TipTap's `focus()` command runs in `requestAnimationFrame`. Under full-suite load, the editor focus from the Edit click lands after the test focuses the toolbar, so `ArrowRight` goes to the editor. The test now waits for the editor to take focus first. No assertion changed.
+- **E2 (9), all pass, no product change.** The behaviour already held in the fork UI. The tests now use the fork controls: title textarea (`.task-title-field textarea.title`), project chip for move, assignee and priority chips, More Actions menu for delete and subscribe, due-date chip for the mobile sheet. No assertion removed.
+- **E3 (10): 9 pass, 1 `test.fixme`.**
+  - The due, start and end popups open from their date chips; the shortcut helper presses `d` on the page (fork mapping: `openChip('dueDate')`). The keyboard label test uses the labels chip.
+  - The shortcut helper waits for the previous popup to drop `is-open` before it presses `d`. A light-dismissed popover reports its close in an async `toggle` event, measured at 10 ms after Escape. A `d` pressed inside that window is lost, because `show` is still `true`. Test-only: no person presses a key within 10 ms.
+  - **`test.fixme`, accepted divergence:** `task/bucket-select` › Renders the bucket dropdown above the remove assignee buttons. Fork assignees live in a chip popup, so no remove buttons sit under the bucket dropdown. The fixme reason names this spec. `FORK-CHANGES.md` records it.
+- **Product fixes (`e52a892ce`), found by E3, each with a test that was red before the fix:**
+  - `RelatedTasks.vue`: the relation search used `v-focus`. The fork always renders the relation form when a task has no relations, so on desktop every task-detail load moved focus into it, and the single-key shortcuts (`d`, `l`, …) typed into the search. **Pre-existing on `main`** (same template and directive). Now the input is focused only when `showNewRelationForm` becomes true; the `r` shortcut path with no relations still focuses it through `focusRelatedTasks`. Repro: new test in `related-tasks-quick-add-magic.spec.ts` (red on the old code, green after).
+  - `EditLabels.vue`: creating a label from the chip listed it twice. The fork pushed the new label after `addLabel` had already emitted, and the prop watcher had already added it. It is now pushed before `addLabel`, like a selected label; `addLabel` dedupes by id. Repro: the E3 keyboard-label test (`toHaveCount(1)` got 2).
+- Skips added: the one `test.fixme` above. Nothing deleted.
+- Frontend gate after the product change (logs `/tmp/sync-phase-e-*.log`): `pnpm lint:fix` 0 errors (18 warnings, as Phase D), `typecheck` 0 errors, `test:unit` 213 files / 2561 tests, `pnpm build` exit 0.
+- Structural checks: all four phase targets and `06c451da4` are ancestors of HEAD; no conflict markers; no import of any of the 96 upstream-deleted paths; `flatpickr` only in one comment (`dueDateUrgency.ts:14`).
+- **Not done in closeout:** the line-by-line `git show --cc` of the four merges (Closeout 3, Structural checks). This build did not do it. It is owed to review.
+
+**Phase E gate** (`/tmp/sync-phase-e-e2e.log`): 357 passed, 80 failed, 2 skipped. 79 failing titles equal the #112 list exactly. All 27 planned titles pass, except the one `test.fixme`. The 2 skips are that fixme and one skip that was already in the suite.
+
+**HALTED — stop criterion "a failing title that is not in #112 and not in the 27".** One title: `project/project.spec.ts` › Projects › Should upload and remove a project background without stale previews.
+- Upstream added it in the Phase B range (`d5c6f40c1`); the fork carries it byte-identical to upstream. It does not exist on `main` (`mage test:e2e` there: "No tests found"), so it was not in the `main` baseline.
+- It is flaky: it passed in the Phase D full run, and alone with `--repeat-each 5` it failed 3/5 at HEAD (`/tmp/phaseE-background.log`) and 4/5 with the Phase D frontend source (`/tmp/phaseE-background-phaseD.log`). **Phase E did not cause it.**
+- Every failure is `page.reload: net::ERR_ABORTED; maybe frame was detached?` at the second reload, right after the background removal (`project.spec.ts:159`). Probable cause, not verified: a navigation that the app starts after removal (the background settings are a routed modal) races the test's reload.
+- Build does not resolve this. A plan session must decide: (a) is it an upstream flake to track and accept under the bar, or (b) is it a fork-UI difference (settings modal close/navigation) to fix. Upstream's CI result for this test is not known.
+- `suite_green` is NOT recorded. No `.workflow-run.json` exists.
+
 ### Reports
 
 - Planner: this spec; producer `01a0d3a9-f676-7412-9c93-a7ca184f9c4e`.
-- Executor/build report: Phases A–B in the Execution Log above; producer `18a66fd6-b0d8-4f19-bf4d-790e540019c4`. Phase C producer `08db9c30-8a45-4f9c-a373-c4a833f13032`. Phase D (halted at the E2E gate) producer `52f29721-9de6-46ab-bb66-cd2524d58fa6`.
+- Executor/build report: Phases A–B in the Execution Log above; producer `18a66fd6-b0d8-4f19-bf4d-790e540019c4`. Phase C producer `08db9c30-8a45-4f9c-a373-c4a833f13032`. Phase D (halted at the E2E gate) producer `52f29721-9de6-46ab-bb66-cd2524d58fa6`. Phase E (halted at the Phase E gate on one flaky upstream-added test) producer `8ac27ef6-cd87-4aec-b3d2-f53b9bfd7a10`.
 - Reviewer report: pending; record producer session ID beside the report.
 - Verifier report: pending; record producer session ID beside the report.
 - Cold-audit Pass 1/Pass 2 report: pending; record the same auditor session ID beside both passes.
