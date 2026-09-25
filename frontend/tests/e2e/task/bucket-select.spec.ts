@@ -202,7 +202,8 @@ test.describe('Task Bucket Select', () => {
 		await expect(dropdownMenu).toBeHidden()
 	})
 
-	test('Renders the bucket dropdown above the remove assignee buttons', async ({authenticatedPage: page}) => {
+	// Accepted divergence (specs/sync-upstream-2026-09-24.md Phase E3): fork assignees live in a chip popup, so no remove buttons sit under the bucket dropdown.
+	test.fixme('Renders the bucket dropdown above the remove assignee buttons', async ({authenticatedPage: page}) => {
 		const {project, view, task} = await createKanbanTaskInBucket()
 		// The dropdown is right-aligned to the bucket name in the breadcrumb, so it
 		// only reaches over the assignee avatars once the row is long enough.

@@ -716,10 +716,11 @@ test.describe('Task', () => {
 
 			await page.goto(`/tasks/${tasks[0].id}`)
 
-			await page.locator('.task-view .action-buttons .button').filter({hasText: 'Add Labels'}).click()
-			const labelInput = page.locator('.task-view .details.labels-list .multiselect input')
+			// The fork adds labels through the labels property chip, not a sidebar action button.
+			await page.locator('.task-view .task-property-chips .property-chip-button:has(svg[data-icon="tags"])').click()
+			const labelInput = page.locator('.task-view .property-chip-popup .multiselect input')
 			await labelInput.fill(newLabelText)
-			const createOption = page.locator('.task-view .details.labels-list .multiselect .search-results .is-create-option')
+			const createOption = page.locator('.task-view .property-chip-popup .multiselect .search-results .is-create-option')
 			await expect(createOption).toContainText(newLabelText)
 
 			await labelInput.press('ArrowDown')
@@ -727,8 +728,8 @@ test.describe('Task', () => {
 			await page.keyboard.press('Enter')
 
 			await expect(page.locator('.global-notification')).toContainText('Success')
-			await expect(page.locator('.task-view .details.labels-list .multiselect .input-wrapper span.tag')).toHaveCount(1)
-			await expect(page.locator('.task-view .details.labels-list .multiselect .input-wrapper span.tag')).toContainText(newLabelText)
+			await expect(page.locator('.task-view .property-chip-popup .multiselect .input-wrapper span.tag')).toHaveCount(1)
+			await expect(page.locator('.task-view .property-chip-popup .multiselect .input-wrapper span.tag')).toContainText(newLabelText)
 			await expect(labelInput).toBeFocused()
 		})
 
@@ -839,12 +840,18 @@ test.describe('Task', () => {
 			await expect(popup.locator('.datepicker__quick-select-date').first()).toBeFocused()
 		})
 
-		async function openDueDatePopupWithShortcut(page: Page): Promise<Locator> {
-			const action = page.getByRole('button', {name: 'Set Due Date', exact: true})
-			await expect(action).toBeVisible()
-			await action.press('d')
+		// The fork renders the date property chips in template order: due, start, end, deadline.
+		function dateChip(page: Page, kind: 'due' | 'start' | 'end'): Locator {
+			return page.locator('.task-view .task-property-chips .date-chip').nth({due: 0, start: 1, end: 2}[kind])
+		}
 
-			const column = page.locator('.task-view .columns.details .column').filter({hasText: 'Due Date'})
+		async function openDueDatePopupWithShortcut(page: Page): Promise<Locator> {
+			await expect(dateChip(page, 'due').locator('.datepicker .show')).toBeVisible()
+			// A dismissed popover reports its close in an async toggle event; a shortcut pressed before it lands is lost.
+			await expect(dateChip(page, 'due').locator('.popup')).not.toHaveClass(/is-open/)
+			await page.locator('body').press('d')
+
+			const column = dateChip(page, 'due')
 			const popup = column.locator('.datepicker .datepicker-popup')
 			await expect(popup).toBeVisible()
 			await expect(column.locator('.datepicker .show')).toBeFocused()
@@ -862,14 +869,15 @@ test.describe('Task', () => {
 			await page.goto(`/tasks/${tasks[0].id}`)
 			await page.waitForLoadState('networkidle')
 
-			const setDueDateButton = page.locator('.task-view .action-buttons .button').filter({hasText: 'Set Due Date'})
+			// The fork's due date chip trigger replaces upstream's Set Due Date action button.
+			const setDueDateButton = dateChip(page, 'due').locator('.datepicker .show')
 			await expect(setDueDateButton).toBeVisible({timeout: 10000})
 			await setDueDateButton.click()
 
-			const popup = page.locator('.task-view .columns.details .column').filter({hasText: 'Due Date'}).locator('.datepicker .datepicker-popup')
+			const popup = dateChip(page, 'due').locator('.datepicker .datepicker-popup')
 			await expect(popup).toBeVisible()
 			await expect(popup.locator('.datepicker__quick-select-date').first()).not.toBeFocused()
-			await expect(page.locator('.task-view .columns.details .column').filter({hasText: 'Due Date'}).locator('.datepicker .show')).toBeFocused()
+			await expect(dateChip(page, 'due').locator('.datepicker .show')).toBeFocused()
 			await page.keyboard.press('Tab')
 			await expect(popup.locator('.datepicker__quick-select-date').first()).toBeFocused()
 		})
@@ -883,7 +891,7 @@ test.describe('Task', () => {
 			await page.goto(`/tasks/${tasks[0].id}`)
 			await page.waitForLoadState('networkidle')
 
-			const column = page.locator('.task-view .columns.details .column').filter({hasText: 'Due Date'})
+			const column = dateChip(page, 'due')
 			const trigger = column.locator('.datepicker .show')
 			const popup = column.locator('.datepicker-popup')
 			const firstShortcut = popup.locator('.datepicker__quick-select-date').first()
@@ -925,15 +933,12 @@ test.describe('Task', () => {
 			await page.goto(`/tasks/${tasks[0].id}`)
 			await page.waitForLoadState('networkidle')
 
-			for (const [buttonLabel, columnTitle] of [
-				['Set Start Date', 'Start Date'],
-				['Set End Date', 'End Date'],
-			] as const) {
-				const button = page.locator('.task-view .action-buttons .button').filter({hasText: buttonLabel})
+			for (const kind of ['start', 'end'] as const) {
+				const button = dateChip(page, kind).locator('.datepicker .show')
 				await expect(button).toBeVisible({timeout: 10000})
 				await button.click()
 
-				const popup = page.locator('.task-view .columns.details .column').filter({hasText: columnTitle}).locator('.datepicker .datepicker-popup')
+				const popup = dateChip(page, kind).locator('.datepicker .datepicker-popup')
 				await expect(popup).toBeVisible()
 				await expect(popup.locator('.datepicker__quick-select-date').first()).not.toBeFocused()
 				await page.keyboard.press('Tab')
@@ -982,7 +987,7 @@ test.describe('Task', () => {
 			await page.waitForLoadState('networkidle')
 
 			const popup = await openDueDatePopupWithShortcut(page)
-			const column = page.locator('.task-view .columns.details .column').filter({hasText: 'Due Date'})
+			const column = dateChip(page, 'due')
 			const showButton = column.locator('.datepicker .show')
 			await expect(showButton).toContainText('Click here to set a due date')
 
@@ -1038,7 +1043,7 @@ test.describe('Task', () => {
 			await popup.getByRole('button', {name: 'Confirm', exact: true}).click()
 			await expect(popup).not.toBeVisible()
 
-			const trigger = page.locator('.task-view .columns.details .column').filter({hasText: 'Due Date'}).locator('.datepicker .show')
+			const trigger = dateChip(page, 'due').locator('.datepicker .show')
 			await trigger.click()
 			await expect(popup).toBeVisible()
 			await expect(trigger).toBeFocused()
