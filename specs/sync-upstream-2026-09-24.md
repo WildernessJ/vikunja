@@ -32,7 +32,7 @@ Incoming scope is large: 717 files, 38,973 insertions, 15,606 deletions. A direc
 
 ### Deliverable
 
-Four ordered upstream merge commits on `sync-upstream-2026-09-24`, each independently buildable and verified at its stated gate, followed by closeout documentation. The final candidate contains every commit through `06c451da4`, no unresolved markers, no resurrected compatibility layer for upstream-deleted frontend architecture, and no loss of fork-visible behavior.
+Four ordered upstream merge commits on `sync-upstream-2026-09-24`, each independently buildable and verified at its stated gate, then the Phase E E2E triage commits (added 2026-09-25), then closeout documentation. The final candidate contains every commit through `06c451da4`, no unresolved markers, no resurrected compatibility layer for upstream-deleted frontend architecture, and no loss of fork-visible behavior.
 
 ### Exclusions
 
@@ -146,6 +146,21 @@ The fork's behavioral requirements remain:
 3. Review latest API pagination, OIDC, Sentry, error handling, and dependency updates.
 4. Search for imports of every upstream-deleted legacy path and remove all survivors. Search for conflict markers and for runtime flatpickr imports, selectors, and dependencies.
 5. Regenerate/check the frontend client, run the final automated gate, and commit one Phase D merge commit.
+
+### Phase E — E2E triage (added by the 2026-09-25 plan session)
+
+No new upstream merge. Phase E repairs the 27 E2E failures that are new against the `main` baseline. The full list, by bucket, is in the Execution Log entry "Plan — E2E acceptance bar". The 79 failures shared with `main` are out of scope (#112). The three pre-existing `check:all` failures are out of scope (#113).
+
+1. **E1 — tests that passed on `main` (8).** Find the cause of each failure before you change anything.
+   - If the test waits for or mocks a v1 request that the frontend now sends to v2, or reads a v1 response shape, rewrite the test for the v2 request and response. Keep every user-visible assertion.
+   - If the product behaviour changed, fix the product code. `toolbar-navigation` has no known cause yet. Treat it as a product regression until the evidence shows otherwise.
+2. **E2 — upstream-added tests that assert fork-relevant behaviour (9).** The asserted behaviour must work in the fork UI. You can change selectors and navigation to reach the fork controls (property chips, quick-add composer). Do not weaken or delete an assertion. If the behaviour is missing, fix the product code. These tests are the three `task-cache-pseudo-boards` tests, the detail→list/kanban edit and delete tests, the removed-assignee test, `subscription` survives reload, and the two `mobile-bottom-sheet` tests.
+3. **E3 — upstream-added tests that drive upstream's task-detail `.action-buttons` sidebar (10).** The fork replaced that sidebar with property chips. The chips open the same native popups (ADR-0015).
+   - If the fork has an equivalent control, point the test at it and keep the assertions. This applies to the due-date popup keyboard and focus tests, the start/end date tests, and the keyboard label creation test.
+   - If the fork has no equivalent control, mark the test `test.fixme` with a one-line reason that names this spec. Record it as an accepted divergence in the Execution Log and in the closeout `FORK-CHANGES.md` entry. `bucket-select` "above the remove assignee buttons" is the likely case.
+   - Do not rebuild the sidebar to make a test pass.
+4. Every `test.fixme`, `test.skip`, or deleted test is listed in the Execution Log with its reason. An unlisted skip fails review.
+5. Run the Phase E gate and commit. Phase E can be one commit or several; each commit must build.
 
 ### Closeout
 
@@ -266,6 +281,21 @@ mage test:e2e "" 2>&1 | tee /tmp/sync-final-e2e.log
 
 Expected: every command exits zero; no Go test line is accepted as evidence when marked `(cached)`; full frontend typecheck is clean; full unit and E2E suites include both upstream and surviving fork cases; production builds complete.
 
+**Amended 2026-09-25 (plan session):** two exceptions to "every command exits zero". Both are pre-existing on `main`:
+
+- `mage check:all` can fail only on the three checks in #113 (24 dead translation keys, stale swagger, stale yaegi symbols). Any other failing check fails the gate. Restore the files the check rewrites before you commit.
+- `mage test:e2e ""` is judged by the Phase E gate, not by its exit code.
+
+### Phase E gate
+
+Invoke the `run-e2e-tests` skill before the Playwright command. Run the full suite once, after the last Phase E commit:
+
+```bash
+mage test:e2e "" 2>&1 | tee /tmp/sync-phase-e-e2e.log
+```
+
+Extract the failing test titles as `file › describe › title`, without line numbers. PITFALLS: compare by title, because upstream edits move line numbers. Expected: every failing title is in the 79-title list in #112. No other title fails. The 27 titles in the Execution Log entry "Plan — E2E acceptance bar" pass, or are `test.fixme` under the Phase E rule 3 exception. If Phase E changed product code, run the Final Phase D gate's frontend lint, typecheck, unit, and build commands again and read their output.
+
 ### Structural checks
 
 - `git merge-base --is-ancestor 06c451da400b3f4ab60353d1921909f8d35664c6 HEAD` exits zero.
@@ -327,6 +357,9 @@ Rationale: 289 commits, 153 direct-merge conflicts, irreversible migrations, sec
 - A security review finds an MCP, invite, API-token, OIDC, or permission path broader than upstream's documented/tested intent.
 - After one correction round, a fresh review finds another omission in the same migration class; revert that phase and split/redesign it rather than layering another patch.
 - Live acceptance fails any listed factual observation.
+- Phase E: an E1 or E2 behaviour is missing and the product fix needs more than roughly 150 lines, a new file outside `frontend/tests/e2e/`, or a change to upstream's query architecture. Stop, log it, and return it to a plan session.
+- Phase E: an E3 test can pass only if you rebuild upstream's `.action-buttons` sidebar or a part of it. Mark it `test.fixme` as accepted divergence (rule 3). Do not stop the build.
+- Phase E: the full-suite run shows a failing title that is not in #112 and not in the 27. Fix it if it is one of Phase E's own changes. Otherwise stop and log it.
 
 ## Execution Log
 
@@ -456,6 +489,53 @@ Rationale: 289 commits, 153 direct-merge conflicts, irreversible migrations, sec
     - 19 tests that upstream added in the sync range and that fail against fork UI: 13 in `task/task.spec.ts` (keyboard due-date popup, labels, assignees, detail→list/kanban cache updates; most drive upstream's `.action-buttons` sidebar, which the fork's property-chip layout replaced), `task-cache-pseudo-boards` ×3, `mobile-bottom-sheet` ×2, `bucket-select` ×1, `subscription` survives reload ×1. Not triaged. `mobile-bottom-sheet` and `subscription` touch the human live scenario and PITFALLS behaviour; they need a real look, not a selector swap.
 - **Halt reason (spec gap, not a listed stop criterion):** the Final Phase D gate expects `mage test:e2e ""` to exit zero. That is unreachable as written: 79 failures pre-exist on `main`, which has no CI E2E gate (PITFALLS "This fork has NO automated test/e2e gate"). A plan session must decide (a) the E2E acceptance bar for this sync (for example "no new failures against the `main` baseline" plus triage of the upstream-added tests), (b) whether repairing the 79 pre-existing failures and the 24 dead keys is in scope, and (c) whether a fork-UI adaptation of upstream's 19 new tests is test work or a signal of lost behaviour. Build does not resolve these.
 - Committed despite the red E2E gate, per the halt protocol (append, commit, stop): Phase D merge `1f7eb25ea`. `suite_green` is NOT recorded; no `.workflow-run.json` exists.
+
+### Plan — E2E acceptance bar — 2026-09-25
+
+Plan session (Opus 5.5; Jason: "plan with your recommendations"). It resolves the three questions in the Phase D halt:
+
+- **(a) Bar:** no new E2E failures against the `main` baseline, compared by title. The 27 new failures must pass, or be `test.fixme` as accepted E3 divergence with a stated reason. See Phase E and the Phase E gate.
+- **(b) Scope:** the 79 shared failures are out of scope and are filed as #112, with the full title list. The 24 dead keys and the stale swagger and yaegi checks are out of scope and are filed as #113. The Final Phase D gate is amended to allow those three `check:all` failures and no others.
+- **(c) Upstream's 19 new tests:** these tests are behaviour checks first. When the fork UI has the behaviour, the test is adapted to reach it. When the behaviour is missing, the product code is fixed. Only tests bound to upstream's sidebar layout, with no fork equivalent, become accepted divergence.
+- Title sets were recomputed from `/tmp/sync-final-e2e.log` and `/tmp/main-baseline-e2e.log`: branch 106, `main` 81, shared 79, new 27, `main`-only 2. This matches the build's count.
+- The range is not widened. `upstream/main` is 3 commits past `06c451da4`. Those commits belong to the next sync.
+
+The 27 titles, by bucket:
+
+E1 — passed on `main` (8):
+- `editor/toolbar-navigation` › roving tabindex: arrow keys move between buttons, Tab leaves the toolbar
+- `project/project-view-calendar` › Drag from the unscheduled panel sets a due date
+- `project/project-view-calendar` › Drag to another day persists the new due date
+- `project/project-view-calendar` › Non-UTC timezone (Pacific/Auckland, UTC+12) › Drag-reschedule lands on the intended local day and persists it
+- `project/project-view-calendar` › Shows the unscheduled truncation banner when that fetch is paginated
+- `project/project-view-calendar` › Shows the window truncation banner when the windowed fetch is paginated
+- `project/project-view-calendar` › Spans a ranged task across the covered days
+- `task/recurrence` › quick-add "every mon, fri" creates a calendar-pattern task
+
+E2 — upstream-added, behaviour must hold in fork UI (9):
+- `project/task-cache-pseudo-boards` › moving a favourite task to another project keeps it in Favorites and drops it from the source board
+- `project/task-cache-pseudo-boards` › persists favorites task edits in its board response
+- `project/task-cache-pseudo-boards` › persists saved filter task edits in its board response
+- `task/task` › Task Detail View › a task deleted in the detail disappears from the kanban board without a reload
+- `task/task` › Task Detail View › an edit in the task detail shows in the list and the kanban board without a reload
+- `task/task` › Task Detail View › Keeps a removed assignee unassigned after saving another field
+- `task/subscription` › task subscription survives reload and can be removed
+- `task/mobile-bottom-sheet` › Locks page scrolling while the sheet is open
+- `task/mobile-bottom-sheet` › Opens the due date picker as a sheet and saves the picked day
+
+E3 — upstream-added, bound to upstream's `.action-buttons` sidebar (10):
+- `task/task` › Task Detail View › Can create a new label with the keyboard
+- `task/task` › Task Detail View › Can reopen the due date popup after confirming or dismissing it
+- `task/task` › Task Detail View › Keeps focus on the datepicker trigger after clicking until Tab is pressed
+- `task/task` › Task Detail View › Navigates the due date quick-select options with the arrow keys
+- `task/task` › Task Detail View › Opens the due date popup via the keyboard shortcut when the task already has a due date
+- `task/task` › Task Detail View › Saves a typed due date time immediately when confirming
+- `task/task` › Task Detail View › Saves and closes the due date popup when confirming a quick-select option with Enter
+- `task/task` › Task Detail View › Tabs into the due date quick-select options after clicking the action button
+- `task/task` › Task Detail View › Tabs into the start and end date quick-select options after clicking the actions
+- `task/bucket-select` › Renders the bucket dropdown above the remove assignee buttons
+
+The bucket assignment is the planner's reading of the titles and the Phase D notes. If the build finds a test in the wrong bucket, it applies the rule for the correct bucket and logs the move. Routing is unchanged: one Opus executor, driver-run, serial. Next: `/flow build` resumes at Phase E, then closeout, then `/flow review` in a fresh session.
 
 ### Reports
 
