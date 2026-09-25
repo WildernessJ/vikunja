@@ -155,8 +155,9 @@ async function createAndAddLabel(title: string) {
 		return
 	}
 
-	await addLabel(newLabel, false)
+	// Before addLabel, like a selected label: it dedupes by id and emits, so the prop watcher cannot add a second copy.
 	labels.value.push(newLabel)
+	await addLabel(newLabel, false)
 	success({message: t('task.label.addCreateSuccess')})
 }
 </script>

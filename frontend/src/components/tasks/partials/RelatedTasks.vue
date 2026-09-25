@@ -37,11 +37,11 @@
 				</label>
 				<div
 					key="field-search"
+					ref="searchField"
 					class="field task-relation-search-field"
 				>
 					<Multiselect
 						v-model="newTaskRelation.task"
-						v-focus
 						:placeholder="$t('task.relation.searchPlaceholder')"
 						:loading="taskQuery.isFetching.value"
 						:search-results="mappedFoundTasks"
@@ -184,7 +184,7 @@
 </template>
 
 <script setup lang="ts">
-import {ref, reactive, computed} from 'vue'
+import {ref, reactive, computed, watch, nextTick} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {useRoute} from 'vue-router'
 
@@ -241,6 +241,13 @@ const newTaskRelation: TaskRelation = reactive({
 
 
 const showNewRelationForm = ref(false)
+// Not v-focus: with no relations the form renders on page load, and autofocus there swallows the detail view's single-key shortcuts.
+const searchField = ref<HTMLElement | null>(null)
+watch(showNewRelationForm, async open => {
+	if (!open) return
+	await nextTick()
+	searchField.value?.querySelector('input')?.focus()
+})
 const showCreate = computed(() => Object.keys(relatedTasks.value).length === 0 || showNewRelationForm.value)
 
 const query = ref('')
