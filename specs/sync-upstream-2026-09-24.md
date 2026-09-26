@@ -601,10 +601,18 @@ Commits: `260368474` (E1), `f77db4282` (E2), `e52a892ce` (product fixes), `22e6e
 - The fork's `Datepicker.vue` diff vs `06c451da4` changes only date-only formatting and adds `boundary`/`forceTime` pass-through props; the open/close path (`Popup`, `toggle()`) is upstream's. The chip wrapper (`TaskPropertyChips.vue`, fork-only) is the unexamined suspect. Unknown whether this is a test race or a real keyboard defect (Enter after Escape fails to reopen the due-date popup).
 - A plan session must decide: diagnose as a possible product bug, or treat as a test race. `suite_green` is NOT recorded.
 
+### Build — Phase E rule 7 and final gate — 2026-09-26
+
+- Diagnosis (same session): upstream `Popup.vue` (byte-identical to `06c451da4`) sets `closedByLightDismiss` in `onToggle` and clears it in `setTimeout(0)`; `toggle()` ignores a reopen while it is set. The test pressed Enter inside that window. Experiment: a temporary 50 ms pause gave 20/20 (`/tmp/phaseE6-datepicker-exp.log`), reverted. Not reachable at human speed, so no product change and no manual browser check.
+- Spec amended `docs: plan the datepicker-focus E2E race fix` (rule 7 + stop criterion). Fix `1fd36ad11`: one `page.evaluate(() => new Promise(r => setTimeout(r)))` with a why-comment. Alone: 20/20 (`/tmp/phaseE7-datepicker.log`). ESLint on `task.spec.ts` reports 7 errors, all at lines this change does not touch (unused imports/vars). `pnpm lint` does not appear to cover `tests/e2e`; not verified, not in scope.
+- **Phase E gate** (`/tmp/sync-phase-e7-e2e.log`): 358 passed, 79 failed, 2 skipped. The 79 failing titles equal the #112 list (its 2 absent titles are the `main`-only registration pair). Both rule 6 and rule 7 tests pass. The 2 skips are the `bucket-select` fixme and the pre-existing skip. **Gate met.**
+- Suite at `1fd36ad11`, uncached (`GOFLAGS=-count=1`): `mage test:feature` exit 0, 56 `ok`, 0 `FAIL`, 0 `(cached)` (`/tmp/sync-final-feature.log`); `mage test:web` exit 0, 0 `FAIL` (`/tmp/sync-final-web.log`); `pnpm typecheck` exit 0. Only docs changed after that commit. `suite_green` recorded.
+- **For review first:** the `git show --cc` of the four merges (Closeout 3) is still owed; this build did not do it. Rules 6 and 7 are fork edits to upstream tests.
+
 ### Reports
 
 - Planner: this spec; producer `01a0d3a9-f676-7412-9c93-a7ca184f9c4e`.
-- Executor/build report: Phases A–B in the Execution Log above; producer `18a66fd6-b0d8-4f19-bf4d-790e540019c4`. Phase C producer `08db9c30-8a45-4f9c-a373-c4a833f13032`. Phase D (halted at the E2E gate) producer `52f29721-9de6-46ab-bb66-cd2524d58fa6`. Phase E (halted at the Phase E gate on one flaky upstream-added test) producer `8ac27ef6-cd87-4aec-b3d2-f53b9bfd7a10`.
+- Executor/build report: Phases A–B in the Execution Log above; producer `18a66fd6-b0d8-4f19-bf4d-790e540019c4`. Phase C producer `08db9c30-8a45-4f9c-a373-c4a833f13032`. Phase D (halted at the E2E gate) producer `52f29721-9de6-46ab-bb66-cd2524d58fa6`. Phase E (halted at the Phase E gate on one flaky upstream-added test) producer `8ac27ef6-cd87-4aec-b3d2-f53b9bfd7a10`. Rules 6–7 and final gate (plan and build in one session, at Jason's request) producer `a3ce2539-7363-4e9d-995b-b6542c0d3fee`.
 - Reviewer report: pending; record producer session ID beside the report.
 - Verifier report: pending; record producer session ID beside the report.
 - Cold-audit Pass 1/Pass 2 report: pending; record the same auditor session ID beside both passes.
