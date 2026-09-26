@@ -583,6 +583,19 @@ Commits: `260368474` (E1), `f77db4282` (E2), `e52a892ce` (product fixes), `22e6e
 - Build resumes at Phase E rule 6, then the Phase E gate, then records `suite_green`. The `git show --cc` merge review stays owed to review.
 - Planning session: this session.
 
+### Build — Phase E rule 6 — 2026-09-26
+
+- Run in the same session as the 2026-09-26 plan, at Jason's request (phase-discipline exception; review stays a fresh session).
+- **Red first** (`/tmp/phaseE6-red.log`): 7/10 failed. Six `page.reload: net::ERR_ABORTED`; one reloaded the `/settings/background` modal URL (screenshot: modal over an empty page, no `.project-title`). Both are the `router.back()` race. A second 20-run batch without the edit (the edit had not applied) failed 14/20.
+- **Fix** `f4b7fcef1`: one line, `await expect(page).not.toHaveURL(/\/settings\/background/)` before the second reload. After: 20/20 pass (`/tmp/phaseE6-green.log`). ESLint on the file reports 2 errors at lines 12 and 14 (`no-explicit-any`, unused `authenticatedPage`); both exist without this change and are outside it.
+- **Phase E gate again** (`/tmp/sync-phase-e6-e2e.log`): 357 passed, 80 failed, 2 skipped. The background test passes. 79 failing titles equal #112 (the 2 absent #112 titles are its `main`-only registration pair).
+
+**HALTED — the Phase E gate is not met.** One of the 27 fails: E3 `task/task` › Task Detail View › Keeps focus on the datepicker trigger after clicking until Tab is pressed. It passed in the 2026-09-25 gate.
+- Alone with `--repeat-each 10` (`/tmp/phaseE6-datepicker.log`): 6/10 fail, all at `task.spec.ts:909`: after Tab → Escape closes the popup, `trigger.press('Enter')` does not reopen it (`.datepicker-popup` not found).
+- Not caused by rule 6 (that commit touches only `project.spec.ts`). Phase E adapted this test in `22e6ec550` (selector moved to the due-date chip; steps and assertions are upstream's).
+- The fork's `Datepicker.vue` diff vs `06c451da4` changes only date-only formatting and adds `boundary`/`forceTime` pass-through props; the open/close path (`Popup`, `toggle()`) is upstream's. The chip wrapper (`TaskPropertyChips.vue`, fork-only) is the unexamined suspect. Unknown whether this is a test race or a real keyboard defect (Enter after Escape fails to reopen the due-date popup).
+- A plan session must decide: diagnose as a possible product bug, or treat as a test race. `suite_green` is NOT recorded.
+
 ### Reports
 
 - Planner: this spec; producer `01a0d3a9-f676-7412-9c93-a7ca184f9c4e`.
