@@ -904,6 +904,8 @@ test.describe('Task', () => {
 			await expect(firstShortcut).toBeFocused()
 			await page.keyboard.press('Escape')
 			await expect(popup).not.toBeVisible()
+			// Popup ignores a reopen until its light-dismiss flag clears in setTimeout(0); this timer runs after it.
+			await page.evaluate(() => new Promise(r => setTimeout(r)))
 
 			await trigger.press('Enter')
 			await expect(popup).toBeVisible()
