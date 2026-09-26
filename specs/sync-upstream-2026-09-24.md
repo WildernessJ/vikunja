@@ -161,6 +161,11 @@ No new upstream merge. Phase E repairs the 27 E2E failures that are new against 
    - Do not rebuild the sidebar to make a test pass.
 4. Every `test.fixme`, `test.skip`, or deleted test is listed in the Execution Log with its reason. An unlisted skip fails review.
 5. Run the Phase E gate and commit. Phase E can be one commit or several; each commit must build.
+6. **Background test race (added by the 2026-09-26 plan session).** In `project/project.spec.ts` › Projects › Should upload and remove a project background without stale previews, add one line after the background-removal assertions and before the second `page.reload()`: `await expect(page).not.toHaveURL(/\/settings\/background/)`. This waits for the `router.back()` that `removeBackground()` starts (`ProjectSettingsBackground.vue`). Change no product code and no other line of the test.
+   - Red first: before the edit, run the test alone with `--repeat-each 10`. Expected: at least one `page.reload: net::ERR_ABORTED` failure. If all 10 pass, run 10 more. Record the counts.
+   - After the edit, run it alone with `--repeat-each 20`. Expected: 20/20 pass.
+   - Commit the one-line change as `test(e2e): wait for the background-removal navigation before reload`. List it in the Execution Log and in the closeout `FORK-CHANGES.md` entry as a fork change to an upstream test (an upstream PR candidate).
+   - Then run the Phase E gate again. This test must pass.
 
 ### Closeout
 
@@ -360,6 +365,7 @@ Rationale: 289 commits, 153 direct-merge conflicts, irreversible migrations, sec
 - Phase E: an E1 or E2 behaviour is missing and the product fix needs more than roughly 150 lines, a new file outside `frontend/tests/e2e/`, or a change to upstream's query architecture. Stop, log it, and return it to a plan session.
 - Phase E: an E3 test can pass only if you rebuild upstream's `.action-buttons` sidebar or a part of it. Mark it `test.fixme` as accepted divergence (rule 3). Do not stop the build.
 - Phase E: the full-suite run shows a failing title that is not in #112 and not in the 27. Fix it if it is one of Phase E's own changes. Otherwise stop and log it.
+- Phase E rule 6: any failure of the background test after the wait is added, alone or in the full run. The race is then not the cause. Stop and log it. Do not try a second fix.
 
 ## Execution Log
 
@@ -567,6 +573,15 @@ Commits: `260368474` (E1), `f77db4282` (E2), `e52a892ce` (product fixes), `22e6e
 - Every failure is `page.reload: net::ERR_ABORTED; maybe frame was detached?` at the second reload, right after the background removal (`project.spec.ts:159`). Probable cause, not verified: a navigation that the app starts after removal (the background settings are a routed modal) races the test's reload.
 - Build does not resolve this. A plan session must decide: (a) is it an upstream flake to track and accept under the bar, or (b) is it a fork-UI difference (settings modal close/navigation) to fix. Upstream's CI result for this test is not known.
 - `suite_green` is NOT recorded. No `.workflow-run.json` exists.
+
+### Plan — background test race — 2026-09-26
+
+- Decision: fix the test (option 1). Rejected: accept as a tracked flake (it fails 3/5, so the gate stays red and `suite_green` means less); change the product (upstream has the same `router.back()` and the user sees no defect).
+- Probable cause, from the code, not reproduced: `removeBackground()` (`ProjectSettingsBackground.vue:204-209`) calls `router.back()` after the DELETE succeeds. The test asserts the removed background, which is true at once, then calls `page.reload()`. Nothing waits for the history navigation, so the two navigations race. The first reload follows a Close click and has no such race.
+- The component and the test are byte-identical to upstream `06c451da4`. The fork diffs on this path do not touch it: `useRouteWithModal.ts` (type cast only), `ContentAuth.vue` (style falsy values only), `router/index.ts` (added routes and `returnability` meta). So this is an upstream test race, not a fork UI difference. Upstream CI status for the test was not checked.
+- The 3 commits on `upstream/main` past the target are backend proxy fixes. They do not touch this test. The range stays unchanged.
+- Build resumes at Phase E rule 6, then the Phase E gate, then records `suite_green`. The `git show --cc` merge review stays owed to review.
+- Planning session: this session.
 
 ### Reports
 
