@@ -166,6 +166,10 @@ No new upstream merge. Phase E repairs the 27 E2E failures that are new against 
    - After the edit, run it alone with `--repeat-each 20`. Expected: 20/20 pass.
    - Commit the one-line change as `test(e2e): wait for the background-removal navigation before reload`. List it in the Execution Log and in the closeout `FORK-CHANGES.md` entry as a fork change to an upstream test (an upstream PR candidate).
    - Then run the Phase E gate again. This test must pass.
+7. **Datepicker-focus test race (added 2026-09-26, after the rule 6 halt).** In `task/task.spec.ts` › Task Detail View › Keeps focus on the datepicker trigger after clicking until Tab is pressed, add `await page.evaluate(() => new Promise(r => setTimeout(r)))` with a one-line why-comment between the Escape `not.toBeVisible()` assertion and `trigger.press('Enter')`. Cause: upstream `Popup.vue` sets `closedByLightDismiss` in `onToggle` and clears it in `setTimeout(0)`; an `Enter` before the clear is swallowed. The browser queues the `toggle` event before the popover stops being visible, so the test's timer runs after the clear. Change no product code.
+   - Evidence: alone, 6/10 fail at `task.spec.ts:909` (`/tmp/phaseE6-datepicker.log`); with a temporary 50 ms pause, 20/20 pass (`/tmp/phaseE6-datepicker-exp.log`, reverted).
+   - After the edit, run it alone with `--repeat-each 20`. Expected: 20/20. Then run the Phase E gate again.
+   - List it in the Execution Log and the closeout `FORK-CHANGES.md` entry as a fork change to an upstream test (upstream PR candidate).
 
 ### Closeout
 
@@ -365,6 +369,7 @@ Rationale: 289 commits, 153 direct-merge conflicts, irreversible migrations, sec
 - Phase E: an E1 or E2 behaviour is missing and the product fix needs more than roughly 150 lines, a new file outside `frontend/tests/e2e/`, or a change to upstream's query architecture. Stop, log it, and return it to a plan session.
 - Phase E: an E3 test can pass only if you rebuild upstream's `.action-buttons` sidebar or a part of it. Mark it `test.fixme` as accepted divergence (rule 3). Do not stop the build.
 - Phase E: the full-suite run shows a failing title that is not in #112 and not in the 27. Fix it if it is one of Phase E's own changes. Otherwise stop and log it.
+- Phase E rule 7: any failure of the datepicker-focus test after the wait is added, alone or in the full run. The timing analysis is then wrong. Stop and log it. Do not try a second fix.
 - Phase E rule 6: any failure of the background test after the wait is added, alone or in the full run. The race is then not the cause. Stop and log it. Do not try a second fix.
 
 ## Execution Log
