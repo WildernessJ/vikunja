@@ -155,6 +155,7 @@ test.describe('Projects', () => {
 		expect((await removal).ok()).toBe(true)
 		await expect(background).not.toHaveClass(/is-visible/)
 		await expect(background).toHaveCSS('background-image', 'none')
+		await expect(page).not.toHaveURL(/\/settings\/background/)
 
 		await page.reload()
 		await expect(page.locator('.project-title')).toContainText(project.title)
