@@ -1,5 +1,5 @@
 ---
-status: Enacted
+status: Superseded by ADR-0015
 date: 2026-07-17
 deciders: fork maintainer
 phase: —

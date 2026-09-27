@@ -21,6 +21,21 @@ function relationTaskSearchResults(page) {
 }
 
 test.describe('Related tasks quick add magic', () => {
+	test('Opening a task leaves focus off the always-shown relation search until asked', async ({authenticatedPage: page}) => {
+		const project = (await ProjectFactory.create(1, {id: 1}))[0]
+		await createDefaultViews(project.id)
+		const task = (await TaskFactory.create(1, {id: 1, project_id: project.id}, false))[0]
+
+		await page.goto(`/tasks/${task.id}`)
+		const input = page.locator('.task-relations .multiselect input').first()
+		await expect(input).toBeVisible()
+		// Autofocus here swallowed single-key shortcuts (d, l, …) as typed text.
+		await expect(input).not.toBeFocused()
+
+		await page.locator('body').press('r')
+		await expect(input).toBeFocused()
+	})
+
 	test('Applies a label parsed via *prefix to the new related task', async ({authenticatedPage: page}) => {
 		const project = (await ProjectFactory.create(1, {id: 1, title: 'Project A'}))[0]
 		await createDefaultViews(project.id)
@@ -50,6 +65,9 @@ test.describe('Related tasks quick add magic', () => {
 		await page.goto(`/tasks/${parent.id}`)
 		const input = await openRelatedTasksForm(page)
 		await input.fill('Important work !4')
+		const createOption = relationSearchResults(page).and(page.locator('.is-create-option'))
+		await expect(createOption.locator('.search-result')).toHaveText('Important work !4')
+		await expect(createOption.locator('.hint-text')).toHaveText('Add this as related task')
 		await input.press('Enter')
 
 		const relatedTaskLink = page.locator('.task-relations .related-tasks .task a').filter({hasText: 'Important work'})

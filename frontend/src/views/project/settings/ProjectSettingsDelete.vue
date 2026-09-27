@@ -13,7 +13,7 @@
 			</p>
 
 			<p
-				v-if="totalTasks !== null"
+				v-if="tasksLoaded"
 				class="has-text-weight-bold"
 			>
 				{{ deleteNotice }}
@@ -36,20 +36,20 @@ import {computed, ref, watchEffect} from 'vue'
 import {useTitle} from '@/composables/useTitle'
 import {useI18n} from 'vue-i18n'
 import {useRoute, useRouter} from 'vue-router'
-import {success} from '@/message'
+import {useDeleteProjectMutation} from '@/client/queries/projects'
 import Loading from '@/components/misc/Loading.vue'
-import {useProjectStore} from '@/stores/projects'
-import TaskService from '@/services/task'
-import type {ITask} from '@/modelTypes/ITask'
+import {useProjects} from '@/composables/useProjects'
+import {useTasks} from '@/composables/useTasks'
 
 const {t} = useI18n({useScope: 'global'})
-const projectStore = useProjectStore()
+const projectList = useProjects()
+const deleteMutation = useDeleteProjectMutation()
 const route = useRoute()
 const router = useRouter()
 
-const totalTasks = ref<number | null>(null)
 
-const project = computed(() => projectStore.projects[Number(route.params.projectId)])
+
+const project = computed(() => projectList.projects[Number(route.params.projectId)])
 const projectIdsToDelete = ref<number[]>([])
 
 watchEffect(
@@ -58,17 +58,22 @@ watchEffect(
 			return
 		}
 
-		projectIdsToDelete.value = projectStore
-			.getChildProjects(parseInt(route.params.projectId as string))
+		projectIdsToDelete.value = projectList
+			.getChildProjects(Number(route.params.projectId))
 			.map(p => p.id)
 
 		projectIdsToDelete.value.push(parseInt(route.params.projectId as string))
 
-		const taskService = new TaskService()
-		await taskService.getAll({} as ITask, {filter: `project in ${projectIdsToDelete.value.join(',')}`})
-		totalTasks.value = taskService.totalPages * taskService.resultCount
+
 	},
 )
+
+const taskQuery = useTasks(
+	() => ({params: {filter: `project in ${projectIdsToDelete.value.join(',')}`, per_page: 1}}),
+	{enabled: () => projectIdsToDelete.value.length > 0},
+)
+const totalTasks = taskQuery.total
+const tasksLoaded = taskQuery.isSuccess
 
 useTitle(() => t('project.delete.title', {project: project?.value?.title}))
 
@@ -89,8 +94,7 @@ async function deleteProject() {
 		return
 	}
 
-	await projectStore.deleteProject(project.value)
-	success({message: t('project.delete.success')})
+	await deleteMutation.mutateAsync(project.value.id)
 	router.push({name: 'home'})
 }
 </script>

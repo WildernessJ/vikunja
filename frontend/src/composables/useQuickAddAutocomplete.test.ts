@@ -8,8 +8,8 @@ const filterLabelsByQueryMock = vi.fn()
 const getLabelsByExactTitlesMock = vi.fn().mockReturnValue([])
 const getAllMock = vi.fn()
 
-vi.mock('@/stores/projects', () => ({
-	useProjectStore: () => ({
+vi.mock('@/composables/useProjects', () => ({
+	useProjects: () => ({
 		searchProject: searchProjectMock,
 	}),
 }))
@@ -21,10 +21,8 @@ vi.mock('@/composables/useLabels', () => ({
 	}),
 }))
 
-vi.mock('@/services/projectUsers', () => ({
-	default: class {
-		getAll = getAllMock
-	},
+vi.mock('@/client/queries/userSearch', () => ({
+	searchProjectUsers: (projectId: number, query: string) => getAllMock({projectId}, {s: query}),
 }))
 
 import {useQuickAddAutocomplete} from './useQuickAddAutocomplete'

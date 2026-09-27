@@ -9,8 +9,8 @@
 			v-model="project.title"
 			v-focus
 			:label="$t('project.title')"
-			:disabled="projectService.loading"
-			:loading="projectService.loading"
+			:disabled="isSubmitting"
+			:loading="isSubmitting"
 			:placeholder="$t('project.create.titlePlaceholder')"
 			type="text"
 			name="projectTitle"
@@ -41,7 +41,7 @@
 			</div>
 		</FormField>
 		<FormField
-			v-if="projectStore.hasProjects"
+			v-if="projectList.hasProjects"
 			:label="$t('project.parent')"
 		>
 			<ProjectSearch
@@ -50,29 +50,28 @@
 			/>
 		</FormField>
 		<FormField :label="$t('project.color')">
-			<ColorPicker v-model="project.hexColor" />
+			<ColorPicker v-model="project.hex_color" />
 		</FormField>
 	</CreateEdit>
 </template>
 
 <script setup lang="ts">
-import {ref, reactive, shallowReactive, watch, onMounted} from 'vue'
+import {ref, reactive, watch, onMounted} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {useRouter} from 'vue-router'
 
-import ProjectService from '@/services/project'
-import ProjectModel from '@/models/project'
 import CreateEdit from '@/components/misc/CreateEdit.vue'
 import ColorPicker from '@/components/input/ColorPicker.vue'
 import FormField from '@/components/input/FormField.vue'
 
-import {success} from '@/message'
 import {useTitle} from '@/composables/useTitle'
-import {useProjectStore} from '@/stores/projects'
-import {getTemplates, instantiateTemplate} from '@/services/template'
+import {useProjects} from '@/composables/useProjects'
 import ProjectSearch from '@/components/tasks/partials/ProjectSearch.vue'
-import type {IProject} from '@/modelTypes/IProject'
+import {createProjectDraft, projectKeys, useCreateProjectMutation, type ProjectResponse} from '@/client/queries/projects'
+import {getTemplates, instantiateTemplate} from '@/services/template'
 import type {ITemplate} from '@/modelTypes/ITemplate'
+import {queryClient} from '@/client/queryClient'
+import {success} from '@/message'
 
 const props = defineProps<{
 	parentProjectId?: number,
@@ -80,14 +79,14 @@ const props = defineProps<{
 
 const {t} = useI18n({useScope: 'global'})
 const router = useRouter()
+const createMutation = useCreateProjectMutation()
 
 useTitle(() => t('project.create.header'))
 
 const showError = ref(false)
-const project = reactive(new ProjectModel())
-const projectService = shallowReactive(new ProjectService())
-const projectStore = useProjectStore()
-const parentProject = ref<IProject | null>(null)
+const project = reactive(createProjectDraft())
+const projectList = useProjects()
+const parentProject = ref<ProjectResponse | null>(null)
 const isSubmitting = ref(false)
 
 const templates = ref<ITemplate[]>([])
@@ -99,7 +98,7 @@ onMounted(async () => {
 
 watch(
 	() => props.parentProjectId,
-	() => parentProject.value = (props.parentProjectId !== undefined ? projectStore.projects[props.parentProjectId] : undefined) ?? null,
+	() => parentProject.value = (props.parentProjectId !== undefined ? projectList.projects[props.parentProjectId] : undefined) ?? null,
 	{immediate: true},
 )
 
@@ -117,19 +116,19 @@ async function createProject() {
 	isSubmitting.value = true
 
 	if (parentProject.value) {
-		project.parentProjectId = parentProject.value.id
+		project.parent_project_id = parentProject.value.id
 	}
 
 	try {
 		if (selectedTemplateId.value > 0) {
-			const created = await instantiateTemplate(selectedTemplateId.value, project.title, project.parentProjectId)
-			projectStore.setProject(created)
+			const created = await instantiateTemplate(selectedTemplateId.value, project.title, project.parent_project_id ?? 0)
+			await queryClient.invalidateQueries({queryKey: projectKeys.list()})
 			success({message: t('project.template.instantiateSuccess')})
 			await router.push({name: 'project.index', params: {projectId: created.id}})
 			return
 		}
-		await projectStore.createProject(project)
-		success({message: t('project.create.createdSuccess')})
+		const created = await createMutation.mutateAsync(project)
+		await router.push({name: 'project.index', params: {projectId: created.id}})
 	} finally {
 		isSubmitting.value = false
 	}

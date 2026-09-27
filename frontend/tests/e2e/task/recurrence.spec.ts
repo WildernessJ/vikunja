@@ -8,7 +8,7 @@ test.describe('Task recurrence', () => {
 		await ProjectFactory.create(1, {id: 1})
 	})
 
-	test('sets repeat-every-day via preset button', async ({authenticatedPage: page}) => {
+	test('sets repeat-every-day via preset button', async ({authenticatedPage: page, apiContext, userToken}) => {
 		const [task] = await TaskFactory.create(1, {
 			id: 1,
 			project_id: 1,
@@ -20,12 +20,12 @@ test.describe('Task recurrence', () => {
 		await page.getByRole('button', {name: 'Set Repeating Interval'}).click()
 
 		const save = page.waitForResponse(r =>
-			r.url().includes(`/tasks/${task.id}`) && r.request().method() === 'POST',
+			new URL(r.url()).pathname.endsWith(`/tasks/${task.id}`) && r.request().method() === 'PATCH',
 		)
 		await page.getByRole('button', {name: 'Every Day'}).click()
-		const r = await save
-		const body = r.request().postDataJSON()
-		expect(body.repeat_after).toBe(86400)
+		expect((await save).ok()).toBeTruthy()
+		const response = await apiContext.get(`/api/v2/tasks/${task.id}`, {headers: {Authorization: `Bearer ${userToken}`}})
+		expect((await response.json()).repeat_after).toBe(86400)
 	})
 
 	test('completing a recurring task reopens with advanced due date', async ({
@@ -42,7 +42,7 @@ test.describe('Task recurrence', () => {
 		await page.goto(`/tasks/${task.id}`)
 
 		const completed = page.waitForResponse(r =>
-			r.url().includes(`/tasks/${task.id}`) && r.request().method() === 'POST',
+			new URL(r.url()).pathname.endsWith(`/tasks/${task.id}`) && r.request().method() === 'PATCH',
 		)
 		await page.locator('.task-view .action-buttons .button').filter({hasText: 'Mark task done!'}).click()
 		await completed
@@ -120,18 +120,18 @@ test.describe('Task recurrence', () => {
 
 		const create = page.waitForResponse(r =>
 			r.url().includes('/projects/1/tasks') &&
-			r.request().method() === 'PUT',
+			r.request().method() === 'POST',
 		)
 		await page.locator('.button').filter({hasText: 'Add'}).click()
 		const r = await create
-		const body = r.request().postDataJSON()
-		expect(body.title).toBe('water plants')
-		expect(body.repeat_mode).toBe(3)
-		expect(body.repeat_rrule).toBe('FREQ=WEEKLY;BYDAY=MO,FR')
+		// Asserted on the response: the v2 client re-wraps requests, so Playwright sees no post body.
+		const created = await r.json()
+		expect(created.title).toBe('water plants')
+		expect(created.repeat_mode).toBe(3)
+		expect(created.repeat_rrule).toBe('FREQ=WEEKLY;BYDAY=MO,FR')
 
 		// The backend anchors the due date to the first occurrence, so a quick-add
 		// pattern task is never left dateless and inert.
-		const created = await r.json()
 		expect(created.due_date).not.toBe('0001-01-01T00:00:00Z')
 		expect(new Date(created.due_date).getTime()).toBeGreaterThan(Date.now() - 60_000)
 	})

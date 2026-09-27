@@ -32,10 +32,10 @@ import {useI18n} from 'vue-i18n'
 
 import UserAvatar from '@/components/misc/UserAvatar.vue'
 import {getDisplayName} from '@/models/user'
-import type {IUser} from '@/modelTypes/IUser'
+import type {User as IUser} from '@/client/generated'
 
 const props = withDefaults(defineProps<{
-	user: IUser,
+	user: Pick<IUser, 'name' | 'username' | 'bot_owner_id'> & {botOwnerId?: number},
 	showUsername?: boolean,
 	avatarSize?: number,
 	isInline?: boolean,
@@ -48,7 +48,7 @@ const props = withDefaults(defineProps<{
 const {t} = useI18n({useScope: 'global'})
 
 const displayName = computed(() => getDisplayName(props.user))
-const isBot = computed(() => ((props.user as IUser & {botOwnerId?: number}).botOwnerId ?? 0) > 0)
+const isBot = computed(() => (props.user.bot_owner_id ?? props.user.botOwnerId ?? 0) > 0)
 </script>
 
 <style lang="scss" scoped>

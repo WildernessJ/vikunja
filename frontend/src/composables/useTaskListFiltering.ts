@@ -1,4 +1,4 @@
-import type {ITask} from '@/modelTypes/ITask'
+import type {TaskResponse} from '@/client/queries/tasks'
 
 /**
  * Determines if a task should be displayed in the List view.
@@ -12,17 +12,17 @@ import type {ITask} from '@/modelTypes/ITask'
  * @returns true if the task should be shown, false if it should be hidden
  */
 export function shouldShowTaskInListView(
-	task: ITask,
-	allTasksInView: ITask[],
+	task: TaskResponse,
+	allTasksInView: TaskResponse[],
 ): boolean {
 	// If task has no parent, always show it
-	const parentTasksCount = task.relatedTasks?.parenttask?.length ?? 0
+	const parentTasksCount = task.related_tasks.parenttask?.length ?? 0
 	if (parentTasksCount === 0) {
 		return true
 	}
 
 	// Task has parent(s) - only hide if parent is in the same view
-	const parentTasks = task.relatedTasks?.parenttask ?? []
+	const parentTasks = task.related_tasks.parenttask ?? []
 	const parentIds = parentTasks.map(p => p.id)
 	const hasParentInView = allTasksInView.some(t => parentIds.includes(t.id))
 
@@ -32,9 +32,9 @@ export function shouldShowTaskInListView(
 
 /**
  * Whether a task rolled up from a descendant project should show the
- * project-origin chip. Only foreign rows (task.projectId differs from the
+ * project-origin chip. Only foreign rows (task.project_id differs from the
  * project being viewed) get it — the parent's own rows stay unlabeled.
  */
-export function isTaskFromSubproject(task: ITask, currentProjectId: number): boolean {
-	return task.projectId !== currentProjectId
+export function isTaskFromSubproject(task: Pick<TaskResponse, 'project_id'>, currentProjectId: number): boolean {
+	return task.project_id !== currentProjectId
 }

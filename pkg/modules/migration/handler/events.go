@@ -33,3 +33,17 @@ type MigrationRequestedEvent struct {
 func (t *MigrationRequestedEvent) Name() string {
 	return "migration.requested"
 }
+
+// FileMigrationRequestedEvent queues an uploaded import. The upload itself is found through the
+// migration status, so the event stays small and any instance can run it.
+type FileMigrationRequestedEvent struct {
+	User              *user.User `json:"user"`
+	MigratorKind      string     `json:"migrator_kind"`
+	MigrationStatusID int64      `json:"migration_status_id"`
+	Options           []byte     `json:"options,omitempty"`
+}
+
+// Name defines the name for FileMigrationRequestedEvent
+func (t *FileMigrationRequestedEvent) Name() string {
+	return "migration.file.requested"
+}

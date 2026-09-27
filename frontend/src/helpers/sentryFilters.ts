@@ -61,12 +61,21 @@ function isRequestError(e: unknown): boolean {
 		return true
 	}
 
-	if (typeof e !== 'object' || e === null) {
+	return isApiErrorBody(e)
+}
+
+// API error bodies are thrown as parsed JSON, so they are always plain objects.
+// Requiring that keeps out DOMException and other Error subclasses, which also
+// carry a `code` and a `message`.
+function isApiErrorBody(e: unknown): boolean {
+	if (typeof e !== 'object' || e === null || Object.getPrototypeOf(e) !== Object.prototype) {
 		return false
 	}
 
-	return typeof (e as {code?: unknown}).code !== 'undefined'
-		&& typeof (e as {message?: unknown}).message !== 'undefined'
+	const {code, message} = e as {code?: unknown, message?: unknown}
+
+	return (typeof code === 'number' || typeof code === 'string')
+		&& typeof message === 'string'
 }
 
 export function isChunkLoadError(message: unknown): boolean {
@@ -107,6 +116,15 @@ function hasNothingToReport(event?: SentryEventLike): boolean {
 	return !values?.length || values.every(value => !value?.value && !value?.type)
 }
 
+// `Promise.reject({})`: Sentry still fills in a type and value, so
+// hasNothingToReport() doesn't catch it.
+function isEmptyObject(e: unknown): boolean {
+	return typeof e === 'object'
+		&& e !== null
+		&& Object.getPrototypeOf(e) === Object.prototype
+		&& Object.keys(e).length === 0
+}
+
 export function shouldDropEvent(originalException: unknown, event?: SentryEventLike): boolean {
 	if (isNoisyMessage(event?.message)) {
 		return true
@@ -120,7 +138,7 @@ export function shouldDropEvent(originalException: unknown, event?: SentryEventL
 		return true
 	}
 
-	if (hasNothingToReport(event)) {
+	if (hasNothingToReport(event) || isEmptyObject(originalException)) {
 		return true
 	}
 
@@ -135,4 +153,15 @@ export function shouldDropEvent(originalException: unknown, event?: SentryEventL
 	}
 
 	return false
+}
+
+
+export function stripNavigationFragment<T>(span: T): T {
+	if (!span || typeof span !== 'object' || !('op' in span) || typeof span.op !== 'string' ||
+		!('description' in span) || typeof span.description !== 'string' ||
+		!(span.op.startsWith('browser.') || span.op.startsWith('navigation.'))) {
+		return span
+	}
+	// Navigation timings retain the initial fragment after history.replaceState.
+	return {...span, description: span.description.split('#')[0]}
 }

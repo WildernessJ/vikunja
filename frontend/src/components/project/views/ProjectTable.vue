@@ -7,9 +7,13 @@
 	>
 		<template #header>
 			<div class="filter-container">
-				<Popup>
+				<Popup
+					placement="bottom-start"
+					:anchor="columnsTriggerEl"
+				>
 					<template #trigger="{toggle}">
 						<XButton
+							ref="columnsTrigger"
 							icon="th"
 							variant="secondary"
 							class="mie-2"
@@ -75,7 +79,7 @@
 					</template>
 				</Popup>
 				<FilterPopup
-					v-if="!isSavedFilter({id: projectId} as IProject)"
+					v-if="!isSavedFilterProject({id: projectId})"
 					v-model="params"
 					:view-id="viewId"
 					:project-id="projectId"
@@ -253,10 +257,10 @@
 									</td>
 									<td v-if="activeColumns.project">
 										<RouterLink
-											v-if="projectStore.projects[t.projectId]"
-											:to="{ name: 'project.index', params: { projectId: t.projectId } }"
+											v-if="projectList.projects[t.project_id]"
+											:to="{ name: 'project.index', params: { projectId: t.project_id } }"
 										>
-											{{ projectStore.projects[t.projectId].title }}
+											{{ projectList.projects[t.project_id].title }}
 										</RouterLink>
 									</td>
 									<td v-if="activeColumns.title">
@@ -287,7 +291,7 @@
 									</td>
 									<DateTableCell
 										v-if="activeColumns.dueDate"
-										:date="t.dueDate ?? undefined"
+										:date="t.due_date"
 										:date-only="dateOnly"
 									/>
 									<td v-if="activeColumns.commentCount">
@@ -295,20 +299,20 @@
 									</td>
 									<DateTableCell
 										v-if="activeColumns.startDate"
-										:date="t.startDate ?? undefined"
+										:date="t.start_date"
 										:date-only="dateOnly"
 									/>
 									<DateTableCell
 										v-if="activeColumns.endDate"
-										:date="t.endDate ?? undefined"
+										:date="t.end_date"
 										:date-only="dateOnly"
 									/>
 									<td v-if="activeColumns.percentDone">
-										{{ t.percentDone * 100 }}%
+										{{ t.percent_done * 100 }}%
 									</td>
 									<DateTableCell
 										v-if="activeColumns.doneAt"
-										:date="t.doneAt ?? undefined"
+										:date="t.done_at"
 									/>
 									<DateTableCell
 										v-if="activeColumns.created"
@@ -322,7 +326,7 @@
 										<User
 											:avatar-size="27"
 											:show-username="false"
-											:user="t.createdBy"
+											:user="t.created_by ?? {}"
 										/>
 									</td>
 								</tr>
@@ -341,7 +345,7 @@
 </template>
 
 <script setup lang="ts">
-import {computed, type Ref, watch} from 'vue'
+import {computed, ref, type ComponentPublicInstance, type Ref, watch} from 'vue'
 
 import {useStorage} from '@vueuse/core'
 import {useDateOnly} from '@/composables/useDateOnly'
@@ -362,23 +366,23 @@ import Popup from '@/components/misc/Popup.vue'
 
 import type {SortBy} from '@/composables/useTaskList'
 import {useTaskList} from '@/composables/useTaskList'
-import type {ExpandTaskFilterParam} from '@/services/taskCollection'
-import type {ITask} from '@/modelTypes/ITask'
-import type {IProject} from '@/modelTypes/IProject'
+import type {TaskResponse} from '@/client/queries/tasks'
 import AssigneeList from '@/components/tasks/partials/AssigneeList.vue'
-import type {IProjectView} from '@/modelTypes/IProjectView'
-import {getTaskIdentifier} from '@/models/task'
+import {getTaskIdentifier} from '@/helpers/task'
 import { camelCase } from 'change-case'
-import {isSavedFilter} from '@/services/savedFilter'
-import {useProjectStore} from '@/stores/projects'
+import {isSavedFilterProject} from '@/client/queries/projects'
+import {useProjects} from '@/composables/useProjects'
 
 const props = defineProps<{
 	isLoadingProject: boolean,
-	projectId: IProject['id'],
-	viewId: IProjectView['id'],
+	projectId: number,
+	viewId: number,
 }>()
 
-const projectStore = useProjectStore()
+const projectList = useProjects()
+
+const columnsTrigger = ref<ComponentPublicInstance | null>(null)
+const columnsTriggerEl = computed<HTMLElement | null>(() => (columnsTrigger.value?.$el as HTMLElement) ?? null)
 
 const ACTIVE_COLUMNS_DEFAULT = {
 	index: true,
@@ -411,8 +415,7 @@ const taskList = useTaskList(
 	() => props.projectId, 
 	() => props.viewId, 
 	sortBy.value,
-	// TaskFilterParams.expand is typed as a single value, but the query serializer accepts arrays at runtime
-	() => ['comment_count', 'is_unread'] as unknown as ExpandTaskFilterParam,
+	() => ['comment_count', 'is_unread'],
 )
 
 const {
@@ -422,7 +425,7 @@ const {
 	currentPage,
 	sortByParam,
 } = taskList
-const tasks: Ref<ITask[]> = taskList.tasks
+const tasks: Ref<TaskResponse[]> = taskList.tasks
 
 watch(
 	() => activeColumns.value,
@@ -512,17 +515,10 @@ const taskDetailRoutes = computed(() => Object.fromEntries(
 		flex-direction: column;
 	}
 
-	&.is-open {
-		margin: 2rem 0 1rem;
-	}
 }
 
 .link-share-view .card {
 	border: none;
 	box-shadow: none;
-}
-
-.filter-container :deep(.popup) {
-	inset-block-start: 7rem;
 }
 </style>

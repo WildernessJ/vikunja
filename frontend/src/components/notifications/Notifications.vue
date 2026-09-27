@@ -130,7 +130,7 @@ const authStore = useAuthStore()
 const router = useRouter()
 const {t} = useI18n()
 
-const allNotifications = ref<INotification[]>([])
+const allNotifications = ref<NotificationModel[]>([])
 const showNotifications = ref(false)
 const popup = ref<HTMLElement | null>(null)
 
@@ -205,11 +205,11 @@ function stopPollingFallback() {
 
 async function loadNotifications() {
 	const notificationService = new NotificationService()
-	allNotifications.value = await notificationService.getAll()
+	allNotifications.value = await notificationService.getAll() as NotificationModel[]
 }
 
 function hidePopup(e: MouseEvent) {
-	if (showNotifications.value && popup.value) {
+	if (showNotifications.value && popup.value !== null) {
 		closeWhenClickedOutside(e, popup.value, () => showNotifications.value = false)
 	}
 }

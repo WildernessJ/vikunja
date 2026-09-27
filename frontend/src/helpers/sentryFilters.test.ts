@@ -1,12 +1,17 @@
 import {describe, it, expect} from 'vitest'
 import {AxiosError} from 'axios'
 
-import {shouldDropEvent} from './sentryFilters'
+import {shouldDropEvent, stripNavigationFragment} from './sentryFilters'
 
 // Object.assign instead of `new Error(msg, {cause})`: the vitest tsconfig
 // targets a lib without the two-argument Error constructor.
 function errorWithCause(message: string, cause: unknown): Error {
 	return Object.assign(new Error(message), {cause})
+}
+
+// happy-dom's DOMException lacks the legacy numeric `code` that browsers set.
+function browserDomException(message: string, name: string, code: number): DOMException {
+	return Object.assign(new DOMException(message, name), {code})
 }
 
 describe('shouldDropEvent', () => {
@@ -26,6 +31,32 @@ describe('shouldDropEvent', () => {
 
 	it('drops an error-like object with code and message', () => {
 		expect(shouldDropEvent({code: 'ECONNABORTED', message: 'timeout'})).toBe(true)
+	})
+
+	it('drops a v1 api error body', () => {
+		expect(shouldDropEvent({code: 1001, message: 'The user does not exist.'})).toBe(true)
+	})
+
+	it('drops a v2 problem body with its detail copied to message', () => {
+		const problem = {status: 400, code: 2002, detail: 'invalid data'}
+
+		expect(shouldDropEvent({...problem, message: problem.detail})).toBe(true)
+	})
+
+	it('drops an error wrapping an api error body as cause', () => {
+		expect(shouldDropEvent(errorWithCause('outer', {code: 1001, message: 'The user does not exist.'}))).toBe(true)
+	})
+
+	it('keeps a DOMException', () => {
+		expect(shouldDropEvent(browserDomException('Failed to execute \'insertBefore\' on \'Node\'', 'NotFoundError', 8))).toBe(false)
+	})
+
+	it('keeps an error wrapping a DOMException as cause', () => {
+		expect(shouldDropEvent(errorWithCause('outer', browserDomException('The operation was aborted.', 'AbortError', 20)))).toBe(false)
+	})
+
+	it('keeps an error with a node-style code', () => {
+		expect(shouldDropEvent(Object.assign(new Error('boom'), {code: 'ERR_SOMETHING'}))).toBe(false)
 	})
 
 	it('keeps a plain error', () => {
@@ -191,5 +222,40 @@ describe('shouldDropEvent with empty events', () => {
 
 	it('keeps an event when no event was passed at all', () => {
 		expect(shouldDropEvent(new Error('something actually broke'))).toBe(false)
+	})
+
+	it('drops a promise rejected with an empty object', () => {
+		expect(shouldDropEvent({}, {
+			exception: {
+				values: [{
+					type: 'UnhandledRejection',
+					value: 'Object captured as promise rejection with keys: [object has no keys]',
+				}],
+			},
+		})).toBe(true)
+	})
+
+	it('keeps a promise rejected with an object that has keys', () => {
+		expect(shouldDropEvent({reason: 'boom'}, {
+			exception: {
+				values: [{
+					type: 'UnhandledRejection',
+					value: 'Object captured as promise rejection with keys: reason',
+				}],
+			},
+		})).toBe(false)
+	})
+})
+
+
+describe('stripNavigationFragment', () => {
+	it.each(['browser.request', 'browser.domContentLoadedEvent', 'navigation.navigate', 'navigation.reload', 'navigation.back_forward'])('removes the original fragment from %s while preserving timing data', op => {
+		const span = {op, description: 'https://example.com/register?lang=en#invite-link=secret', startTimestamp: 1, endTimestamp: 2}
+		expect(stripNavigationFragment(span)).toEqual({...span, description: 'https://example.com/register?lang=en'})
+		expect(span.description).toContain('#invite-link=secret')
+	})
+
+	it.each([null, undefined, {op: 'navigation.navigate'}, {op: 'resource.script', description: 'https://example.com/app.js#hash'}])('preserves other recording data: %j', span => {
+		expect(stripNavigationFragment(span)).toBe(span)
 	})
 })

@@ -3,25 +3,15 @@ import {mount, flushPromises} from '@vue/test-utils'
 import {setActivePinia, createPinia} from 'pinia'
 import {createI18n} from 'vue-i18n'
 
-import type {ITask} from '@/modelTypes/ITask'
+import type {Task as ITask} from '@/client/generated'
 import {PRIORITIES} from '@/constants/priorities'
 import en from '@/i18n/lang/en.json'
 
-const taskServiceUpdateMock = vi.fn()
-vi.mock('@/services/task', () => ({
-	default: class {
-		loading = false
-		update = taskServiceUpdateMock
-	},
-}))
-
 const taskStoreUpdateMock = vi.fn()
 const taskStoreDeleteMock = vi.fn()
-vi.mock('@/stores/tasks', () => ({
-	useTaskStore: () => ({
-		update: taskStoreUpdateMock,
-		delete: taskStoreDeleteMock,
-	}),
+vi.mock('@/client/queries/taskMutations', () => ({
+	useUpdateTaskMutation: () => ({mutateAsync: taskStoreUpdateMock}),
+	useDeleteTaskMutation: () => ({mutateAsync: taskStoreDeleteMock}),
 }))
 
 // happy-dom reports a 0x0 documentElement, which makes floating-ui's shift()
@@ -77,8 +67,7 @@ function makeTask(overrides: Partial<ITask> = {}): ITask {
 		priority: PRIORITIES.LOW,
 		labels: [],
 		assignees: [],
-		dueDate: null,
-		projectId: 1,
+		project_id: 1,
 		...overrides,
 	} as ITask
 }
@@ -113,7 +102,6 @@ function mountMenu(task: ITask, position = {x: 100, y: 200}) {
 describe('TaskContextMenu', () => {
 	beforeEach(() => {
 		setActivePinia(createPinia())
-		taskServiceUpdateMock.mockReset()
 		taskStoreUpdateMock.mockReset()
 		taskStoreDeleteMock.mockReset()
 		computePositionMock.mockReset()
@@ -149,10 +137,9 @@ describe('TaskContextMenu', () => {
 		wrapper.unmount()
 	})
 
-	// Regression guard: priority changes must route through taskStore.update
-	// (which triggers projectCountsStore.loadCounts() to keep the Today count
-	// and app badge in sync), never call the task service directly.
-	it('routes a priority change through taskStore.update, not the raw service', async () => {
+	// Regression guard: priority changes must route through the update mutation, whose settle
+	// step refreshes the Today count and app badge (see projectCounts.test.ts).
+	it('routes a priority change through the update mutation', async () => {
 		const task = makeTask({priority: PRIORITIES.LOW})
 		taskStoreUpdateMock.mockResolvedValueOnce({...task, priority: PRIORITIES.URGENT})
 
@@ -170,16 +157,15 @@ describe('TaskContextMenu', () => {
 
 		expect(taskStoreUpdateMock).toHaveBeenCalledOnce()
 		expect(taskStoreUpdateMock).toHaveBeenCalledWith(expect.objectContaining({priority: PRIORITIES.URGENT}))
-		expect(taskServiceUpdateMock).not.toHaveBeenCalled()
 		expect(wrapper.emitted('taskUpdated')).toBeTruthy()
 
 		wrapper.unmount()
 	})
 
 	// Same regression guard for due dates.
-	it('routes a due date change through taskStore.update, not the raw service', async () => {
+	it('routes a due date change through the update mutation', async () => {
 		const task = makeTask()
-		taskStoreUpdateMock.mockResolvedValueOnce({...task, dueDate: new Date()})
+		taskStoreUpdateMock.mockResolvedValueOnce({...task, due_date: new Date().toISOString()})
 
 		const wrapper = mountMenu(task)
 		await flushPromises()
@@ -194,7 +180,6 @@ describe('TaskContextMenu', () => {
 		await flushPromises()
 
 		expect(taskStoreUpdateMock).toHaveBeenCalledOnce()
-		expect(taskServiceUpdateMock).not.toHaveBeenCalled()
 
 		wrapper.unmount()
 	})
@@ -213,7 +198,7 @@ describe('TaskContextMenu', () => {
 		await todayOption!.trigger('click')
 		await flushPromises()
 
-		const {dueDate} = taskStoreUpdateMock.mock.calls[0][0] as {dueDate: Date}
+		const dueDate = new Date((taskStoreUpdateMock.mock.calls[0][0] as {due_date: string}).due_date)
 		expect([dueDate.getHours(), dueDate.getMinutes(), dueDate.getSeconds(), dueDate.getMilliseconds()])
 			.toEqual([23, 59, 59, 999])
 
@@ -235,14 +220,14 @@ describe('TaskContextMenu', () => {
 		await todayOption!.trigger('click')
 		await flushPromises()
 
-		const {dueDate} = taskStoreUpdateMock.mock.calls[0][0] as {dueDate: Date}
+		const dueDate = new Date((taskStoreUpdateMock.mock.calls[0][0] as {due_date: string}).due_date)
 		expect([dueDate.getHours(), dueDate.getMinutes(), dueDate.getSeconds()]).toEqual([9, 30, 0])
 
 		defaultDueTimeMock.ref.value = undefined
 		wrapper.unmount()
 	})
 
-	it('calls taskStore.delete when the delete confirmation is submitted', async () => {
+	it('deletes through the delete mutation when the confirmation is submitted', async () => {
 		const task = makeTask()
 		taskStoreDeleteMock.mockResolvedValueOnce(undefined)
 
@@ -260,7 +245,7 @@ describe('TaskContextMenu', () => {
 		await flushPromises()
 
 		expect(taskStoreDeleteMock).toHaveBeenCalledOnce()
-		expect(taskStoreDeleteMock).toHaveBeenCalledWith(expect.objectContaining({id: task.id}))
+		expect(taskStoreDeleteMock).toHaveBeenCalledWith(task.id)
 
 		wrapper.unmount()
 	})

@@ -109,7 +109,7 @@
 							@click.stop
 						>
 							<DatepickerInline
-								:model-value="task.dueDate"
+								:model-value="parseDateOrNull(task.due_date)"
 								:show-shortcuts="false"
 								@update:modelValue="pickDueDate"
 							/>
@@ -130,7 +130,7 @@
 						@click.stop
 					>
 						<ProjectSearch
-							:filter="(project: IProject) => project.id !== task.projectId"
+							:filter="(project: ProjectResponse) => project.id !== task.project_id"
 							@update:modelValue="selectProject"
 						/>
 					</div>
@@ -149,8 +149,8 @@
 						@click.stop
 					>
 						<EditLabels
-							:model-value="task.labels"
-							:task-id="task.id"
+							:model-value="task.labels ?? []"
+							:task-id="task.id ?? 0"
 							@update:modelValue="onLabelsUpdated"
 						/>
 					</div>
@@ -169,9 +169,9 @@
 						@click.stop
 					>
 						<EditAssignees
-							:model-value="task.assignees"
-							:task-id="task.id"
-							:project-id="task.projectId"
+							:model-value="task.assignees ?? []"
+							:task-id="task.id ?? 0"
+							:project-id="task.project_id ?? 0"
 							@update:modelValue="onAssigneesUpdated"
 						/>
 					</div>
@@ -222,12 +222,11 @@ import EditAssignees from '@/components/tasks/partials/EditAssignees.vue'
 import {PRIORITIES, type Priority} from '@/constants/priorities'
 import {calculateDayInterval} from '@/helpers/time/calculateDayInterval'
 import {getDateWithTime} from '@/helpers/time/getDateWithTime'
-import {useTaskStore} from '@/stores/tasks'
+import {useDeleteTaskMutation, useUpdateTaskMutation} from '@/client/queries/taskMutations'
+import {parseDateOrNull} from '@/helpers/parseDateOrNull'
 
-import type {ITask} from '@/modelTypes/ITask'
-import type {Label} from '@/client/generated'
-import type {IUser} from '@/modelTypes/IUser'
-import type {IProject} from '@/modelTypes/IProject'
+import type {Label, Task as ITask, User} from '@/client/generated'
+import type {ProjectResponse} from '@/client/queries/projects'
 
 const props = defineProps<{
 	task: ITask
@@ -242,7 +241,12 @@ const emit = defineEmits<{
 	'deleted': [task: ITask]
 }>()
 
-const taskStore = useTaskStore()
+const updateTask = useUpdateTaskMutation()
+const deleteTask = useDeleteTaskMutation()
+
+function saveTask(changes: Partial<ITask>) {
+	return updateTask.mutateAsync({...props.task, ...changes, id: props.task.id!})
+}
 
 type ContextMenuSection = 'priority' | 'dueDate' | 'project' | 'labels' | 'assignees' | null
 
@@ -340,7 +344,7 @@ function onToggleDone() {
 }
 
 async function selectPriority(priority: Priority) {
-	const updated = await taskStore.update({...props.task, priority})
+	const updated = await saveTask({priority})
 	emit('taskUpdated', updated)
 	close()
 }
@@ -357,7 +361,7 @@ function selectDueDateInterval(intervalKey: string) {
 }
 
 async function selectDueDate(date: Date | null) {
-	const updated = await taskStore.update({...props.task, dueDate: date})
+	const updated = await saveTask({due_date: date?.toISOString() ?? ''})
 	emit('taskUpdated', updated)
 	close()
 }
@@ -366,15 +370,15 @@ async function selectDueDate(date: Date | null) {
 // closing the menu — letting the user set a specific time before dismissing by
 // clicking away. The quick options above commit-and-close via selectDueDate.
 async function pickDueDate(date: Date | null) {
-	const updated = await taskStore.update({...props.task, dueDate: date})
+	const updated = await saveTask({due_date: date?.toISOString() ?? ''})
 	emit('taskUpdated', updated)
 }
 
-async function selectProject(project: IProject | null) {
+async function selectProject(project: ProjectResponse | null) {
 	if (project === null) {
 		return
 	}
-	const updated = await taskStore.update({...props.task, projectId: project.id})
+	const updated = await saveTask({project_id: project.id})
 	emit('taskUpdated', updated)
 	close()
 }
@@ -383,12 +387,12 @@ function onLabelsUpdated(labels: Label[]) {
 	emit('taskUpdated', {...props.task, labels})
 }
 
-function onAssigneesUpdated(assignees: IUser[] | undefined) {
+function onAssigneesUpdated(assignees: User[] | undefined) {
 	emit('taskUpdated', {...props.task, assignees: assignees ?? []})
 }
 
 async function confirmDelete() {
-	await taskStore.delete(props.task)
+	await deleteTask.mutateAsync(props.task.id!)
 	emit('deleted', props.task)
 	showDeleteModal.value = false
 	close()

@@ -3,8 +3,8 @@
 		<div class="tw:flex tw:items-center md:tw:items-stretch tw:flex-col tw:gap-1 task-properties">
 			<div class="tw:flex tw:items-center tw:gap-2">
 				<ColorBubble
-					v-if="task.hexColor !== ''"
-					:color="getHexColor(task.hexColor) ?? ''"
+					v-if="task.hex_color !== ''"
+					:color="getHexColor(task.hex_color) ?? ''"
 				/>
 				<BaseButton @click="copyUrl">
 					<span class="title task-id">
@@ -24,14 +24,6 @@
 				<Icon icon="times" />
 			</BaseButton>
 		</div>
-		<BaseButton
-			v-if="hasClose"
-			:aria-label="$t('task.detail.closeTaskDetail')"
-			class="close d-print-none"
-			@click="$emit('close')"
-		>
-			<Icon icon="times" />
-		</BaseButton>
 	</div>
 </template>
 
@@ -45,8 +37,8 @@ import Done from '@/components/misc/Done.vue'
 
 import {useCopyToClipboard} from '@/composables/useCopyToClipboard'
 
-import type {ITask} from '@/modelTypes/ITask'
-import {getHexColor, getTaskIdentifier} from '@/models/task'
+import type {Task as ITask} from '@/client/generated'
+import {getHexColor, getTaskIdentifier} from '@/helpers/task'
 
 const props = defineProps<{
 	task: ITask,
@@ -107,22 +99,11 @@ const textIdentifier = computed(() => getTaskIdentifier(props.task))
 	inline-size: .75rem;
 }
 
+// Modal renders its own fixed close button from $tablet up
 .close {
-	font-size: 2rem;
-	margin-inline-start: 0.5rem;
-	line-height: 1;
-
-	@media screen and (max-width: $tablet) {
-		display: none;
-	}
-	
-	@media screen and (min-width: #{$desktop + 1px}) {
-		display: none;
-	}
-}
-
-.task-properties .close {
 	display: none;
+	font-size: 2rem;
+	line-height: 1;
 	position: absolute;
 	inset-inline-end: 1.25rem;
 	inset-block-start: 1.1rem;

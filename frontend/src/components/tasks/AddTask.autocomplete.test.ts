@@ -2,7 +2,7 @@ import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest'
 import {mount, flushPromises} from '@vue/test-utils'
 
 const createNewTaskMock = vi.fn()
-const ensureLabelsExistMock = vi.fn().mockResolvedValue(undefined)
+const ensureLabelsExistMock = vi.fn().mockResolvedValue({labels: [], skipped: []})
 const findProjectIdMock = vi.fn()
 const searchProjectMock = vi.fn()
 const findProjectByExactnameMock = vi.fn().mockReturnValue(null)
@@ -10,14 +10,19 @@ const filterLabelsByQueryMock = vi.fn()
 const getLabelsByExactTitlesMock = vi.fn().mockReturnValue([])
 const getAllAssigneesMock = vi.fn().mockResolvedValue([])
 
-vi.mock('@/stores/tasks', () => ({
-	useTaskStore: () => ({
-		isLoading: false,
+vi.mock('@/composables/useQuickAddTask', () => ({
+	useQuickAddTask: () => ({
+		isLoading: {value: false},
 		ensureLabelsExist: ensureLabelsExistMock,
 		findProjectId: findProjectIdMock,
 		createNewTask: createNewTaskMock,
 		createNewTasksBulk: vi.fn().mockResolvedValue({tasks: [], error: null}),
 	}),
+	reportSkippedLabels: vi.fn(),
+}))
+
+vi.mock('@/client/queries/taskMutations', () => ({
+	useCreateTaskRelationMutation: () => ({mutateAsync: vi.fn().mockResolvedValue({})}),
 }))
 
 // false = the production default: relation writes run sequentially.
@@ -33,14 +38,14 @@ vi.mock('@/stores/auth', () => ({
 			defaultProjectId: 1,
 			frontendSettings: {
 				quickAddMagicMode: 'vikunja',
-				quickAddDefaultReminders: false,
+				quickAddDefaultReminders: [],
 			},
 		},
 	}),
 }))
 
-vi.mock('@/stores/projects', () => ({
-	useProjectStore: () => ({
+vi.mock('@/composables/useProjects', () => ({
+	useProjects: () => ({
 		projects: {},
 		searchProject: searchProjectMock,
 		findProjectByExactname: findProjectByExactnameMock,
@@ -54,22 +59,8 @@ vi.mock('@/composables/useLabels', () => ({
 	}),
 }))
 
-vi.mock('@/services/projectUsers', () => ({
-	default: class {
-		getAll = getAllAssigneesMock
-	},
-}))
-
-vi.mock('@/services/task', () => ({
-	default: class {
-		getAll = vi.fn().mockResolvedValue([])
-	},
-}))
-
-vi.mock('@/services/taskRelation', () => ({
-	default: class {
-		create = vi.fn().mockResolvedValue({})
-	},
+vi.mock('@/client/queries/userSearch', () => ({
+	searchProjectUsers: (projectId: number, query: string) => getAllAssigneesMock({projectId}, {s: query}),
 }))
 
 vi.mock('vue-router', () => ({

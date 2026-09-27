@@ -594,8 +594,8 @@
                 },
                 {
                     "key": "claimtimeout",
-                    "default_value": "24h",
-                    "comment": "How long a running migration's claim on the user's migration slot is trusted before another import for the same user may take it over. Only relevant when the instance crashed mid-import (normally the claim is released on success and failure). Real migrations can run longer than this; a takeover only happens after the timeout expires."
+                    "default_value": "5m",
+                    "comment": "How long a migration's claim on the user's migration slot may go without a heartbeat before another import for the same user may take it over. A running migration refreshes its heartbeat continuously, so a long-running import keeps its claim no matter how long it takes; a takeover only happens when the instance running it died mid-import (normally the claim is released on success and failure)."
                 },
                 {
                     "key": "todoist",
@@ -817,12 +817,12 @@
                                         {
                                             "key": "usernamefallback",
                                             "default_value": "false",
-                                            "comment": "This option allows to look for a local account where the OIDC Issuer match the Vikunja local username. Allowed value is either `true` or `false`. That option can be combined with `emailfallback`.\nUse with caution, this can allow the 3rd party provider to connect to *any* local account and therefore potential account hijaking."
+                                            "comment": "This option allows to look for a local account where the OIDC Issuer match the Vikunja local username. Allowed value is either `true` or `false`. If `emailfallback` is also enabled, a local account matching both username and email is preferred, then one matching the email alone.\nUse with caution, this can allow the 3rd party provider to connect to *any* local account and therefore potential account hijaking."
                                         },
                                         {
                                             "key": "emailfallback",
                                             "default_value": "false",
-                                            "comment": "This option allows to look for a local account where the OIDC user's email match the Vikunja local email. Allowed value is either `true` or `false`. That option can be combined with `usernamefallback`.\nUse with caution, this can allow the 3rd party provider to connect to *any* local account and therefore potential account hijaking."
+                                            "comment": "This option allows to look for a local account where the OIDC user's email match the Vikunja local email. Allowed value is either `true` or `false`. Requires the provider to send `email_verified: true`. Also applies when `usernamefallback` is enabled.\nUse with caution, this can allow the 3rd party provider to connect to *any* local account and therefore potential account hijaking."
                                         },
                                         {
                                             "key": "forceuserinfo",

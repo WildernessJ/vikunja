@@ -13,7 +13,7 @@
 					@saveDefault="saveDefaultSort"
 				/>
 				<FilterPopup
-					v-if="!isSavedFilter(project)"
+					v-if="!isSavedFilterProject(project)"
 					v-model="params"
 					:view-id="viewId"
 					:project-id="projectId"
@@ -38,7 +38,7 @@
 					class="has-overflow"
 				>
 					<AddTask
-						v-if="!project?.isArchived && canWrite"
+						v-if="!project?.is_archived && canWrite"
 						ref="addTaskRef"
 						class="list-view__add-task d-print-none"
 						@tasksAdded="updateTaskList"
@@ -85,7 +85,6 @@
 								:show-project="!isPseudoProject && isTaskFromSubproject(getItemSlotProps(itemSlotProps).element, projectId)"
 								:all-tasks="allTasks"
 								@taskUpdated="updateTasks"
-								@taskDeleted="onTaskDeleted"
 							>
 								<span
 									v-if="canDragTasks && isPositionSorting"
@@ -109,6 +108,7 @@
 
 
 <script setup lang="ts">
+import {useUpdateTaskPositionMutation} from '@/client/queries/taskMutations'
 import {ref, computed, nextTick, onMounted, onBeforeUnmount, watch, toRef} from 'vue'
 import {useI18n} from 'vue-i18n'
 import draggable from 'zhyswan-vuedraggable'
@@ -124,32 +124,26 @@ import Pagination from '@/components/misc/Pagination.vue'
 import SortPopup from '@/components/project/partials/SortPopup.vue'
 
 import {useTaskList, defaultSortToSortBy, sortByToDefaultArrays, type SortBy} from '@/composables/useTaskList'
-import type {ExpandTaskFilterParam} from '@/services/taskCollection'
-import ProjectViewService from '@/services/projectViews'
-import ProjectViewModel from '@/models/projectView'
-import {success, error} from '@/message'
+import {createProjectViewUpdate, useUpdateProjectViewMutation} from '@/client/queries/projectViews'
+import {useProjects} from '@/composables/useProjects'
 import {useTaskDragToProject} from '@/composables/useTaskDragToProject'
+import {useCurrentProject} from '@/composables/useCurrentProject'
 import {shouldShowTaskInListView, isTaskFromSubproject} from '@/composables/useTaskListFiltering'
 import {getSubprojectRollupState, saveSubprojectRollupState, type SubprojectRollupState} from '@/helpers/subprojectRollupState'
 import {PERMISSIONS as Permissions} from '@/constants/permissions'
 import {calculateItemPosition} from '@/helpers/calculateItemPosition'
-import type {ITask} from '@/modelTypes/ITask'
-import {isSavedFilter, useSavedFilter, getSavedFilterIdFromProjectId} from '@/services/savedFilter'
+import type {TaskResponse} from '@/client/queries/tasks'
+import {isSavedFilterProject, type ProjectResponse} from '@/client/queries/projects'
 
 import {useAuthStore} from '@/stores/auth'
 import {useBaseStore} from '@/stores/base'
-import {useProjectStore} from '@/stores/projects'
-import {useTaskStore} from '@/stores/tasks'
+import {useTaskDragState} from '@/composables/useTaskDragState'
 
-import type {IProject} from '@/modelTypes/IProject'
-import type {IProjectView} from '@/modelTypes/IProjectView'
-import TaskPositionService from '@/services/taskPosition'
-import TaskPositionModel from '@/models/taskPosition'
 
 const props = defineProps<{
-        isLoadingProject: boolean,
-        projectId: IProject['id'],
-        viewId: IProjectView['id'],
+	isLoadingProject: boolean,
+	projectId: number,
+	viewId: number,
 }>()
 
 const projectId = toRef(props, 'projectId')
@@ -162,10 +156,10 @@ const drag = ref(false)
 
 const {t} = useI18n({useScope: 'global'})
 const authStore = useAuthStore()
-const projectStore = useProjectStore()
+const projectList = useProjects()
 
 const currentView = computed(() =>
-	projectStore.projects[projectId.value]?.views.find(v => v.id === props.viewId),
+	projectList.projects[projectId.value]?.views.find(v => v.id === props.viewId),
 )
 
 const {
@@ -179,14 +173,14 @@ const {
 } = useTaskList(
 	() => projectId.value,
 	() => props.viewId,
-	() => defaultSortToSortBy(currentView.value?.defaultSortBy ?? [], currentView.value?.defaultOrderBy ?? []) ?? {position: 'asc'},
-	() => (projectId.value === -1
+	() => defaultSortToSortBy(currentView.value?.default_sort_by ?? [], currentView.value?.default_order_by ?? []) ?? {position: 'asc'},
+	() => projectId.value === -1
 		? ['comment_count', 'is_unread']
-		: ['subtasks', 'comment_count', 'is_unread']) as unknown as ExpandTaskFilterParam,
+		: ['subtasks', 'comment_count', 'is_unread'],
 )
 const currentUserId = computed(() => authStore.info?.id ?? 0)
 
-function collectDescendants(id: IProject['id'], visited: Set<IProject['id']> = new Set()): IProject[] {
+function collectDescendants(id: number, visited: Set<number> = new Set()): ProjectResponse[] {
 	// Guards against corrupt/imported parent_project_id cycles (see the backend's
 	// maxDescendantDepth in pkg/models/task_collection.go for the same concern).
 	if (visited.has(id)) {
@@ -194,7 +188,7 @@ function collectDescendants(id: IProject['id'], visited: Set<IProject['id']> = n
 	}
 	visited.add(id)
 
-	const children = projectStore.getChildProjects(id).filter(p => !p.isArchived)
+	const children = projectList.getChildProjects(id).filter(p => !p.is_archived)
 	return children.flatMap(child => [child, ...collectDescendants(child.id, visited)])
 }
 
@@ -214,40 +208,29 @@ watch(rollupState, state => {
 	saveSubprojectRollupState(currentUserId.value, projectId.value, state)
 }, {immediate: true, deep: true})
 
-const taskPositionService = ref(new TaskPositionService())
+const positionMutation = useUpdateTaskPositionMutation()
 
-// isSavedFilter() requires a full IProject; here we only have an id, so re-implement its check locally.
-function isSavedFilterId(id: IProject['id']) {
-	return getSavedFilterIdFromProjectId(id) > 0
-}
-
-// Saved filter composable for accessing filter data
-const _savedFilter = useSavedFilter(() => (isSavedFilterId(projectId.value) ? projectId.value : undefined) as number).filter
-
-const tasks = ref<ITask[]>([])
-watch(
-	allTasks,
-	() => {
-		tasks.value = ([...allTasks.value]).filter(t => shouldShowTaskInListView(t, allTasks.value))
-	},
-)
+const dragTasks = ref<TaskResponse[] | null>(null)
+const tasks = computed({
+	get: () => dragTasks.value ?? allTasks.value.filter(task => shouldShowTaskInListView(task, allTasks.value)),
+	set: value => { dragTasks.value = value },
+})
+watch([projectId, () => props.viewId], () => { dragTasks.value = null })
 
 const isPositionSorting = computed(() => 'position' in sortByParam.value)
 
 const baseStore = useBaseStore()
-const taskStore = useTaskStore()
+const {setDraggedTask} = useTaskDragState()
 const {handleTaskDropToProject} = useTaskDragToProject()
-// baseStore.currentProject is a DeepReadonly<IProject>; copy it to get back a plain IProject.
-const project = computed<IProject | null>(() => {
-	return baseStore.currentProject ? {...baseStore.currentProject} as IProject : null
-})
+const {currentProject: project} = useCurrentProject()
 
 const canWrite = computed(() => {
-	return project.value?.maxPermission !== null && project.value?.maxPermission !== undefined &&
-		project.value.maxPermission > Permissions.READ && (project.value?.id ?? 0) > 0
+	return typeof project.value?.max_permission === 'number' &&
+		project.value.max_permission > Permissions.READ &&
+		project.value.id > 0
 })
 
-const isPseudoProject = computed(() => (project.value && isSavedFilter(project.value)) || project.value?.id === -1)
+const isPseudoProject = computed(() => isSavedFilterProject(project.value) || project.value?.id === -1)
 
 onMounted(async () => {
 	await nextTick()
@@ -256,7 +239,7 @@ onMounted(async () => {
 
 // No manual reordering while sub-project tasks are rolled up: foreign rows have
 // no task_positions entry in this view, so a drag would write a mis-scoped row.
-const canDragTasks = computed(() => (canWrite.value || isSavedFilter(project.value)) && !rollupState.value.enabled)
+const canDragTasks = computed(() => (canWrite.value || isSavedFilterProject(project.value)) && !rollupState.value.enabled)
 
 const isTouchDevice = ref(false)
 if (typeof window !== 'undefined') {
@@ -270,129 +253,99 @@ function focusNewTaskInput() {
 	addTaskRef.value?.focusTaskInput()
 }
 
-const projectViewService = new ProjectViewService()
+const updateViewMutation = useUpdateProjectViewMutation(t('sorting.defaultSaved'))
 
 // Saving a view's default sort calls ProjectView.Update, which requires project admin
 // (pkg/models/project_view_permissions.go) — hide the action for non-admins so they
 // don't hit a 403 toast on a control they can't use.
 const canSaveDefaultSort = computed(() =>
-	(project.value?.maxPermission ?? Permissions.READ) >= Permissions.ADMIN && (project.value?.id ?? 0) > 0,
+	(project.value?.max_permission ?? Permissions.READ) >= Permissions.ADMIN && (project.value?.id ?? 0) > 0,
 )
 
 async function saveDefaultSort(newSortBy: SortBy) {
 	const view = currentView.value
-	if (!view) {
+	if (!view?.id) {
 		return
 	}
 
 	const {sortBy: defaultSortBy, orderBy: defaultOrderBy} = sortByToDefaultArrays(newSortBy)
 	try {
-		const updatedView = await projectViewService.update(new ProjectViewModel({
-			...view,
-			defaultSortBy,
-			defaultOrderBy,
-		}))
-		projectStore.setProjectView(updatedView)
-		// Re-run the sortBy setter now that resolvedSortByDefault reflects the new
-		// default, so serializeSortBy sees newSortBy === default and drops `?sort=`.
-		sortByParam.value = newSortBy
-		success({message: t('sorting.defaultSaved')})
-	} catch (e) {
-		error(e)
+		await updateViewMutation.mutateAsync({
+			projectId: projectId.value,
+			viewId: view.id,
+			view: createProjectViewUpdate({...view, default_sort_by: defaultSortBy, default_order_by: defaultOrderBy}),
+		})
+	} catch {
+		// The mutation already toasted the failure.
+		return
 	}
+	// Re-run the sortBy setter now that resolvedSortByDefault reflects the new
+	// default, so serializeSortBy sees newSortBy === default and drops `?sort=`.
+	sortByParam.value = newSortBy
 }
 
-function updateTaskList(newTasks: ITask[]) {
-	if (!isPositionSorting.value) {
-		// reload tasks with current filter and sorting
-		loadTasks()
-	} else {
-		allTasks.value = [
-			...newTasks,
-			...allTasks.value,
-		]
-	}
-
+function updateTaskList() {
 	baseStore.setHasTasks(true)
 }
 
-function updateTasks(updatedTask: ITask) {
-	if (projectId.value < 0) {
-		// Reload tasks to keep saved filter results in sync
-		loadTasks(false)
-		return
-	}
-
-	const idx = tasks.value.findIndex(t => t.id === updatedTask.id)
-	if (idx === -1) {
-		return
-	}
-
-	// Moved out of this project (e.g. via the context menu) — drop it rather than
-	// leave it visible here, matching the drag-to-project path in saveTaskPosition.
-	// Guard on the row's *previous* projectId so a cross-project subtask that was
-	// always foreign to this view isn't dropped on an unrelated edit.
-	if (tasks.value[idx].projectId === projectId.value && updatedTask.projectId !== projectId.value) {
-		tasks.value = tasks.value.filter(t => t.id !== updatedTask.id)
-		return
-	}
-
-	tasks.value[idx] = updatedTask
-}
-
-function onTaskDeleted(deletedTask: ITask) {
-	tasks.value = tasks.value.filter(t => t.id !== deletedTask.id)
+function updateTasks() {
+	if (projectId.value < 0) void loadTasks()
 }
 
 function handleDragStart(e: { item: HTMLElement }) {
 	drag.value = true
+	dragTasks.value = [...tasks.value]
 	const taskId = parseInt(e.item.dataset.taskId ?? '', 10)
 	const task = tasks.value.find(t => t.id === taskId)
 
 	if (task) {
-		taskStore.setDraggedTask(task)
+		setDraggedTask(task)
 	}
 }
 
 async function saveTaskPosition(e: { originalEvent?: MouseEvent, to: HTMLElement, from: HTMLElement, item: HTMLElement, newIndex: number }) {
 	drag.value = false
+	try {
 
-	// Check if dropped on a sidebar project
-	const {moved} = await handleTaskDropToProject(e, (task) => {
-		tasks.value = tasks.value.filter(t => t.id !== task.id)
-	})
+		// Check if dropped on a sidebar project
+		const {moved} = await handleTaskDropToProject(e, (task) => {
+			tasks.value = tasks.value.filter(t => t.id !== task.id)
+		})
 
-	if (moved) {
-		return
+		if (moved) {
+			return
+		}
+
+		// If dropped outside this list
+		if (e.to !== e.from) {
+			return
+		}
+
+		// e.newIndex is a DOM index: it counts elements still leaving the transition group, so it can
+		// point past the last task. The list is already reordered here, so resolve the task by its id.
+		const movedTaskId = parseInt(e.item.dataset.taskId ?? '', 10)
+		const newIndex = tasks.value.findIndex(t => t.id === movedTaskId)
+
+		if (newIndex === -1) {
+			return
+		}
+
+		const taskBefore = tasks.value[newIndex - 1] ?? null
+		const taskAfter = tasks.value[newIndex + 1] ?? null
+
+		const position = calculateItemPosition(
+			taskBefore !== null ? taskBefore.position : null,
+			taskAfter !== null ? taskAfter.position : null,
+		)
+
+		await positionMutation.mutateAsync({
+			position,
+			project_view_id: props.viewId,
+			taskId: movedTaskId,
+		})
+	} catch { /* Mutation reports the error. */ } finally {
+		dragTasks.value = null
 	}
-
-	// If dropped outside this list
-	if (e.to !== e.from) {
-		return
-	}
-
-	// e.newIndex is a DOM index: it counts elements still leaving the transition group, so it can
-	// point past the last task. The list is already reordered here, so resolve the task by its id.
-	const movedTaskId = parseInt(e.item.dataset.taskId ?? '', 10)
-	const newIndex = tasks.value.findIndex(t => t.id === movedTaskId)
-
-	if (newIndex === -1) {
-		return
-	}
-
-	const taskBefore = tasks.value[newIndex - 1] ?? null
-	const taskAfter = tasks.value[newIndex + 1] ?? null
-
-	const position = calculateItemPosition(taskBefore !== null ? taskBefore.position : null, taskAfter !== null ? taskAfter.position : null)
-
-	await taskPositionService.value.update(new TaskPositionModel({
-		position,
-		projectViewId: props.viewId,
-		taskId: movedTaskId,
-	}))
-	tasks.value = tasks.value.map(t => t.id === movedTaskId
-		? {...t, position}
-		: t)
 }
 
 const taskRefs = ref<(InstanceType<typeof SingleTaskInProject> | null)[]>([])
@@ -401,7 +354,7 @@ const focusedIndex = ref(-1)
 // zhyswan-vuedraggable ships no slot types, so the #item scoped slot props type as {}.
 // This reflects the shape it actually passes at runtime (SortableJS list item + index).
 interface ItemSlotProps {
-	element: ITask,
+	element: TaskResponse,
 	index: number,
 }
 
@@ -500,8 +453,6 @@ onBeforeUnmount(() => {
 	gap: .5rem;
 
 	:deep(.popup) {
-		inset-block-start: 3rem;
-		inset-inline-end: 0;
 		max-inline-size: 300px;
 	}
 }

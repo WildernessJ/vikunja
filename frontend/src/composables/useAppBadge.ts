@@ -1,8 +1,7 @@
 import {watch} from 'vue'
-import {storeToRefs} from 'pinia'
 import {useEventListener, useThrottleFn} from '@vueuse/core'
 
-import {useProjectCountsStore} from '@/stores/projectCounts'
+import {refreshProjectCounts, useProjectCounts} from '@/client/queries/projectCounts'
 import {useAuthStore} from '@/stores/auth'
 import {useGlobalNow} from '@/composables/useGlobalNow'
 import {getStartOfTomorrowInTimezone} from '@/helpers/time/startOfTomorrow'
@@ -20,8 +19,7 @@ type BadgingNavigator = Navigator & {
 // the Web Badging API. Best-effort — silently ignored where unsupported.
 export function useAppBadge() {
 	const authStore = useAuthStore()
-	const projectCountsStore = useProjectCountsStore()
-	const {todayTotal} = storeToRefs(projectCountsStore)
+	const {todayTotal} = useProjectCounts()
 	const {now} = useGlobalNow()
 
 	function applyBadge(count: number) {
@@ -62,7 +60,7 @@ export function useAppBadge() {
 		if (!authStore.authUser) {
 			return
 		}
-		projectCountsStore.loadCounts().catch(() => {})
+		void refreshProjectCounts()
 	}
 
 	// The timezone setting is empty until checkAuth() has loaded the user

@@ -1,7 +1,11 @@
 <template>
-	<Popup>
+	<Popup
+		placement="bottom-end"
+		:anchor="triggerEl"
+	>
 		<template #trigger="{toggle}">
 			<XButton
+				ref="trigger"
 				variant="secondary"
 				icon="sort"
 				@click.prevent.stop="toggle()"
@@ -74,6 +78,9 @@ const emit = defineEmits<{
 }>()
 
 const {t} = useI18n({useScope: 'global'})
+
+const trigger = ref<InstanceType<typeof XButton> | null>(null)
+const triggerEl = computed<HTMLElement | null>(() => trigger.value?.$el ?? null)
 
 const MANUAL = 'position:asc'
 const selected = ref<string>(MANUAL)

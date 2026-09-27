@@ -8,26 +8,22 @@ import {VueQueryPlugin, QueryClient} from '@tanstack/vue-query'
 
 import QuickActions from '@/components/quick-actions/QuickActions.vue'
 import {useBaseStore} from '@/stores/base'
-import type {IProject} from '@/modelTypes/IProject'
+import {normalizeProject, type ProjectResponse} from '@/client/queries/projects'
 import en from '@/i18n/lang/en.json'
 
-vi.mock('@/services/task', () => ({
-	default: class {
-		loading = false
-		getAll = vi.fn(async () => [])
-	},
+const sdk = vi.hoisted(() => ({
+	teamsList: vi.fn(async () => ({data: {items: []}})),
+	tasksList: vi.fn(async () => ({data: {items: []}})),
+	labelsList: vi.fn(async () => ({data: {items: [], total_pages: 1}})),
+	projectsList: vi.fn(async () => ({data: {items: [], total_pages: 1}})),
+	projectsRead: vi.fn(async () => ({data: {id: 1, title: 'Test'}})),
 }))
 
-vi.mock('@/services/team', () => ({
-	default: class {
-		loading = false
-		getAll = vi.fn(async () => [])
-	},
-}))
+vi.mock('@/client/generated', () => sdk)
 
 const i18n = createI18n({legacy: false, locale: 'en', messages: {en}})
 
-async function mountQuickActions(project: IProject | null) {
+async function mountQuickActions(project: ProjectResponse | null) {
 	const errors: unknown[] = []
 	const router = createRouter({
 		history: createMemoryHistory(),
@@ -84,7 +80,7 @@ describe('QuickActions', () => {
 	})
 
 	it('opens with a current project', async () => {
-		const {wrapper, errors} = await mountQuickActions({id: 1, title: 'Test'} as unknown as IProject)
+		const {wrapper, errors} = await mountQuickActions(normalizeProject({id: 1, title: 'Test'}))
 
 		expect(errors).toEqual([])
 		expect(wrapper.find('.quick-actions').exists()).toBe(true)

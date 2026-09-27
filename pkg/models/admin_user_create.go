@@ -17,7 +17,6 @@
 package models
 
 import (
-	"code.vikunja.io/api/pkg/config"
 	"code.vikunja.io/api/pkg/db"
 	"code.vikunja.io/api/pkg/events"
 	"code.vikunja.io/api/pkg/log"
@@ -54,7 +53,7 @@ func CreateUserAsAdmin(s *xorm.Session, doer *user.User, body *CreateUserBody) (
 		Email:    body.Email,
 		Name:     body.Name,
 		Language: body.Language,
-	})
+	}, user.CreateUserOptions{SkipEmailConfirm: body.SkipEmailConfirm})
 	if err != nil {
 		return nil, err
 	}
@@ -64,19 +63,6 @@ func CreateUserAsAdmin(s *xorm.Session, doer *user.User, body *CreateUserBody) (
 			return nil, err
 		}
 		newUser.IsAdmin = true
-	}
-
-	// Force Active when the admin asked to skip, or when no mailer exists to send the confirmation.
-	if body.SkipEmailConfirm || !config.MailerEnabled.GetBool() {
-		if err := user.SetUserStatus(s, newUser, user.StatusActive); err != nil {
-			return nil, err
-		}
-		newUser.Status = user.StatusActive
-	} else {
-		// RegisterUser already persisted StatusEmailConfirmationRequired but returned
-		// the pre-update in-memory copy (still StatusActive). Sync it so the fallback
-		// below reports the real status if the post-commit reload fails.
-		newUser.Status = user.StatusEmailConfirmationRequired
 	}
 
 	// Queued alongside the user.created event RegisterUser dispatched; both

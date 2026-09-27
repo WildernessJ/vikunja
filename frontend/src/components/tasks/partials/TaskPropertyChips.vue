@@ -10,7 +10,7 @@
 			ghost-when-unset
 		>
 			<ProjectSearch
-				:filter="p => p.id !== task.projectId"
+				:filter="p => p.id !== task.project_id"
 				@update:modelValue="changeProject"
 			/>
 		</PropertyChip>
@@ -19,70 +19,70 @@
 		     inside another PropertyChip popup (that would need two clicks to open). -->
 		<div
 			class="date-chip"
-			:class="{'is-unset': task.dueDate === null}"
+			:class="{'is-unset': dueDateModel === null}"
 		>
 			<Datepicker
 				ref="dueDateChipRef"
-				v-model="task.dueDate"
+				v-model="dueDateModel"
 				:choose-date-label="$t('task.detail.chooseDueDate')"
 				:disabled="!canWrite"
 				@closeOnChange="saveGeneric()"
 			/>
 			<QacChipClear
-				:show="task.dueDate !== null && canWrite"
-				@clear="() => { task.dueDate = null; saveGeneric() }"
+				:show="dueDateModel !== null && canWrite"
+				@clear="() => { task.due_date = ''; saveGeneric() }"
 			/>
 		</div>
 
 		<!-- Start date -->
 		<div
 			class="date-chip"
-			:class="{'is-unset': task.startDate === null}"
+			:class="{'is-unset': startDateModel === null}"
 		>
 			<Datepicker
-				v-model="task.startDate"
+				v-model="startDateModel"
 				boundary="start"
 				:choose-date-label="$t('task.detail.chooseStartDate')"
 				:disabled="!canWrite"
 				@closeOnChange="saveGeneric()"
 			/>
 			<QacChipClear
-				:show="task.startDate !== null && canWrite"
-				@clear="() => { task.startDate = null; saveGeneric() }"
+				:show="startDateModel !== null && canWrite"
+				@clear="() => { task.start_date = ''; saveGeneric() }"
 			/>
 		</div>
 
 		<!-- End date -->
 		<div
 			class="date-chip"
-			:class="{'is-unset': task.endDate === null}"
+			:class="{'is-unset': endDateModel === null}"
 		>
 			<Datepicker
-				v-model="task.endDate"
+				v-model="endDateModel"
 				:choose-date-label="$t('task.detail.chooseEndDate')"
 				:disabled="!canWrite"
 				@closeOnChange="saveGeneric()"
 			/>
 			<QacChipClear
-				:show="task.endDate !== null && canWrite"
-				@clear="() => { task.endDate = null; saveGeneric() }"
+				:show="endDateModel !== null && canWrite"
+				@clear="() => { task.end_date = ''; saveGeneric() }"
 			/>
 		</div>
 
 		<!-- Deadline -->
 		<div
 			class="date-chip"
-			:class="{'is-unset': task.deadline === null}"
+			:class="{'is-unset': deadlineModel === null}"
 		>
 			<Datepicker
-				v-model="task.deadline"
+				v-model="deadlineModel"
 				:choose-date-label="$t('task.detail.chooseDeadline')"
 				:disabled="!canWrite"
 				@closeOnChange="saveGeneric()"
 			/>
 			<QacChipClear
-				:show="task.deadline !== null && canWrite"
-				@clear="() => { task.deadline = null; saveGeneric() }"
+				:show="deadlineModel !== null && canWrite"
+				@clear="() => { task.deadline = ''; saveGeneric() }"
 			/>
 		</div>
 
@@ -97,12 +97,12 @@
 		>
 			<template #trigger>
 				<PriorityLabel
-					:priority="task.priority"
+					:priority="task.priority ?? 0"
 					:show-all="true"
 				/>
 			</template>
 			<PrioritySelect
-				:model-value="task.priority"
+				:model-value="task.priority ?? 0"
 				:disabled="!canWrite"
 				@update:modelValue="savePriority"
 			/>
@@ -113,16 +113,17 @@
 			ref="labelsChipRef"
 			icon="tags"
 			:label="labelsChipLabel"
-			:is-set="task.labels.length > 0"
+			:is-set="(task.labels?.length ?? 0) > 0"
 			:disabled="!canWrite"
 			ghost-when-unset
 		>
 			<EditLabels
-				v-model="task.labels"
+				:model-value="task.labels ?? []"
 				:disabled="!canWrite"
 				:task-id="taskId"
 				:creatable="!isLinkShareAuth"
 				:creation-disabled-message="isLinkShareAuth ? $t('task.label.linkShareCannotCreate') : ''"
+				@update:modelValue="labels => task = {...task, labels}"
 			/>
 		</PropertyChip>
 
@@ -131,15 +132,16 @@
 			ref="assigneesChipRef"
 			icon="users"
 			:label="assigneesChipLabel"
-			:is-set="task.assignees.length > 0"
+			:is-set="(task.assignees?.length ?? 0) > 0"
 			:disabled="!canWrite"
 			ghost-when-unset
 		>
 			<EditAssignees
-				v-model="task.assignees"
-				:project-id="task.projectId"
-				:task-id="task.id"
+				:model-value="task.assignees ?? []"
+				:project-id="task.project_id ?? 0"
+				:task-id="task.id ?? 0"
 				:disabled="!canWrite"
+				@update:modelValue="assignees => task = {...task, assignees: assignees ?? []}"
 			/>
 		</PropertyChip>
 
@@ -148,16 +150,15 @@
 			ref="remindersChipRef"
 			:icon="['far', 'clock']"
 			:label="remindersChipLabel"
-			:is-set="task.reminders.length > 0"
+			:is-set="(task.reminders?.length ?? 0) > 0"
 			:disabled="!canWrite"
-			has-overflow
 			ghost-when-unset
 		>
 			<Reminders
-				v-model="task.reminders"
+				:model-value="task.reminders ?? []"
 				:default-relative-to="remindersDefaultRelativeTo"
 				:disabled="!canWrite"
-				@update:modelValue="saveGeneric()"
+				@update:modelValue="reminders => { task = {...task, reminders}; saveGeneric() }"
 			/>
 		</PropertyChip>
 
@@ -182,12 +183,12 @@
 		<PropertyChip
 			icon="percent"
 			:label="percentDoneChipLabel"
-			:is-set="task.percentDone > 0"
+			:is-set="(task.percent_done ?? 0) > 0"
 			:disabled="!canWrite"
 			ghost-when-unset
 		>
 			<PercentDoneSelect
-				:model-value="task.percentDone"
+				:model-value="task.percent_done ?? 0"
 				:disabled="!canWrite"
 				@update:modelValue="savePercentDone"
 			/>
@@ -197,12 +198,12 @@
 		<PropertyChip
 			:icon="['far', 'hourglass']"
 			:label="durationChipLabel"
-			:is-set="task.estimatedDuration > 0"
+			:is-set="(task.estimated_duration ?? 0) > 0"
 			:disabled="!canWrite"
 			ghost-when-unset
 		>
 			<EditEstimatedDuration
-				:model-value="task.estimatedDuration"
+				:model-value="task.estimated_duration ?? 0"
 				:disabled="!canWrite"
 				@update:modelValue="saveEstimatedDuration"
 			/>
@@ -242,13 +243,13 @@
 import {computed, ref} from 'vue'
 import {useI18n} from 'vue-i18n'
 
-import type {ITask} from '@/modelTypes/ITask'
-import type {IProject} from '@/modelTypes/IProject'
+import type {Task as ITask} from '@/client/generated'
+import {parseDateOrNull} from '@/helpers/parseDateOrNull'
+import type {ProjectResponse} from '@/client/queries/projects'
 
 import {PRIORITIES} from '@/constants/priorities'
 import {TASK_REPEAT_MODES} from '@/types/IRepeatMode'
 import type {IReminderPeriodRelativeTo} from '@/types/IReminderPeriodRelativeTo'
-import type {IRepeatAfter} from '@/types/IRepeatAfter'
 
 import Datepicker from '@/components/input/Datepicker.vue'
 import ColorPicker from '@/components/input/ColorPicker.vue'
@@ -267,7 +268,7 @@ import EditEstimatedDuration from '@/components/tasks/partials/EditEstimatedDura
 import {getProjectTitle} from '@/helpers/getProjectTitle'
 import {getDisplayName} from '@/models/user'
 import {formatDuration} from '@/helpers/time/duration'
-import {useProjectStore} from '@/stores/projects'
+import {useProjects} from '@/composables/useProjects'
 
 const {
 	canWrite,
@@ -291,14 +292,29 @@ const {
 	savePercentDone: (percentDone: number) => Promise<void>,
 	saveEstimatedDuration: (estimatedDuration: number) => Promise<void>,
 	saveGeneric: () => Promise<void>,
-	changeProject: (project: IProject | null, title?: string) => Promise<void>,
+	changeProject: (project: ProjectResponse | null, title?: string) => Promise<void>,
 	removeRepeatAfter: () => Promise<void>,
 }>()
 const task = defineModel<ITask>('task', {required: true})
 const taskColor = defineModel<string>('taskColor', {required: true})
 
 const {t} = useI18n({useScope: 'global'})
-const projectStore = useProjectStore()
+const projectList = useProjects()
+
+type DateField = 'due_date' | 'start_date' | 'end_date' | 'deadline'
+// The pickers work on Date objects; the task carries ISO strings, and '' clears a date.
+function dateModel(field: DateField) {
+	return computed({
+		get: () => parseDateOrNull(task.value[field]),
+		set: (date: Date | string | null) => {
+			task.value[field] = parseDateOrNull(date)?.toISOString() ?? ''
+		},
+	})
+}
+const dueDateModel = dateModel('due_date')
+const startDateModel = dateModel('start_date')
+const endDateModel = dateModel('end_date')
+const deadlineModel = dateModel('deadline')
 
 const projectChipRef = ref<InstanceType<typeof PropertyChip> | null>(null)
 const dueDateChipRef = ref<InstanceType<typeof Datepicker> | null>(null)
@@ -327,34 +343,37 @@ defineExpose({
 })
 
 const projectChipLabel = computed(() => {
-	const project = projectStore.projects[task.value.projectId]
+	const project = projectList.projects[task.value.project_id ?? 0]
 	return project ? getProjectTitle(project) : t('task.detail.actions.moveProject')
 })
 
 const labelsChipLabel = computed(() => {
-	if (task.value.labels.length === 0) {
+	const labels = task.value.labels ?? []
+	if (labels.length === 0) {
 		return t('task.attributes.labels')
 	}
-	return task.value.labels.map(l => l.title).join(', ')
+	return labels.map(l => l.title).join(', ')
 })
 
 const assigneesChipLabel = computed(() => {
-	if (task.value.assignees.length === 0) {
+	const assignees = task.value.assignees ?? []
+	if (assignees.length === 0) {
 		return t('task.attributes.assignees')
 	}
-	return task.value.assignees.map(a => getDisplayName(a)).join(', ')
+	return assignees.map(a => getDisplayName(a)).join(', ')
 })
 
 const remindersChipLabel = computed(() => {
-	if (task.value.reminders.length === 0) {
+	const count = task.value.reminders?.length ?? 0
+	if (count === 0) {
 		return t('task.attributes.reminders')
 	}
-	return t('task.quickAdd.remindersChipCount', task.value.reminders.length)
+	return t('task.quickAdd.remindersChipCount', count)
 })
 
 const isRepeatSet = computed(() => (
-	(task.value.repeatAfter as IRepeatAfter).amount > 0 ||
-	task.value.repeatMode !== TASK_REPEAT_MODES.REPEAT_MODE_DEFAULT
+	(task.value.repeat_after ?? 0) > 0 ||
+	(task.value.repeat_mode ?? TASK_REPEAT_MODES.REPEAT_MODE_DEFAULT) !== TASK_REPEAT_MODES.REPEAT_MODE_DEFAULT
 ))
 
 // Repeat has 4 modes (legacy interval, monthly, from-current-date, RRULE) with
@@ -364,14 +383,14 @@ const isRepeatSet = computed(() => (
 const repeatChipLabel = computed(() => t('task.attributes.repeat'))
 
 const percentDoneChipLabel = computed(() => (
-	task.value.percentDone > 0
-		? `${Math.round(task.value.percentDone * 100)}%`
+	(task.value.percent_done ?? 0) > 0
+		? `${Math.round((task.value.percent_done ?? 0) * 100)}%`
 		: t('task.attributes.percentDone')
 ))
 
 const durationChipLabel = computed(() => (
-	task.value.estimatedDuration > 0
-		? formatDuration(task.value.estimatedDuration)
+	(task.value.estimated_duration ?? 0) > 0
+		? formatDuration(task.value.estimated_duration ?? 0)
 		: t('task.attributes.estimatedDuration')
 ))
 

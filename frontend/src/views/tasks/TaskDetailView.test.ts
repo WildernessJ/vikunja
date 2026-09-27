@@ -15,11 +15,12 @@ import {LINK_SHARE_HASH_PREFIX} from '@/constants/linkShareHash'
 // (gated behind canWrite there). Full-mounting the real view is the seam that
 // matters since the bug is about what actually lands in the DOM.
 const getMock = vi.hoisted(() => vi.fn())
-vi.mock('@/services/task', () => ({
-	default: class {
-		loading = false
-		get = getMock
-	},
+const patchMock = vi.hoisted(() => vi.fn())
+vi.mock('@/client/generated', async importOriginal => ({
+	...await importOriginal<typeof import('@/client/generated')>(),
+	tasksRead: getMock,
+	patchTasksRead: patchMock,
+	tasksMarkRead: vi.fn(async () => ({data: {}})),
 }))
 
 // Reactions.vue pulls in vuemoji-picker, which drags a browser-only
@@ -32,37 +33,36 @@ vi.mock('@/components/input/Reactions.vue', () => ({
 import TaskDetailView from './TaskDetailView.vue'
 import {useAuthStore} from '@/stores/auth'
 import {useBaseStore} from '@/stores/base'
-import {useProjectStore} from '@/stores/projects'
-import ProjectModel from '@/models/project'
+import {VueQueryPlugin} from '@tanstack/vue-query'
+import {queryClient} from '@/client/queryClient'
+import {normalizeProject, projectKeys} from '@/client/queries/projects'
+import {mapTaskEverywhere} from '@/client/queries/taskCache'
+import TaskPropertyChips from '@/components/tasks/partials/TaskPropertyChips.vue'
 
 const i18n = createI18n({legacy: false, locale: 'en', messages: {en}})
 
-function taskFixture(maxPermission: number) {
+function taskFixture(maxPermission: number, overrides: Record<string, unknown> = {}) {
 	return {
 		id: 1,
 		title: 'Test task',
-		projectId: 1,
-		maxPermission,
+		project_id: 1,
+		max_permission: maxPermission,
 		labels: [],
 		assignees: [],
 		reminders: [],
 		attachments: [],
-		relatedTasks: {},
+		related_tasks: {},
 		reactions: {},
 		comments: [],
-		repeatAfter: {amount: 0, type: 'days'},
-		repeatMode: 0,
-		percentDone: 0,
-		estimatedDuration: 0,
-		dueDate: null,
-		startDate: null,
-		endDate: null,
-		deadline: null,
-		hexColor: '',
+		repeat_after: 0,
+		repeat_mode: 0,
+		percent_done: 0,
+		estimated_duration: 0,
+		hex_color: '',
 		done: false,
-		isFavorite: false,
-		subscription: null,
-		isUnread: false,
+		is_favorite: false,
+		is_unread: false,
+		...overrides,
 	}
 }
 
@@ -109,7 +109,7 @@ const CATCH_ALL_ROUTES = [
 ]
 
 async function mountTaskDetail(maxPermission: number, navigation: string[] = ['/']) {
-	getMock.mockResolvedValue(taskFixture(maxPermission))
+	getMock.mockImplementation(async ({path}: {path: {task: number}}) => ({data: taskFixture(maxPermission, {id: path.task})}))
 
 	// Memory history never populates `state.back`, which is exactly what the back
 	// button reads - so the router has to run on the real History API here.
@@ -142,7 +142,7 @@ async function mountTaskDetail(maxPermission: number, navigation: string[] = ['/
 
 	const wrapper = mount(Harness, {
 		global: {
-			plugins: [router, i18n],
+			plugins: [router, i18n, [VueQueryPlugin, {queryClient}]],
 			stubs: CHILD_STUBS,
 		},
 	})
@@ -157,6 +157,7 @@ async function mountTaskDetail(maxPermission: number, navigation: string[] = ['/
 describe('TaskDetailView field-open shortcut buttons (F-C)', () => {
 	beforeEach(() => {
 		setActivePinia(createPinia())
+		queryClient.clear()
 		useAuthStore().setAuthenticated(true)
 		getMock.mockReset()
 	})
@@ -186,6 +187,7 @@ function spyOnNavigation(router: Router) {
 describe('TaskDetailView back button', () => {
 	beforeEach(() => {
 		setActivePinia(createPinia())
+		queryClient.clear()
 		useAuthStore().setAuthenticated(true)
 		getMock.mockReset()
 	})
@@ -266,15 +268,23 @@ describe('TaskDetailView back button', () => {
 })
 
 function projectFixture(id: number) {
-	return new ProjectModel({id, title: `Project ${id}`})
+	return normalizeProject({id, title: `Project ${id}`})
+}
+
+function seedProjects(ids: number[]) {
+	ids.forEach(id => queryClient.setQueryData(projectKeys.detail(id), projectFixture(id)))
+	queryClient.setQueryData(projectKeys.list(), {
+		projects: ids.map(projectFixture),
+		favoriteProject: null,
+		savedFilterProjects: [],
+	})
 }
 
 // Rendering through a RouterView is what makes `onBeforeRouteLeave` register:
 // it needs the matched-route key RouterView provides, which a plain mount lacks.
-// `seedProjectIds` are put in the store from the wrapping component's setup, the
-// only place they can land before the view's first task load runs.
+// `seedProjectIds` go into the project query cache before the view's first task load runs.
 async function mountInRouterView(navigation: string[], seedProjectIds: number[] = []) {
-	getMock.mockResolvedValue(taskFixture(PERMISSIONS.READ_WRITE))
+	getMock.mockImplementation(async ({path}: {path: {task: number}}) => ({data: taskFixture(PERMISSIONS.READ_WRITE, {id: path.task})}))
 
 	window.history.replaceState(null, '', '/')
 
@@ -301,17 +311,16 @@ async function mountInRouterView(navigation: string[], seedProjectIds: number[] 
 	}
 	await router.isReady()
 
+	seedProjects(seedProjectIds)
 	const App = defineComponent({
 		setup() {
-			const projectStore = useProjectStore()
-			seedProjectIds.forEach(id => projectStore.setProject(projectFixture(id)))
 			return () => h(RouterView)
 		},
 	})
 
 	const wrapper = mount(App, {
 		global: {
-			plugins: [router, i18n],
+			plugins: [router, i18n, [VueQueryPlugin, {queryClient}]],
 			stubs: CHILD_STUBS,
 		},
 	})
@@ -336,23 +345,22 @@ async function goBackAndSettle(router: Router, expectedPath: string) {
 	expect(router.currentRoute.value.fullPath).toBe(expectedPath)
 }
 
-// The base and project stores both call useI18n/useRouter in their setup, so they
-// can only be instantiated from inside a component - hence spying after the mount.
+// The base store calls useI18n/useRouter in its setup, so it can only be
+// instantiated from inside a component - hence spying after the mount.
 function spyOnPreSet() {
-	return vi.spyOn(useBaseStore(), 'handleSetCurrentProjectIfNotSet')
-		.mockImplementation(async () => {})
+	return vi.spyOn(useBaseStore(), 'setCurrentProjectIfNotSet')
 }
 
 describe('TaskDetailView leave guard', () => {
 	beforeEach(() => {
 		setActivePinia(createPinia())
+		queryClient.clear()
 		useAuthStore().setAuthenticated(true)
 		getMock.mockReset()
 	})
 
 	it('does not pre-set the current project when going back to a non-project view', async () => {
-		const {router} = await mountInRouterView(['/tasks/today', '/tasks/1'])
-		useProjectStore().setProject(projectFixture(1))
+		const {router} = await mountInRouterView(['/tasks/today', '/tasks/1'], [1])
 		const preSet = spyOnPreSet()
 
 		await goBackAndSettle(router, '/tasks/today')
@@ -361,10 +369,7 @@ describe('TaskDetailView leave guard', () => {
 	})
 
 	it('pre-sets the destination project, not the history entry before it', async () => {
-		const {router} = await mountInRouterView(['/projects/2/20', '/projects/1/10', '/tasks/1'])
-		const projectStore = useProjectStore()
-		projectStore.setProject(projectFixture(1))
-		projectStore.setProject(projectFixture(2))
+		const {router} = await mountInRouterView(['/projects/2/20', '/projects/1/10', '/tasks/1'], [1, 2])
 		const preSet = spyOnPreSet()
 
 		await goBackAndSettle(router, '/projects/1/10')
@@ -372,19 +377,21 @@ describe('TaskDetailView leave guard', () => {
 		expect(preSet).toHaveBeenCalledWith(expect.objectContaining({id: 1}))
 	})
 
-	it('does not pre-set anything when the destination project is not in the store', async () => {
+	// The pre-set needs only the id, so it no longer waits for the project to be cached.
+	it('pre-sets the destination project id even before that project is cached', async () => {
 		const {router} = await mountInRouterView(['/projects/1/10', '/tasks/1'])
 		const preSet = spyOnPreSet()
 
 		await goBackAndSettle(router, '/projects/1/10')
 
-		expect(preSet).not.toHaveBeenCalled()
+		expect(preSet).toHaveBeenCalledWith({id: 1})
 	})
 })
 
 describe('TaskDetailView current project on load', () => {
 	beforeEach(() => {
 		setActivePinia(createPinia())
+		queryClient.clear()
 		useAuthStore().setAuthenticated(true)
 		getMock.mockReset()
 	})
@@ -392,7 +399,7 @@ describe('TaskDetailView current project on load', () => {
 	it('sets the current project from the project view the task was opened from', async () => {
 		await mountInRouterView(['/projects/7/70', '/tasks/1'], [7])
 
-		expect(useBaseStore().currentProject?.id).toBe(7)
+		expect(useBaseStore().currentProjectId).toBe(7)
 	})
 
 	// The create-project route names its param parentProjectId, so a plain projectId read
@@ -400,7 +407,7 @@ describe('TaskDetailView current project on load', () => {
 	it('sets the current project from the parent of a project create form', async () => {
 		await mountInRouterView(['/projects/5/new', '/tasks/1'], [5])
 
-		expect(useBaseStore().currentProject?.id).toBe(5)
+		expect(useBaseStore().currentProjectId).toBe(5)
 	})
 
 	it('does not re-apply that project when the reused instance loads a task opened from elsewhere', async () => {
@@ -418,12 +425,12 @@ describe('TaskDetailView current project on load', () => {
 	// from the one cached at mount - which is what changing a task's project does.
 	it('does not overwrite a project set since, when the reused instance loads another task', async () => {
 		const {router} = await mountInRouterView(['/projects/7/70', '/tasks/1'], [7, 9])
-		useBaseStore().setCurrentProject(projectFixture(9))
+		useBaseStore().setCurrentProject({id: 9})
 
 		await router.push('/tasks/2')
 		await flushPromises()
 
-		expect(useBaseStore().currentProject?.id).toBe(9)
+		expect(useBaseStore().currentProjectId).toBe(9)
 	})
 })
 
@@ -432,6 +439,7 @@ const BREADCRUMB_LINK = 'nav[aria-label="Breadcrumb"] a'
 describe('TaskDetailView breadcrumb', () => {
 	beforeEach(() => {
 		setActivePinia(createPinia())
+		queryClient.clear()
 		useAuthStore().setAuthenticated(true)
 		getMock.mockReset()
 	})
@@ -512,5 +520,66 @@ describe('TaskDetailView breadcrumb', () => {
 
 		expect(back).not.toHaveBeenCalled()
 		expect(push).not.toHaveBeenCalled()
+	})
+})
+
+// The view keeps an editable draft over the cached task: fields the chips edit stay local until
+// saved, the rest follows the cache, and a save or a different task reseeds the draft.
+describe('TaskDetailView draft', () => {
+	beforeEach(() => {
+		setActivePinia(createPinia())
+		queryClient.clear()
+		useAuthStore().setAuthenticated(true)
+		getMock.mockReset()
+		patchMock.mockReset()
+	})
+
+	function chipsTask(wrapper: Awaited<ReturnType<typeof mountTaskDetail>>['wrapper']) {
+		return wrapper.findComponent(TaskPropertyChips).props('task') as Record<string, unknown>
+	}
+
+	it('keeps an unsaved chip edit when the cached task changes and follows cache-owned fields', async () => {
+		const {wrapper} = await mountTaskDetail(PERMISSIONS.READ_WRITE, ['/tasks/1'])
+		const chips = wrapper.findComponent(TaskPropertyChips)
+
+		chips.vm.$emit('update:task', {...chipsTask(wrapper), due_date: '2024-02-02T10:00:00.000Z'})
+		await flushPromises()
+
+		mapTaskEverywhere(queryClient, 1, task => ({...task, labels: [{id: 2, title: 'Second'}]}))
+		await flushPromises()
+
+		expect(patchMock).not.toHaveBeenCalled()
+		expect(chipsTask(wrapper).due_date).toBe('2024-02-02T10:00:00.000Z')
+		expect(chipsTask(wrapper).labels).toEqual([{id: 2, title: 'Second'}])
+	})
+
+	it('reseeds the draft when the task id changes', async () => {
+		const {wrapper, router} = await mountTaskDetail(PERMISSIONS.READ_WRITE, ['/tasks/1'])
+		wrapper.findComponent(TaskPropertyChips).vm.$emit('update:task', {...chipsTask(wrapper), due_date: '2024-02-02T10:00:00.000Z'})
+		await flushPromises()
+
+		await router.push('/tasks/2')
+		await flushPromises()
+
+		expect(chipsTask(wrapper).id).toBe(2)
+		expect(chipsTask(wrapper).due_date).toBeUndefined()
+	})
+
+	it('reseeds the draft from the response of a save, keeping the fork fields', async () => {
+		patchMock.mockResolvedValue({data: taskFixture(PERMISSIONS.READ_WRITE, {
+			estimated_duration: 5400,
+			deadline: '2024-03-03T10:00:00Z',
+		})})
+		const {wrapper} = await mountTaskDetail(PERMISSIONS.READ_WRITE, ['/tasks/1'])
+
+		const saveEstimatedDuration = wrapper.findComponent(TaskPropertyChips).props('saveEstimatedDuration') as (value: number) => Promise<void>
+		await saveEstimatedDuration(5400)
+		await flushPromises()
+
+		expect(patchMock).toHaveBeenCalledOnce()
+		const body = patchMock.mock.calls[0][0].body as {path: string, value: unknown}[]
+		expect(body).toContainEqual({op: 'add', path: '/estimated_duration', value: 5400})
+		expect(chipsTask(wrapper).estimated_duration).toBe(5400)
+		expect(chipsTask(wrapper).deadline).toBe('2024-03-03T10:00:00Z')
 	})
 })

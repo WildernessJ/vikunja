@@ -3,7 +3,7 @@
 		ref="taskViewContainer"
 		class="loader-container task-view-container"
 		:class="{
-			'is-loading': taskService.loading || !visible,
+			'is-loading': taskLoading || taskMutating || !visible,
 			'is-modal': isModal,
 		}"
 	>
@@ -33,10 +33,10 @@
 				{{ task.title }}
 			</h1>
 			<TaskTitleField
-				:model-value="task.title"
+				:model-value="task.title ?? ''"
 				:disabled="!canWrite"
 				:mode="quickAddMagicMode"
-				:assignee-project-id="task.projectId"
+				:assignee-project-id="task.project_id ?? 0"
 				:on-save-literal-title="saveTitleLiteral"
 				:on-accept-project="changeProject"
 				:on-accept-label="acceptLabel"
@@ -50,7 +50,7 @@
 				class="subtitle"
 			>
 				<template
-					v-for="p in projectStore.getAncestors(project)"
+					v-for="p in projectList.getAncestors(project)"
 					:key="p.id"
 				>
 					<RouterLink
@@ -74,7 +74,6 @@
 				<BucketSelect
 					:task="task"
 					:can-write="canWrite"
-					@update:task="Object.assign(task, $event)"
 				/>
 			</nav>
 
@@ -168,16 +167,14 @@
 					<Description
 						:model-value="task"
 						:can-write="canWrite"
-						:attachment-upload="attachmentUploadForDescription"
-						@update:modelValue="Object.assign(task, $event)"
 					/>
 				</div>
 
 				<!-- Reactions -->
 				<Reactions
-					v-model="task.reactions"
+					:model-value="task.reactions"
 					entity-kind="tasks"
-					:entity-id="task.id"
+					:entity-id="task.id ?? 0"
 					class="details d-print-none"
 					:disabled="!canWrite"
 				/>
@@ -191,8 +188,6 @@
 						:ref="e => { attachmentsRef = e as any }"
 						:edit-enabled="canWrite"
 						:task="task"
-						@taskChanged="({coverImageAttachmentId}) => task.coverImageAttachmentId = coverImageAttachmentId"
-						@update:attachments="onAttachmentsUpdated"
 					/>
 				</div>
 
@@ -209,8 +204,8 @@
 					</h2>
 					<RelatedTasks
 						:edit-enabled="canWrite"
-						:initial-related-tasks="task.relatedTasks"
-						:project-id="task.projectId"
+						:initial-related-tasks="task.related_tasks"
+						:project-id="task.project_id ?? 0"
 						:show-no-relations-notice="true"
 						:task-id="taskId"
 					/>
@@ -220,8 +215,7 @@
 				<Comments
 					:can-write="canWrite"
 					:task-id="taskId"
-					:project-id="task.projectId"
-					:initial-comments="task.comments"
+					:project-id="task.project_id ?? 0"
 				/>
 
 				<!-- Time Tracking -->
@@ -229,7 +223,7 @@
 					v-if="timeTrackingEnabled"
 					class="content time-tracking"
 				>
-					<TaskTimeTracking :task-id="task.id" />
+					<TaskTimeTracking :task-id="task.id ?? 0" />
 				</div>
 
 				<!-- Marker element for scroll-to-bottom button visibility -->
@@ -258,19 +252,19 @@
 						<Dropdown :trigger-label="$t('task.detail.actions.moreActions')">
 							<DropdownItem
 								v-shortcut="SHORTCUTS.taskDetail.favorite"
-								:icon="task.isFavorite ? 'star' : ['far', 'star']"
+								:icon="task.is_favorite ? 'star' : ['far', 'star']"
 								@click="toggleFavorite"
 							>
 								{{
-									task.isFavorite ? $t('task.detail.actions.unfavorite') : $t('task.detail.actions.favorite')
+									task.is_favorite ? $t('task.detail.actions.unfavorite') : $t('task.detail.actions.favorite')
 								}}
 							</DropdownItem>
 							<TaskSubscription
 								type="dropdown"
 								entity="task"
-								:entity-id="task.id"
-								:model-value="task.subscription"
-								@update:modelValue="sub => task.subscription = sub"
+								:entity-id="task.id ?? 0"
+								:model-value="task.subscription ?? null"
+								@toggle="toggleSubscription"
 							/>
 							<DropdownItem
 								icon="copy"
@@ -328,21 +322,18 @@
 </template>
 
 <script lang="ts" setup>
-import {ref, shallowReactive, computed, watch, nextTick, onMounted} from 'vue'
+import {ref, computed, watch, nextTick, onMounted} from 'vue'
 import {useRouter, useRoute, type RouteLocation, onBeforeRouteLeave} from 'vue-router'
 import {useI18n} from 'vue-i18n'
 import {unrefElement, useDebounceFn, useElementSize, useIntersectionObserver, useMutationObserver} from '@vueuse/core'
 import {klona} from 'klona/lite'
 
-import TaskService from '@/services/task'
-import TaskModel from '@/models/task'
+import {useTask} from '@/composables/useTask'
+import {createTaskDraft, mergeTask} from '@/helpers/task'
+import {parseDateOrNull} from '@/helpers/parseDateOrNull'
 
-import type {ITask} from '@/modelTypes/ITask'
-import type {IAttachment} from '@/modelTypes/IAttachment'
-import type {IProject} from '@/modelTypes/IProject'
-import type {Label} from '@/client/generated'
-import type {IUser} from '@/modelTypes/IUser'
-import type {IRepeatAfter} from '@/types/IRepeatAfter'
+import type {Label, Task as ITask, User} from '@/client/generated'
+import type {ProjectResponse} from '@/client/queries/projects'
 
 import {type Priority} from '@/constants/priorities'
 import {PERMISSIONS} from '@/constants/permissions'
@@ -357,7 +348,7 @@ import TaskTimeTracking from '@/components/time-tracking/TaskTimeTracking.vue'
 import ChecklistSummary from '@/components/tasks/partials/ChecklistSummary.vue'
 import Comments from '@/components/tasks/partials/Comments.vue'
 import CreatedUpdated from '@/components/tasks/partials/CreatedUpdated.vue'
-import Description, {type AttachmentUploadFunction} from '@/components/tasks/partials/Description.vue'
+import Description from '@/components/tasks/partials/Description.vue'
 import Heading from '@/components/tasks/partials/Heading.vue'
 import RelatedTasks from '@/components/tasks/partials/RelatedTasks.vue'
 import TaskSubscription from '@/components/misc/Subscription.vue'
@@ -368,17 +359,24 @@ import TaskPropertyChips from '@/components/tasks/partials/TaskPropertyChips.vue
 import Dropdown from '@/components/misc/Dropdown.vue'
 import DropdownItem from '@/components/misc/DropdownItem.vue'
 
-import {uploadFile} from '@/helpers/attachments'
 import {getProjectTitle} from '@/helpers/getProjectTitle'
 import {canReturnTo} from '@/helpers/returnability'
 import {scrollIntoView} from '@/helpers/scrollIntoView'
 import {TASK_REPEAT_MODES} from '@/types/IRepeatMode'
 import {REMINDER_PERIOD_RELATIVE_TO_TYPES} from '@/types/IReminderPeriodRelativeTo'
 import {playPopSound} from '@/helpers/playPop'
+import {taskLoadErrorAction} from './taskDetailError'
 
-import {useTaskStore} from '@/stores/tasks'
-import {useKanbanStore} from '@/stores/kanban'
-import {useProjectStore} from '@/stores/projects'
+import {
+	useUpdateTaskMutation,
+	useDeleteTaskMutation,
+	useFavoriteTaskMutation,
+	useDuplicateTaskMutation,
+	useMarkTaskReadMutation,
+	useAddTaskLabelMutation,
+	useAddTaskAssigneeMutation,
+} from '@/client/queries/taskMutations'
+import {useProjects} from '@/composables/useProjects'
 import {useAuthStore} from '@/stores/auth'
 import {useBaseStore} from '@/stores/base'
 import {useConfigStore} from '@/stores/config'
@@ -386,21 +384,12 @@ import {useConfigStore} from '@/stores/config'
 import {useTitle} from '@/composables/useTitle'
 import {useTaskDetailShortcuts} from '@/composables/useTaskDetailShortcuts'
 
-import {success} from '@/message'
+import {error, success} from '@/message'
 import type {Action as MessageAction} from '@/message'
-
-interface HTTPErrorResponse {
-	response?: {
-		status?: number
-		data?: {
-			code?: number
-			message?: string
-		}
-	}
-}
+import {useSetTaskSubscriptionMutation} from '@/client/queries/subscriptions'
 
 const props = defineProps<{
-	taskId: ITask['id'],
+	taskId: number,
 	backdropView?: RouteLocation['fullPath'],
 }>()
 
@@ -412,30 +401,93 @@ const router = useRouter()
 const route = useRoute()
 const {t} = useI18n({useScope: 'global'})
 
-const projectStore = useProjectStore()
-const taskStore = useTaskStore()
+const projectList = useProjects()
+const updateTask = useUpdateTaskMutation()
+const deleteTaskMutation = useDeleteTaskMutation()
+const favoriteTask = useFavoriteTaskMutation()
+const duplicateTask = useDuplicateTaskMutation()
+const markTaskRead = useMarkTaskReadMutation()
+const addLabelMutation = useAddTaskLabelMutation()
+const addAssigneeMutation = useAddTaskAssigneeMutation()
+const subscriptionMutation = useSetTaskSubscriptionMutation()
+const taskMutating = computed(() => [
+	updateTask,
+	deleteTaskMutation,
+	favoriteTask,
+	duplicateTask,
+	markTaskRead,
+].some(mutation => mutation.isPending.value))
 const configStore = useConfigStore()
-const timeTrackingEnabled = computed(() => configStore.isProFeatureEnabled(PRO_FEATURE.TIME_TRACKING))
-const kanbanStore = useKanbanStore()
 const authStore = useAuthStore()
+const timeTrackingEnabled = computed(() => configStore.isProFeatureEnabled(PRO_FEATURE.TIME_TRACKING)
+	&& !authStore.isLinkShareAuth)
 const baseStore = useBaseStore()
 const quickAddMagicMode = computed(() => authStore.settings.frontendSettings.quickAddMagicMode)
 
-const task = ref<ITask>(new TaskModel())
+const taskQuery = useTask(
+	() => props.taskId ?? 0,
+	() => [
+		'reactions',
+		'is_unread',
+		'buckets',
+		...(timeTrackingEnabled.value ? ['time_entries_count' as const] : []),
+	],
+)
+const taskLoading = taskQuery.isFetching
+const task = ref<ITask>(createTaskDraft())
+
+// Only fields edited here stay local; the rest follows the cache.
+function followServerFields(loaded: ITask) {
+	const {
+		priority,
+		percent_done,
+		due_date,
+		deadline,
+		start_date,
+		end_date,
+		reminders,
+		repeat_after,
+		repeat_mode,
+		repeat_rrule,
+		repeat_from_completion,
+		estimated_duration,
+	} = task.value
+	task.value = {
+		...createTaskDraft(klona(loaded)),
+		priority,
+		percent_done,
+		due_date,
+		deadline,
+		start_date,
+		end_date,
+		reminders,
+		repeat_after,
+		repeat_mode,
+		repeat_rrule,
+		repeat_from_completion,
+		estimated_duration,
+	}
+}
+
+function seedTask(loaded: ITask) {
+	task.value = createTaskDraft(klona(loaded))
+	taskColor.value = task.value.hex_color ?? ''
+}
+
 const remindersDefaultRelativeTo = computed(() => {
-	if (task.value.dueDate) {
+	if (parseDateOrNull(task.value.due_date)) {
 		return REMINDER_PERIOD_RELATIVE_TO_TYPES.DUEDATE
 	}
-	if (task.value.startDate) {
+	if (parseDateOrNull(task.value.start_date)) {
 		return REMINDER_PERIOD_RELATIVE_TO_TYPES.STARTDATE
 	}
-	if (task.value.endDate) {
+	if (parseDateOrNull(task.value.end_date)) {
 		return REMINDER_PERIOD_RELATIVE_TO_TYPES.ENDDATE
 	}
 	return null
 })
 const taskNotFound = ref(false)
-const taskTitle = computed(() => task.value.title)
+const taskTitle = computed(() => task.value.title ?? '')
 useTitle(taskTitle)
 
 // Every caller resolves history state when it acts, never ahead of time: the state is not
@@ -466,16 +518,16 @@ function goBack() {
 // Deliberately broad: "which project does this entry belong to" is also answered by a settings
 // modal or the project's activity log, and highlighting that project is right either way.
 // `/projects/:parentProjectId/new` names its param differently but still belongs to its parent.
-function projectIdOf(backRoute: ReturnType<typeof router.resolve> | null): IProject['id'] | null {
+function projectIdOf(backRoute: ReturnType<typeof router.resolve> | null): number | null {
 	return Number(backRoute?.params.projectId ?? backRoute?.params.parentProjectId) || null
 }
 
-function lastProject(): IProject | null {
+function lastProject(): ProjectResponse | null {
 	const projectId = projectIdOf(resolveBackRoute())
 
 	return projectId === null
 		? null
-		: projectStore.projects[projectId] ?? null
+		: projectList.projects[projectId] ?? null
 }
 
 // The crumb links to the project's default view, so popping is only equivalent to following the
@@ -504,7 +556,7 @@ function isPlainClick(event: MouseEvent) {
 
 // Popping the history entry keeps the previous view's scroll position and state, so prefer it
 // over pushing whenever it is equivalent to following the link.
-function onBreadcrumbClick(event: MouseEvent, projectId: IProject['id'], navigate: (event: MouseEvent) => void) {
+function onBreadcrumbClick(event: MouseEvent, projectId: number, navigate: (event: MouseEvent) => void) {
 	const backRoute = resolveBackRoute()
 	const popIsEquivalent = PROJECT_CONTENT_ROUTE_NAMES.has(backRoute?.name as string)
 		&& projectIdOf(backRoute) === projectId
@@ -534,15 +586,7 @@ onBeforeRouteLeave(async (to) => {
 	// Source the project from the destination id, not from history state: on a back
 	// navigation vue-router swaps historyState to the destination entry before guards
 	// run, so `state.back` already points one entry further back than the destination.
-	const toProject = projectStore.projects[toProjectId]
-	if (!toProject) {
-		// Nothing to pre-set with. Waiting for the store to hydrate would stall a
-		// user-initiated navigation; ProjectView loads the project and sets it itself,
-		// so the worst case is the brief flash this pre-set exists to smooth over.
-		return
-	}
-
-	await baseStore.handleSetCurrentProjectIfNotSet(toProject)
+	baseStore.setCurrentProjectIfNotSet({id: toProjectId})
 })
 
 // We doubled the task color property here because verte does not have a real change property, leading
@@ -551,47 +595,24 @@ onBeforeRouteLeave(async (to) => {
 // updated, changed, updated and so on.
 // To prevent this, we put the task color property in a separate value which is set to the task color
 // when it is saved and loaded.
-const taskColor = ref<ITask['hexColor']>('')
+const taskColor = ref('')
 
 // Used to avoid flashing of empty elements if the task content is not yet loaded.
 const visible = ref(false)
 
-const project = computed(() => projectStore.projects[task.value.projectId])
+const project = computed(() => projectList.projects[task.value.project_id ?? 0])
 
 const projectRoute = computed(() => ({
 	name: 'project.index',
-	params: {projectId: task.value.projectId},
+	params: {projectId: task.value.project_id},
 	hash: route.hash,
 }))
 
 const canWrite = computed(() => (
-	task.value.maxPermission !== null &&
-	task.value.maxPermission > PERMISSIONS.READ
+	(taskQuery.task.value?.max_permission ?? 0) > PERMISSIONS.READ
 ))
 
 const isModal = computed(() => Boolean(props.backdropView))
-
-async function attachmentUpload(file: File, onSuccess?: (url: string) => void) {
-	const uploaded = await uploadFile(props.taskId, file, onSuccess)
-	if (uploaded.length > 0) {
-		onAttachmentsUpdated([...task.value.attachments, ...uploaded])
-	}
-	return uploaded
-}
-
-// Description only cares about the onSuccess callback firing with the uploaded url; its return value is discarded.
-const attachmentUploadForDescription: AttachmentUploadFunction = async (file, onSuccess) => {
-	const uploaded = await attachmentUpload(file, onSuccess)
-	return uploaded[0] ? String(uploaded[0].id) : ''
-}
-
-function onAttachmentsUpdated(attachments: IAttachment[]) {
-	task.value.attachments = attachments
-	kanbanStore.setTaskInBucket({
-		...task.value,
-		attachments,
-	})
-}
 
 const heading = ref<HTMLElement | null>(null)
 
@@ -708,54 +729,36 @@ onMounted(async () => {
 	updateScrollable()
 })
 
-const taskService = shallowReactive(new TaskService())
-
-// load task
-watch(
-	() => props.taskId,
-	async (id) => {
-		if (id === undefined) {
-			return
-		}
-
-		try {
-			const expand = ['reactions', 'comments', 'is_unread', 'buckets']
-			if (timeTrackingEnabled.value) {
-				// Only request the (server-computed) count when the feature is on.
-				expand.push('time_entries_count')
-			}
-			const loaded = await taskService.get({id} as ITask, {expand})
-			Object.assign(task.value, loaded)
-			taskColor.value = task.value.hexColor
-
-			if (task.value.isUnread) {
-				await taskStore.markTaskAsRead(task.value.id)
-				task.value.isUnread = false
-			}
-
-			const previousProject = lastProject()
-			if (previousProject) {
-				await baseStore.handleSetCurrentProjectIfNotSet(previousProject)
-			}
-		} catch (caughtError) {
-			const e = caughtError as HTTPErrorResponse
-			// 403 means the task exists but is not visible to us; treat it like
-			// a 404 so we route away instead of rendering an empty task shell.
-			if (e?.response?.status === 404 || e?.response?.status === 403) {
-				taskNotFound.value = true
-				router.replace({name: 'not-found'})
-				return
-			}
-
-			throw e
-		} finally {
-			await nextTick()
-			scrollToHeading()
-			resolveScrollContainer()
-			updateScrollable()
-			visible.value = true
-		}
-	}, {immediate: true})
+watch(taskQuery.task, async (loaded, previous) => {
+	if (!loaded) return
+	if (loaded.id !== previous?.id) {
+		seedTask(loaded)
+	} else {
+		followServerFields(loaded)
+	}
+	if (loaded.is_unread) markTaskRead.mutateAsync(loaded.id).catch(() => {})
+	const previousProject = lastProject()
+	if (previousProject) baseStore.setCurrentProjectIfNotSet(previousProject)
+	await nextTick()
+	if (loaded.id !== previous?.id) scrollToHeading()
+	resolveScrollContainer()
+	updateScrollable()
+	visible.value = true
+}, {immediate: true})
+watch(taskQuery.error, cause => {
+	if (!cause) return
+	const action = taskLoadErrorAction(cause)
+	if (action === 'ignore') return
+	// 403 means the task exists but is not visible to us; treat it like
+	// a 404 so we route away instead of rendering an empty task shell.
+	if (action === 'notFound') {
+		taskNotFound.value = true
+		router.replace({name: 'not-found'})
+		return
+	}
+	error(cause)
+	visible.value = true
+})
 
 async function saveTask(
 	currentTask: ITask | null = null,
@@ -769,20 +772,19 @@ async function saveTask(
 		return
 	}
 
-	currentTask.hexColor = taskColor.value
+	currentTask.hex_color = taskColor.value
 
 	// If no end date is being set, but a start date and due date,
 	// use the due date as the end date
 	if (
-		currentTask.endDate === null &&
-		currentTask.startDate !== null &&
-		currentTask.dueDate !== null
+		!parseDateOrNull(currentTask.end_date) &&
+		Boolean(parseDateOrNull(currentTask.start_date)) &&
+		Boolean(parseDateOrNull(currentTask.due_date))
 	) {
-		currentTask.endDate = currentTask.dueDate
+		currentTask.end_date = currentTask.due_date
 	}
 
-	const updatedTask = await taskStore.update(currentTask) // TODO: markraw ?
-	Object.assign(task.value, updatedTask)
+	seedTask(mergeTask(task.value, await updateTask.mutateAsync({...currentTask, id: currentTask.id!})))
 
 	let actions: MessageAction[] = []
 	if (undoCallback) {
@@ -803,9 +805,9 @@ useTaskDetailShortcuts({
 const showDeleteModal = ref(false)
 
 async function deleteTask() {
-	await taskStore.delete(task.value)
+	await deleteTaskMutation.mutateAsync(task.value.id!)
 	success({message: t('task.detail.deleteSuccess')})
-	router.push({name: 'project.index', params: {projectId: task.value.projectId}})
+	router.push({name: 'project.index', params: {projectId: task.value.project_id}})
 }
 
 async function toggleTaskDone() {
@@ -827,26 +829,29 @@ async function toggleTaskDone() {
 // title is set when this comes from the title field's token-accept path, so
 // the stripped title and the new project persist in the same PATCH instead of
 // a redundant trailing literal-title save.
-async function changeProject(project: IProject | null, title?: string) {
+async function changeProject(project: ProjectResponse | null, title?: string) {
 	if (project === null) {
 		return
 	}
-	kanbanStore.removeTaskInBucket(task.value)
 	await saveTask({
 		...task.value,
-		projectId: project.id,
+		project_id: project.id,
 		...(title === undefined ? {} : {title}),
 	})
 	baseStore.setCurrentProject(project)
 }
 
+function toggleSubscription(subscribed: boolean) {
+	if (subscriptionMutation.isPending.value) return
+	subscriptionMutation.mutate({taskId: task.value.id!, subscribed})
+}
+
 async function toggleFavorite() {
-	const newTask = await taskStore.toggleFavorite(task.value)
-	Object.assign(task.value, newTask)
+	await favoriteTask.mutateAsync({...task.value, id: task.value.id!})
 }
 
 async function duplicateCurrentTask() {
-	const duplicatedTask = await taskStore.duplicateTask(task.value.id)
+	const duplicatedTask = await duplicateTask.mutateAsync(task.value.id!)
 	if (duplicatedTask) {
 		success({message: t('task.detail.duplicateSuccess')})
 		router.push({
@@ -869,7 +874,7 @@ async function setPriority(priority: number, title?: string) {
 async function setPercentDone(percentDone: number) {
 	const newTask: ITask = {
 		...task.value,
-		percentDone,
+		percent_done: percentDone,
 	}
 
 	return saveTask(newTask)
@@ -878,15 +883,15 @@ async function setPercentDone(percentDone: number) {
 async function setEstimatedDuration(estimatedDuration: number) {
 	const newTask: ITask = {
 		...task.value,
-		estimatedDuration,
+		estimated_duration: estimatedDuration,
 	}
 
 	return saveTask(newTask)
 }
 
 async function removeRepeatAfter() {
-	(task.value.repeatAfter as IRepeatAfter).amount = 0
-	task.value.repeatMode = TASK_REPEAT_MODES.REPEAT_MODE_DEFAULT
+	task.value.repeat_after = 0
+	task.value.repeat_mode = TASK_REPEAT_MODES.REPEAT_MODE_DEFAULT
 	await saveTask()
 }
 
@@ -899,23 +904,24 @@ async function saveTitleLiteral(title: string) {
 
 // Accepting a *label token in the title only ever offers already-existing
 // labels (useQuickAddAutocomplete's dropdown doesn't surface unmatched names),
-// so this mirrors EditLabels' addLabel - the same taskStore action, not a fork.
+// so this mirrors EditLabels' addLabel - the same mutation, not a fork.
 async function acceptLabel(label: Label) {
-	if (task.value.labels.some(l => l.id === label.id)) {
+	if ((task.value.labels ?? []).some(l => l.id === label.id)) {
 		return
 	}
-	await taskStore.addLabel({label, taskId: task.value.id})
-	task.value.labels.push(label)
+	await addLabelMutation.mutateAsync({label: {...label, id: label.id!}, taskId: task.value.id!})
+	task.value = {...task.value, labels: [...(task.value.labels ?? []), label]}
 }
 
-async function acceptAssignee(user: IUser) {
-	if (task.value.assignees.some(a => a.id === user.id)) {
+async function acceptAssignee(user: User & Required<Pick<User, 'id'>>) {
+	if ((task.value.assignees ?? []).some(a => a.id === user.id)) {
 		return
 	}
-	await taskStore.addAssignee({user, taskId: task.value.id})
-	task.value.assignees.push(user)
+	await addAssigneeMutation.mutateAsync({user, taskId: task.value.id!})
+	task.value = {...task.value, assignees: [...(task.value.assignees ?? []), user]}
 }
 </script>
+
 
 <style lang="scss" scoped>
 .task-view-container {
@@ -1134,5 +1140,12 @@ h2 .button {
 .modal-content .scroll-to-comments-button {
 	inset-block-end: .75rem;
 	inset-inline-end: 1rem;
+}
+
+// the task card spans the full width here, so the modal's white close button sits on it instead of the scrim
+@media screen and (min-width: $tablet) and (max-width: $desktop) {
+	.modal-dialog:has(.task-view-container.is-modal) .modal-container > .close {
+		color: var(--text);
+	}
 }
 </style>

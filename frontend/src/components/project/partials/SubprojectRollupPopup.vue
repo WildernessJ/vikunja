@@ -44,12 +44,12 @@ import XButton from '@/components/input/Button.vue'
 import Popup from '@/components/misc/Popup.vue'
 import Card from '@/components/misc/Card.vue'
 import FancyCheckbox from '@/components/input/FancyCheckbox.vue'
-import type {IProject} from '@/modelTypes/IProject'
+import type {ProjectResponse} from '@/client/queries/projects'
 import type {SubprojectRollupState} from '@/helpers/subprojectRollupState'
 
 const props = defineProps<{
 	modelValue: SubprojectRollupState,
-	projects: IProject[],
+	projects: ProjectResponse[],
 }>()
 
 const emit = defineEmits<{
@@ -60,7 +60,7 @@ function setEnabled(enabled: boolean) {
 	emit('update:modelValue', {...props.modelValue, enabled})
 }
 
-function setProjectIncluded(projectId: IProject['id'], included: boolean) {
+function setProjectIncluded(projectId: number, included: boolean) {
 	const excluded = included
 		? props.modelValue.excluded.filter(id => id !== projectId)
 		: [...props.modelValue.excluded, projectId]

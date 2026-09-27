@@ -15,11 +15,9 @@ const authUser = ref(true)
 const timezone = ref('UTC')
 const now = ref(new Date())
 
-vi.mock('@/stores/projectCounts', () => ({
-	useProjectCountsStore: () => ({
-		todayTotal,
-		loadCounts: loadCountsMock,
-	}),
+vi.mock('@/client/queries/projectCounts', () => ({
+	useProjectCounts: () => ({todayTotal}),
+	refreshProjectCounts: loadCountsMock,
 }))
 
 vi.mock('@/stores/auth', () => ({

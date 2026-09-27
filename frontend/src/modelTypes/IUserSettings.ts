@@ -1,23 +1,22 @@
 import type {IAbstract} from './IAbstract'
-import type {IProject} from './IProject'
-import type {ITaskReminder} from '@/modelTypes/ITaskReminder'
 import type {PrefixMode} from '@/modules/quickAddMagic'
 import type {BasicColorSchema} from '@vueuse/core'
 import type {SupportedLocale} from '@/i18n'
-import type {DefaultProjectViewKind} from '@/modelTypes/IProjectView'
+import type {DefaultProjectViewKind} from '@/constants/projectView'
 import type {Priority} from '@/constants/priorities'
 import type {DateDisplay} from '@/constants/dateDisplay'
 import type {TimeFormat} from '@/constants/timeFormat'
 import type {IRelationKind} from '@/types/IRelationKind'
 import type {FontSizeKey, FontFamilyKey} from '@/helpers/appearance'
+import type {TaskReminder} from '@/client/generated'
 
 export interface IFrontendSettings {
 	playSoundWhenDone: boolean
 	quickAddMagicMode: PrefixMode
 	colorSchema: BasicColorSchema
 	allowIconChanges: boolean
-	filterIdUsedOnOverview: IProject['id'] | null
-	overviewProjectIds?: IProject['id'][]
+	filterIdUsedOnOverview: number | null
+	overviewProjectIds?: number[]
 	overviewProjectsExclude?: boolean
 	defaultView?: DefaultProjectViewKind
 	minimumPriority?: Priority
@@ -32,12 +31,18 @@ export interface IFrontendSettings {
 	sidebarWidth: number | null
 	commentSortOrder: 'asc' | 'desc'
 	desktopQuickEntryShortcut: string
-	quickAddDefaultReminders: ITaskReminder[]
+	quickAddDefaultReminders: {relativePeriod?: number}[]
 	timeTrackingDefaultStart?: string
 	hiddenNavItems?: string[]
 	fontSize?: FontSizeKey
 	fontFamily?: FontFamilyKey
 	defaultDueTime?: string
+}
+
+export function taskRemindersFromSettings(
+	reminders: Readonly<IFrontendSettings['quickAddDefaultReminders']> | undefined,
+): TaskReminder[] {
+	return (reminders ?? []).map(reminder => ({relative_period: reminder.relativePeriod}))
 }
 
 export interface IExtraSettingsLink {
@@ -56,7 +61,7 @@ export interface IUserSettings extends IAbstract {
 	discoverableByEmail: boolean
 	overdueTasksRemindersEnabled: boolean
 	overdueTasksRemindersTime: undefined | string | Date
-	defaultProjectId: undefined | IProject['id']
+	defaultProjectId: number | undefined
 	weekStart: 0 | 1 | 2 | 3 | 4 | 5 | 6
 	timezone: string
 	language: SupportedLocale | null

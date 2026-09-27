@@ -1792,7 +1792,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "A message telling you everything was migrated successfully.",
+                        "description": "A message telling you the migration was started.",
                         "schema": {
                             "$ref": "#/definitions/models.Message"
                         }
@@ -9283,13 +9283,15 @@ const docTemplate = `{
                 0,
                 1,
                 2,
-                3
+                3,
+                4
             ],
             "x-enum-varnames": [
                 "FeatureUnknown",
                 "FeatureAdminPanel",
                 "FeatureTimeTracking",
-                "FeatureAuditLogs"
+                "FeatureAuditLogs",
+                "FeatureUserInvites"
             ]
         },
         "license.Info": {
@@ -9329,9 +9331,34 @@ const docTemplate = `{
                 }
             }
         },
+        "migration.ErrorKind": {
+            "type": "string",
+            "enum": [
+                "reported",
+                "interrupted",
+                "credentials",
+                "queue",
+                "upload",
+                "detail"
+            ],
+            "x-enum-varnames": [
+                "ErrorKindReported",
+                "ErrorKindInterrupted",
+                "ErrorKindCredentials",
+                "ErrorKindQueue",
+                "ErrorKindUpload",
+                "ErrorKindDetail"
+            ]
+        },
         "migration.Status": {
             "type": "object",
             "properties": {
+                "error_kind": {
+                    "$ref": "#/definitions/migration.ErrorKind"
+                },
+                "error_message": {
+                    "type": "string"
+                },
                 "finished_at": {
                     "type": "string"
                 },

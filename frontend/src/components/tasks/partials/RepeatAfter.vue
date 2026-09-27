@@ -34,7 +34,7 @@
 				<div class="select">
 					<select
 						id="repeatMode"
-						v-model="task.repeatMode"
+						v-model="task.repeat_mode"
 						@change="updateData"
 					>
 						<option :value="TASK_REPEAT_MODES.REPEAT_MODE_DEFAULT">
@@ -54,8 +54,8 @@
 			</div>
 		</div>
 		<RecurrencePatternPicker
-			v-if="task.repeatMode === TASK_REPEAT_MODES.REPEAT_MODE_RRULE"
-			v-model="task.repeatRrule"
+			v-if="task.repeat_mode === TASK_REPEAT_MODES.REPEAT_MODE_RRULE"
+			:model-value="task.repeat_rrule ?? ''"
 			:disabled="disabled"
 			@update:modelValue="updateRrule"
 		/>
@@ -110,8 +110,8 @@ import {error} from '@/message'
 
 import {TASK_REPEAT_MODES} from '@/types/IRepeatMode'
 import type {IRepeatAfter} from '@/types/IRepeatAfter'
-import type {ITask} from '@/modelTypes/ITask'
-import TaskModel from '@/models/task'
+import type {Task as ITask} from '@/client/generated'
+import {createTaskDraft, parseRepeatAfter, repeatAfterToSeconds} from '@/helpers/task'
 import RecurrencePatternPicker from '@/components/misc/RecurrencePatternPicker.vue'
 
 const props = withDefaults(defineProps<{
@@ -127,7 +127,7 @@ const emit = defineEmits<{
 
 const {t} = useI18n({useScope: 'global'})
 
-const task = ref<ITask>(new TaskModel())
+const task = ref<ITask>(createTaskDraft())
 const repeatAfter = reactive({
 	amount: 0,
 	type: '',
@@ -136,8 +136,8 @@ const repeatAfter = reactive({
 // The interval amount/type editor is only meaningful for the two interval-based
 // modes; monthly ignores it and the calendar-pattern mode has its own picker.
 const showIntervalEditor = computed(() =>
-	task.value.repeatMode === TASK_REPEAT_MODES.REPEAT_MODE_DEFAULT ||
-	task.value.repeatMode === TASK_REPEAT_MODES.REPEAT_MODE_FROM_CURRENT_DATE,
+	task.value.repeat_mode === TASK_REPEAT_MODES.REPEAT_MODE_DEFAULT ||
+	task.value.repeat_mode === TASK_REPEAT_MODES.REPEAT_MODE_FROM_CURRENT_DATE,
 )
 
 watch(
@@ -146,9 +146,9 @@ watch(
 		if (!value) {
 			return
 		}
-		task.value = value
-		if (typeof value.repeatAfter !== 'undefined') {
-			Object.assign(repeatAfter, value.repeatAfter)
+		task.value = {...value}
+		if (typeof value.repeat_after !== 'undefined') {
+			Object.assign(repeatAfter, parseRepeatAfter(value.repeat_after))
 		}
 	},
 	{
@@ -164,26 +164,26 @@ function updateData() {
 
 	// Calendar-pattern mode is driven by the picker; don't persist an empty rule
 	// (the backend rejects it). The picker calls updateRrule once a pattern is set.
-	if (task.value.repeatMode === TASK_REPEAT_MODES.REPEAT_MODE_RRULE) {
-		if (task.value.repeatRrule !== '') {
+	if (task.value.repeat_mode === TASK_REPEAT_MODES.REPEAT_MODE_RRULE) {
+		if (task.value.repeat_rrule) {
 			emit('update:modelValue', task.value)
 		}
 		return
 	}
 
 	if (
-		(task.value.repeatMode === TASK_REPEAT_MODES.REPEAT_MODE_DEFAULT && repeatAfter.amount === 0) ||
-		(task.value.repeatMode === TASK_REPEAT_MODES.REPEAT_MODE_FROM_CURRENT_DATE && repeatAfter.amount === 0)
+		(task.value.repeat_mode === TASK_REPEAT_MODES.REPEAT_MODE_DEFAULT && repeatAfter.amount === 0) ||
+		(task.value.repeat_mode === TASK_REPEAT_MODES.REPEAT_MODE_FROM_CURRENT_DATE && repeatAfter.amount === 0)
 	) {
 		return
 	}
 
-	if (task.value.repeatMode === TASK_REPEAT_MODES.REPEAT_MODE_DEFAULT && repeatAfter.amount < 0) {
+	if (task.value.repeat_mode === TASK_REPEAT_MODES.REPEAT_MODE_DEFAULT && repeatAfter.amount < 0) {
 		error({message: t('task.repeat.invalidAmount')})
 		return
 	}
 
-	Object.assign(task.value.repeatAfter, repeatAfter)
+	task.value.repeat_after = repeatAfterToSeconds(repeatAfter as IRepeatAfter)
 	emit('update:modelValue', task.value)
 }
 
@@ -191,7 +191,7 @@ function updateRrule(rrule: string) {
 	if (!task.value) {
 		return
 	}
-	task.value.repeatRrule = rrule
+	task.value.repeat_rrule = rrule
 	if (rrule === '') {
 		return
 	}

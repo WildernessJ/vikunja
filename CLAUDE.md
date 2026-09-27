@@ -10,9 +10,6 @@ again with `/hooks`.
 
 ## Corrections to AGENTS.md
 
-- Frontend layout: `src/models/` holds **model classes**; the TypeScript interfaces for
-  them live in `src/modelTypes/` (`AGENTS.md` no longer lists either — upstream trimmed its
-  layout section in v2.6.0; kept here because the split still trips people up).
 - i18n: frontend strings (`frontend/src/i18n/lang`) and API strings (`pkg/i18n/lang`) are
   two independent trees with no shared keys and no cross-check — if a change surfaces text
   on **both** a UI element (toast/label) **and** an API/notification (email), add the
@@ -22,7 +19,7 @@ again with `/hooks`.
 ## Build and test
 
 - **Suite:** `mage test:feature` + `cd frontend && pnpm typecheck`. `mage test:web` is
-  `pkg/webtests` only; plain `go test` does NOT work (see Development Commands in `AGENTS.md`).
+  `pkg/webtests` only; plain `go test` does NOT work (see `.agents/docs/testing.md`).
 - **Live-verify** UI and API changes in the browser. A green suite alone is not done.
 - **Worktrees:** `mage dev:prepare-worktree <name> ""` creates the worktree in `../`, not
   `.worktrees/`.

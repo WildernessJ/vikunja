@@ -192,7 +192,7 @@ import {useI18n} from 'vue-i18n'
 import Card from '@/components/misc/Card.vue'
 import Message from '@/components/misc/Message.vue'
 import {useTitle} from '@/composables/useTitle'
-import {useProjectStore} from '@/stores/projects'
+import {useProjects} from '@/composables/useProjects'
 import {getUserStats} from '@/services/userStats'
 import type {IUserStats} from '@/modelTypes/IUserStats'
 import {formatDate} from '@/helpers/time/formatDate'
@@ -201,7 +201,7 @@ const {t} = useI18n({useScope: 'global'})
 
 useTitle(() => t('user.stats.title'))
 
-const projectStore = useProjectStore()
+const projectList = useProjects()
 
 // Every option is within the API's accepted 1..52 range, so the selector can
 // never produce a value the endpoint would reject.
@@ -237,7 +237,7 @@ async function loadStats() {
 watch(weeks, loadStats, {immediate: true})
 
 function projectTitle(projectId: number): string {
-	return projectStore.projects[projectId]?.title ?? `#${projectId}`
+	return projectList.projects[projectId]?.title ?? `#${projectId}`
 }
 
 const maxCount = computed(() => Math.max(1, ...stats.value.completedPerDay.map(d => d.count)))

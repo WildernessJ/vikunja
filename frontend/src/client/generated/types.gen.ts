@@ -41,6 +41,56 @@ export type ApiToken = {
     readonly token?: string;
 };
 
+export type Activity = {
+    /**
+     * The user who performed the action.
+     */
+    readonly actor?: User;
+    /**
+     * The id of the user who performed the action.
+     */
+    readonly actor_id?: number;
+    /**
+     * When the action happened.
+     */
+    readonly created?: string;
+    /**
+     * The unique, numeric id of this activity entry.
+     */
+    readonly id?: number;
+    /**
+     * The project this activity belongs to.
+     */
+    readonly project_id?: number;
+    /**
+     * A short human-readable fragment captured at event time, e.g. the task title.
+     */
+    readonly summary?: string;
+    /**
+     * The task this activity refers to, if any. 0 for project-level activity, or when the task has since been deleted.
+     */
+    readonly task_id?: number;
+    /**
+     * What happened, e.g. task_completed, comment_created, assignee_added.
+     */
+    readonly verb?: string;
+};
+
+export type ActivityListBodyBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The activity entries, newest first.
+     */
+    items?: Array<Activity> | null;
+    /**
+     * Opaque cursor for the next (older) page. Empty when there are no more entries; otherwise pass it back as the cursor query param.
+     */
+    next_cursor?: string;
+};
+
 export type AdminIsAdminPatchBody = {
     /**
      * A URL to the JSON Schema for this object.
@@ -410,6 +460,53 @@ export type ColumnMapping = {
     column_name?: string;
 };
 
+export type ConnectionSettings = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Absolute URL of the streamable HTTP endpoint.
+     */
+    endpoint?: string;
+    presets?: TokenPresets;
+    /**
+     * Token permissions usable by exposed MCP tools, including mcp.access.
+     */
+    routes?: {
+        [key: string]: {
+            [key: string]: RouteDetail;
+        };
+    };
+};
+
+export type CreateInviteLinkBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Null means no expiry.
+     */
+    expires_at?: string | null;
+    /**
+     * Null allows unlimited registrations.
+     */
+    max_uses?: number | null;
+    /**
+     * Name shown to admins and invitees.
+     */
+    name?: string;
+    /**
+     * Activate accounts without confirming email.
+     */
+    skip_email_confirm?: boolean;
+    /**
+     * Local teams the invitees will join.
+     */
+    team_ids?: Array<number> | null;
+};
+
 export type CreateUserBody = {
     /**
      * A URL to the JSON Schema for this object.
@@ -617,6 +714,43 @@ export type Info = {
     licensed?: boolean;
     max_users?: number;
     validated_at?: string;
+};
+
+export type InstantiatePayload = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The id of the project under which the new project is created. Omit or 0 for top level.
+     */
+    parent_project_id?: number;
+    /**
+     * The title of the new project.
+     */
+    title?: string;
+};
+
+export type InviteLinkCheckBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Secret invitation token.
+     */
+    token?: string;
+};
+
+export type InviteLinkTeam = {
+    /**
+     * Numeric team ID.
+     */
+    id?: number;
+    /**
+     * Team name.
+     */
+    name?: string;
 };
 
 export type JsonPatchOp = {
@@ -1121,6 +1255,18 @@ export type PaginatedImage = {
     total_pages?: number;
 };
 
+export type PaginatedInviteLinkTeam = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    items?: Array<InviteLinkTeam> | null;
+    page?: number;
+    per_page?: number;
+    total?: number;
+    total_pages?: number;
+};
+
 export type PaginatedLabelWithTaskId = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1241,6 +1387,18 @@ export type PaginatedTeamWithPermission = {
     total_pages?: number;
 };
 
+export type PaginatedTemplateListItem = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    items?: Array<TemplateListItem> | null;
+    page?: number;
+    per_page?: number;
+    total?: number;
+    total_pages?: number;
+};
+
 export type PaginatedTimeEntry = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1271,6 +1429,18 @@ export type PaginatedUser = {
      */
     readonly $schema?: string;
     items?: Array<User> | null;
+    page?: number;
+    per_page?: number;
+    total?: number;
+    total_pages?: number;
+};
+
+export type PaginatedUserInviteLink = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    items?: Array<UserInviteLink> | null;
     page?: number;
     per_page?: number;
     total?: number;
@@ -1387,6 +1557,10 @@ export type Project = {
      */
     is_favorite?: boolean;
     /**
+     * Whether this project is a template. Templates are hidden from normal listings and managed through the template endpoints. Set by the server.
+     */
+    readonly is_template?: boolean;
+    /**
      * The maximum permission the requesting user has on this project (0 = read, 1 = read/write, 2 = admin), or null when the permission was not computed for this response.
      */
     readonly max_permission?: number | null;
@@ -1481,6 +1655,10 @@ export type ProjectReadBody = {
      */
     is_favorite?: boolean;
     /**
+     * Whether this project is a template. Templates are hidden from normal listings and managed through the template endpoints. Set by the server.
+     */
+    readonly is_template?: boolean;
+    /**
      * The maximum permission the requesting user has on this project (0 = read, 1 = read/write, 2 = admin), or null when the permission was not computed for this response.
      */
     readonly max_permission?: number | null;
@@ -1512,6 +1690,17 @@ export type ProjectReadBody = {
      * The views configured for this project. Managed through the project view endpoints.
      */
     readonly views?: Array<ProjectView> | null;
+};
+
+export type ProjectTaskCount = {
+    /**
+     * Number of undone tasks that are overdue or due today, evaluated against the start of tomorrow in the user's timezone.
+     */
+    due_overdue?: number;
+    /**
+     * Number of undone tasks in the project.
+     */
+    open?: number;
 };
 
 export type ProjectUser = {
@@ -1563,6 +1752,14 @@ export type ProjectView = {
      */
     default_bucket_id?: number;
     /**
+     * The order (asc or desc) for each default_sort_by field. Parallel array to default_sort_by.
+     */
+    default_order_by?: Array<string> | null;
+    /**
+     * Fields the List/Table view sorts by on load when no explicit sort is set, e.g. ["priority"]. Mirrors the sort_by query parameter.
+     */
+    default_sort_by?: Array<string> | null;
+    /**
      * The id of the done bucket. Tasks moved here are marked done, and tasks marked done are moved here.
      */
     done_bucket_id?: number;
@@ -1591,9 +1788,9 @@ export type ProjectView = {
      */
     readonly updated?: string;
     /**
-     * The kind of this view. One of list, gantt, table or kanban.
+     * The kind of this view. One of list, gantt, table, kanban or calendar.
      */
-    view_kind?: 'list' | 'gantt' | 'table' | 'kanban';
+    view_kind?: 'list' | 'gantt' | 'table' | 'kanban' | 'calendar';
 };
 
 export type ProjectViewBucketConfiguration = {
@@ -1629,6 +1826,14 @@ export type ProjectViewReadBody = {
      */
     default_bucket_id?: number;
     /**
+     * The order (asc or desc) for each default_sort_by field. Parallel array to default_sort_by.
+     */
+    default_order_by?: Array<string> | null;
+    /**
+     * Fields the List/Table view sorts by on load when no explicit sort is set, e.g. ["priority"]. Mirrors the sort_by query parameter.
+     */
+    default_sort_by?: Array<string> | null;
+    /**
      * The id of the done bucket. Tasks moved here are marked done, and tasks marked done are moved here.
      */
     done_bucket_id?: number;
@@ -1661,9 +1866,9 @@ export type ProjectViewReadBody = {
      */
     readonly updated?: string;
     /**
-     * The kind of this view. One of list, gantt, table or kanban.
+     * The kind of this view. One of list, gantt, table, kanban or calendar.
      */
-    view_kind?: 'list' | 'gantt' | 'table' | 'kanban';
+    view_kind?: 'list' | 'gantt' | 'table' | 'kanban' | 'calendar';
 };
 
 export type Provider = {
@@ -1689,6 +1894,86 @@ export type ProviderStatus = {
     key?: string;
 };
 
+export type PublicInviteLink = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Name of this invitation.
+     */
+    name?: string;
+    /**
+     * Whether the link activates accounts without email confirmation.
+     */
+    skip_email_confirm?: boolean;
+    /**
+     * Teams the new account will join.
+     */
+    teams?: Array<InviteLinkTeam> | null;
+};
+
+export type PushPublicKeyBodyBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Whether this instance has Web Push configured. When false the client should hide the subscribe UI; public_key is then empty.
+     */
+    readonly enabled?: boolean;
+    /**
+     * The base64url-encoded VAPID public key to pass as applicationServerKey when subscribing.
+     */
+    readonly public_key?: string;
+};
+
+export type PushSubscription = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The base64url-encoded auth secret from PushSubscription.getKey('auth'), used to encrypt the payload.
+     */
+    auth?: string;
+    /**
+     * A timestamp when this subscription was registered. You cannot change this value.
+     */
+    readonly created?: string;
+    /**
+     * The push service URL from PushSubscription.endpoint. Re-subscribing with an endpoint that already exists updates that subscription instead of creating a second one.
+     */
+    endpoint?: string;
+    /**
+     * The unique, numeric id of this subscription.
+     */
+    readonly id?: number;
+    /**
+     * The base64url-encoded p256dh key from PushSubscription.getKey('p256dh'), used to encrypt the payload.
+     */
+    p256dh?: string;
+};
+
+export type PushSubscriptionResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * A timestamp when this subscription was registered.
+     */
+    readonly created?: string;
+    /**
+     * The push service URL this subscription delivers to.
+     */
+    readonly endpoint?: string;
+    /**
+     * The unique, numeric id of this subscription.
+     */
+    readonly id?: number;
+};
+
 export type Reaction = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1708,6 +1993,24 @@ export type Reaction = {
     value?: string;
 };
 
+export type RegisterUserRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    email?: string;
+    /**
+     * Invitation token. Allows registration when public signup is disabled and joins the invited teams.
+     */
+    invite_token?: string;
+    /**
+     * The language of the new user as an IETF BCP 47 code (e.g. en, de-DE).
+     */
+    language?: string;
+    password?: string;
+    username?: string;
+};
+
 export type RenewTokenBodyBody = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1722,6 +2025,21 @@ export type RenewTokenBodyBody = {
 export type RouteDetail = {
     method?: string;
     path?: string;
+};
+
+export type SaveAsTemplatePayload = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * An optional description for the new template.
+     */
+    description?: string;
+    /**
+     * The name of the new template.
+     */
+    name?: string;
 };
 
 export type SavedFilter = {
@@ -1854,6 +2172,14 @@ export type Status = {
      */
     readonly $schema?: string;
     /**
+     * Why the last migration failed, as a key the client translates: "reported", "interrupted", "credentials", "queue", "upload" or "detail". Empty when it succeeded, is still running or was never run.
+     */
+    readonly error_kind?: string;
+    /**
+     * The failure detail, only set when error_kind is "detail": the migration failed on the user's own data and this is the error itself, in English.
+     */
+    readonly error_message?: string;
+    /**
      * When the last migration finished. Zero value while a migration is still running or was never run.
      */
     readonly finished_at?: string;
@@ -1955,6 +2281,10 @@ export type Task = {
      */
     readonly created_by?: User;
     /**
+     * A hard cutoff distinct from due_date. Independent of due_date, start_date and end_date; setting or clearing one does not affect the others.
+     */
+    deadline?: string;
+    /**
      * When this task was soft-deleted. Soft-deleted tasks are kept for 30 days before they are removed permanently.
      */
     readonly deleted_at?: string;
@@ -1966,6 +2296,10 @@ export type Task = {
     readonly done_at?: string;
     due_date?: string;
     end_date?: string;
+    /**
+     * An estimate in seconds of how long this task will take. Independent of time-tracking entries, dates and repeat. 0 = unset, max 90 days (7776000 seconds).
+     */
+    estimated_duration?: number;
     /**
      * The task color as a hex string without the leading '#'.
      */
@@ -2025,9 +2359,17 @@ export type Task = {
      */
     repeat_after?: number;
     /**
-     * How the task repeats when marked done: 0 = after repeat_after seconds, 1 = monthly (ignores repeat_after), 2 = from the current date rather than the last set date.
+     * When true and repeat_mode is 3, the next occurrence is evaluated from the completion timestamp rather than the previous due date.
+     */
+    repeat_from_completion?: boolean;
+    /**
+     * How the task repeats when marked done: 0 = after repeat_after seconds, 1 = monthly (ignores repeat_after), 2 = from the current date rather than the last set date, 3 = calendar pattern from repeat_rrule.
      */
     repeat_mode?: number;
+    /**
+     * An RFC 5545 RRULE string used when repeat_mode is 3.
+     */
+    repeat_rrule?: string;
     start_date?: string;
     /**
      * The requesting user's subscription to this task. Read-only here; use the subscription endpoints to change it. Only present when reading a single task.
@@ -2095,11 +2437,11 @@ export type TaskBucket = {
      */
     readonly bucket?: Bucket;
     /**
-     * The bucket to move the task into. On /api/v2 this is taken from the URL; a value in the body is ignored.
+     * The bucket to move the task into. This is taken from the URL; a value in the body is ignored.
      */
     bucket_id?: number;
     /**
-     * The view the bucket belongs to. On /api/v2 this is taken from the URL; a value in the body is ignored.
+     * The view the bucket belongs to. This is taken from the URL; a value in the body is ignored.
      */
     project_view_id?: number;
     /**
@@ -2114,6 +2456,10 @@ export type TaskBucket = {
 
 export type TaskCollection = {
     /**
+     * Project ids to drop from the include_child_projects roll-up. Only meaningful with include_child_projects=true. Ignores ids that aren't accessible descendants; the parent project can't be excluded.
+     */
+    excluded_project_ids?: Array<number> | null;
+    /**
      * The filter query to match tasks by. See https://vikunja.io/docs/filters.
      */
     filter?: string;
@@ -2121,6 +2467,10 @@ export type TaskCollection = {
      * If true, the result also includes tasks whose filtered field is null.
      */
     filter_include_nulls?: boolean;
+    /**
+     * If true and viewing a project, also include tasks from all descendant (sub-)projects the user can read. Archived descendants are excluded.
+     */
+    include_child_projects?: boolean;
     /**
      * The order for each sort_by field, either asc or desc. Defaults to asc.
      */
@@ -2288,6 +2638,10 @@ export type TaskReadOneBody = {
      */
     readonly created_by?: User;
     /**
+     * A hard cutoff distinct from due_date. Independent of due_date, start_date and end_date; setting or clearing one does not affect the others.
+     */
+    deadline?: string;
+    /**
      * When this task was soft-deleted. Soft-deleted tasks are kept for 30 days before they are removed permanently.
      */
     readonly deleted_at?: string;
@@ -2299,6 +2653,10 @@ export type TaskReadOneBody = {
     readonly done_at?: string;
     due_date?: string;
     end_date?: string;
+    /**
+     * An estimate in seconds of how long this task will take. Independent of time-tracking entries, dates and repeat. 0 = unset, max 90 days (7776000 seconds).
+     */
+    estimated_duration?: number;
     /**
      * The task color as a hex string without the leading '#'.
      */
@@ -2362,9 +2720,17 @@ export type TaskReadOneBody = {
      */
     repeat_after?: number;
     /**
-     * How the task repeats when marked done: 0 = after repeat_after seconds, 1 = monthly (ignores repeat_after), 2 = from the current date rather than the last set date.
+     * When true and repeat_mode is 3, the next occurrence is evaluated from the completion timestamp rather than the previous due date.
+     */
+    repeat_from_completion?: boolean;
+    /**
+     * How the task repeats when marked done: 0 = after repeat_after seconds, 1 = monthly (ignores repeat_after), 2 = from the current date rather than the last set date, 3 = calendar pattern from repeat_rrule.
      */
     repeat_mode?: number;
+    /**
+     * An RFC 5545 RRULE string used when repeat_mode is 3.
+     */
+    repeat_rrule?: string;
     start_date?: string;
     /**
      * The requesting user's subscription to this task. Read-only here; use the subscription endpoints to change it. Only present when reading a single task.
@@ -2415,6 +2781,7 @@ export type TaskReminder = {
     relative_period?: number;
     relative_to?: string;
     reminder?: string;
+    repeat_rrule?: string;
 };
 
 export type Team = {
@@ -2623,6 +2990,64 @@ export type TeamWithPermission = {
     readonly updated?: string;
 };
 
+export type TemplateBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The description of the template.
+     */
+    description?: string;
+    /**
+     * The unique numeric id of the template.
+     */
+    readonly id?: number;
+    /**
+     * The id of the user who owns the template.
+     */
+    readonly owner_id?: number;
+    /**
+     * The number of tasks contained in the template.
+     */
+    readonly task_count?: number;
+    /**
+     * The name of the template.
+     */
+    title?: string;
+};
+
+export type TemplateListItem = {
+    /**
+     * A timestamp when the template was created.
+     */
+    readonly created?: string;
+    /**
+     * The description of the template.
+     */
+    description?: string;
+    /**
+     * The unique numeric id of the template.
+     */
+    readonly id?: number;
+    /**
+     * The id of the user who owns the template.
+     */
+    readonly owner_id?: number;
+    /**
+     * The number of tasks contained in the template.
+     */
+    readonly task_count?: number;
+    /**
+     * The name of the template.
+     */
+    title?: string;
+    /**
+     * A timestamp when the template was last updated.
+     */
+    readonly updated?: string;
+};
+
 export type TimeEntry = {
     /**
      * A URL to the JSON Schema for this object.
@@ -2730,6 +3155,27 @@ export type Token = {
      * The token in clear text. Only returned once when the token is created; never on subsequent reads.
      */
     readonly token?: string;
+};
+
+export type TokenPresets = {
+    /**
+     * Wildcard granting all advertised permissions.
+     */
+    full?: {
+        [key: string]: string;
+    };
+    /**
+     * Wildcard permissions expanded against routes.
+     */
+    read_only?: {
+        [key: string]: Array<string> | null;
+    };
+    /**
+     * Exact permissions used by the first-class tools.
+     */
+    typed?: {
+        [key: string]: Array<string> | null;
+    };
 };
 
 export type TokenRequest = {
@@ -3048,18 +3494,116 @@ export type UserInfoBody = {
     username?: string;
 };
 
-export type UserRegister = {
+export type UserInviteLink = {
     /**
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
-    email?: string;
     /**
-     * The language of the new user as an IETF BCP 47 code (e.g. en, de-DE).
+     * Creation timestamp.
      */
-    language?: string;
-    password?: string;
-    username?: string;
+    created?: string;
+    /**
+     * The admin who created this link; null if their account was deleted.
+     */
+    readonly created_by?: User;
+    /**
+     * Null means no expiry.
+     */
+    expires_at?: string | null;
+    /**
+     * Numeric link ID.
+     */
+    id?: number;
+    /**
+     * Null allows unlimited registrations.
+     */
+    max_uses?: number | null;
+    /**
+     * Name shown to admins and invitees.
+     */
+    name?: string;
+    /**
+     * Activate invitees without confirming their email.
+     */
+    skip_email_confirm?: boolean;
+    /**
+     * Teams the invitee will join.
+     */
+    teams?: Array<InviteLinkTeam> | null;
+    /**
+     * Secret token, returned only on creation.
+     */
+    token?: string;
+    /**
+     * Last update timestamp.
+     */
+    updated?: string;
+    /**
+     * Completed registrations.
+     */
+    uses?: number;
+};
+
+export type UserProjectStats = {
+    /**
+     * Tasks completed in the project within the requested window.
+     */
+    completed_in_window?: number;
+    /**
+     * Undone tasks in the project right now.
+     */
+    open?: number;
+    /**
+     * Undone tasks in the project overdue or due today, same boundary as the project's overdue badge.
+     */
+    overdue?: number;
+    /**
+     * The project this row describes.
+     */
+    project_id?: number;
+};
+
+export type UserStats = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Tasks completed in the user's readable projects within the window, by anyone.
+     */
+    completed_in_projects?: number;
+    /**
+     * Completions per day across the requested window, zero-filled for days with none.
+     */
+    completed_per_day?: Array<UserStatsDay> | null;
+    /**
+     * Tasks the requesting user authored within the window.
+     */
+    created_by_me?: number;
+    /**
+     * Undone tasks in readable projects right now. Not window-bound.
+     */
+    open?: number;
+    /**
+     * Undone, overdue-or-due-today tasks in readable projects right now. Not window-bound.
+     */
+    overdue?: number;
+    /**
+     * Per-project breakdown across readable projects with any open, completed-in-window, or overdue tasks.
+     */
+    projects?: Array<UserProjectStats> | null;
+};
+
+export type UserStatsDay = {
+    /**
+     * Number of tasks completed on this day across the user's readable projects.
+     */
+    count?: number;
+    /**
+     * The day, as YYYY-MM-DD in the user's configured timezone.
+     */
+    date?: string;
 };
 
 export type UserWithPermission = {
@@ -3293,6 +3837,21 @@ export type ApiTokenWritable = {
     title?: string;
 };
 
+export type ActivityWritable = {
+    [key: string]: never;
+};
+
+export type ActivityListBodyBodyWritable = {
+    /**
+     * The activity entries, newest first.
+     */
+    items?: Array<ActivityWritable> | null;
+    /**
+     * Opaque cursor for the next (older) page. Empty when there are no more entries; otherwise pass it back as the cursor query param.
+     */
+    next_cursor?: string;
+};
+
 export type AdminIsAdminPatchBodyWritable = {
     /**
      * New admin flag. Omitting it leaves the current value unchanged.
@@ -3464,6 +4023,45 @@ export type CallbackWritable = {
     totp_passcode?: string;
 };
 
+export type ConnectionSettingsWritable = {
+    /**
+     * Absolute URL of the streamable HTTP endpoint.
+     */
+    endpoint?: string;
+    presets?: TokenPresets;
+    /**
+     * Token permissions usable by exposed MCP tools, including mcp.access.
+     */
+    routes?: {
+        [key: string]: {
+            [key: string]: RouteDetail;
+        };
+    };
+};
+
+export type CreateInviteLinkBodyWritable = {
+    /**
+     * Null means no expiry.
+     */
+    expires_at?: string | null;
+    /**
+     * Null allows unlimited registrations.
+     */
+    max_uses?: number | null;
+    /**
+     * Name shown to admins and invitees.
+     */
+    name?: string;
+    /**
+     * Activate accounts without confirming email.
+     */
+    skip_email_confirm?: boolean;
+    /**
+     * Local teams the invitees will join.
+     */
+    team_ids?: Array<number> | null;
+};
+
 export type CreateUserBodyWritable = {
     email?: string;
     /**
@@ -3556,6 +4154,24 @@ export type ImageWritable = {
      * The full-size URL of the image.
      */
     url?: string;
+};
+
+export type InstantiatePayloadWritable = {
+    /**
+     * The id of the project under which the new project is created. Omit or 0 for top level.
+     */
+    parent_project_id?: number;
+    /**
+     * The title of the new project.
+     */
+    title?: string;
+};
+
+export type InviteLinkCheckBodyWritable = {
+    /**
+     * Secret invitation token.
+     */
+    token?: string;
 };
 
 export type LabelWritable = {
@@ -3748,6 +4364,14 @@ export type PaginatedImageWritable = {
     total_pages?: number;
 };
 
+export type PaginatedInviteLinkTeamWritable = {
+    items?: Array<InviteLinkTeam> | null;
+    page?: number;
+    per_page?: number;
+    total?: number;
+    total_pages?: number;
+};
+
 export type PaginatedLabelWithTaskIdWritable = {
     items?: Array<LabelWithTaskIdWritable> | null;
     page?: number;
@@ -3828,6 +4452,14 @@ export type PaginatedTeamWithPermissionWritable = {
     total_pages?: number;
 };
 
+export type PaginatedTemplateListItemWritable = {
+    items?: Array<TemplateListItemWritable> | null;
+    page?: number;
+    per_page?: number;
+    total?: number;
+    total_pages?: number;
+};
+
 export type PaginatedTimeEntryWritable = {
     items?: Array<TimeEntryWritable> | null;
     page?: number;
@@ -3846,6 +4478,14 @@ export type PaginatedTokenWritable = {
 
 export type PaginatedUserWritable = {
     items?: Array<UserWritable> | null;
+    page?: number;
+    per_page?: number;
+    total?: number;
+    total_pages?: number;
+};
+
+export type PaginatedUserInviteLinkWritable = {
+    items?: Array<UserInviteLinkWritable> | null;
     page?: number;
     per_page?: number;
     total?: number;
@@ -3994,6 +4634,14 @@ export type ProjectViewWritable = {
      */
     default_bucket_id?: number;
     /**
+     * The order (asc or desc) for each default_sort_by field. Parallel array to default_sort_by.
+     */
+    default_order_by?: Array<string> | null;
+    /**
+     * Fields the List/Table view sorts by on load when no explicit sort is set, e.g. ["priority"]. Mirrors the sort_by query parameter.
+     */
+    default_sort_by?: Array<string> | null;
+    /**
      * The id of the done bucket. Tasks moved here are marked done, and tasks marked done are moved here.
      */
     done_bucket_id?: number;
@@ -4010,9 +4658,9 @@ export type ProjectViewWritable = {
      */
     title?: string;
     /**
-     * The kind of this view. One of list, gantt, table or kanban.
+     * The kind of this view. One of list, gantt, table, kanban or calendar.
      */
-    view_kind?: 'list' | 'gantt' | 'table' | 'kanban';
+    view_kind?: 'list' | 'gantt' | 'table' | 'kanban' | 'calendar';
 };
 
 export type ProjectViewReadBodyWritable = {
@@ -4029,6 +4677,14 @@ export type ProjectViewReadBodyWritable = {
      */
     default_bucket_id?: number;
     /**
+     * The order (asc or desc) for each default_sort_by field. Parallel array to default_sort_by.
+     */
+    default_order_by?: Array<string> | null;
+    /**
+     * Fields the List/Table view sorts by on load when no explicit sort is set, e.g. ["priority"]. Mirrors the sort_by query parameter.
+     */
+    default_sort_by?: Array<string> | null;
+    /**
      * The id of the done bucket. Tasks moved here are marked done, and tasks marked done are moved here.
      */
     done_bucket_id?: number;
@@ -4045,9 +4701,39 @@ export type ProjectViewReadBodyWritable = {
      */
     title?: string;
     /**
-     * The kind of this view. One of list, gantt, table or kanban.
+     * The kind of this view. One of list, gantt, table, kanban or calendar.
      */
-    view_kind?: 'list' | 'gantt' | 'table' | 'kanban';
+    view_kind?: 'list' | 'gantt' | 'table' | 'kanban' | 'calendar';
+};
+
+export type PublicInviteLinkWritable = {
+    /**
+     * Name of this invitation.
+     */
+    name?: string;
+    /**
+     * Whether the link activates accounts without email confirmation.
+     */
+    skip_email_confirm?: boolean;
+    /**
+     * Teams the new account will join.
+     */
+    teams?: Array<InviteLinkTeam> | null;
+};
+
+export type PushSubscriptionWritable = {
+    /**
+     * The base64url-encoded auth secret from PushSubscription.getKey('auth'), used to encrypt the payload.
+     */
+    auth?: string;
+    /**
+     * The push service URL from PushSubscription.endpoint. Re-subscribing with an endpoint that already exists updates that subscription instead of creating a second one.
+     */
+    endpoint?: string;
+    /**
+     * The base64url-encoded p256dh key from PushSubscription.getKey('p256dh'), used to encrypt the payload.
+     */
+    p256dh?: string;
 };
 
 export type ReactionWritable = {
@@ -4055,6 +4741,31 @@ export type ReactionWritable = {
      * The reaction itself: any UTF text up to 20 characters, e.g. an emoji.
      */
     value?: string;
+};
+
+export type RegisterUserRequestWritable = {
+    email?: string;
+    /**
+     * Invitation token. Allows registration when public signup is disabled and joins the invited teams.
+     */
+    invite_token?: string;
+    /**
+     * The language of the new user as an IETF BCP 47 code (e.g. en, de-DE).
+     */
+    language?: string;
+    password?: string;
+    username?: string;
+};
+
+export type SaveAsTemplatePayloadWritable = {
+    /**
+     * An optional description for the new template.
+     */
+    description?: string;
+    /**
+     * The name of the new template.
+     */
+    name?: string;
 };
 
 export type SavedFilterWritable = {
@@ -4104,10 +4815,18 @@ export type TaskWritable = {
      * The id of the attachment used as this task's cover image, or 0 for none.
      */
     cover_image_attachment_id?: number;
+    /**
+     * A hard cutoff distinct from due_date. Independent of due_date, start_date and end_date; setting or clearing one does not affect the others.
+     */
+    deadline?: string;
     description?: string;
     done?: boolean;
     due_date?: string;
     end_date?: string;
+    /**
+     * An estimate in seconds of how long this task will take. Independent of time-tracking entries, dates and repeat. 0 = unset, max 90 days (7776000 seconds).
+     */
+    estimated_duration?: number;
     /**
      * The task color as a hex string without the leading '#'.
      */
@@ -4131,9 +4850,17 @@ export type TaskWritable = {
      */
     repeat_after?: number;
     /**
-     * How the task repeats when marked done: 0 = after repeat_after seconds, 1 = monthly (ignores repeat_after), 2 = from the current date rather than the last set date.
+     * When true and repeat_mode is 3, the next occurrence is evaluated from the completion timestamp rather than the previous due date.
+     */
+    repeat_from_completion?: boolean;
+    /**
+     * How the task repeats when marked done: 0 = after repeat_after seconds, 1 = monthly (ignores repeat_after), 2 = from the current date rather than the last set date, 3 = calendar pattern from repeat_rrule.
      */
     repeat_mode?: number;
+    /**
+     * An RFC 5545 RRULE string used when repeat_mode is 3.
+     */
+    repeat_rrule?: string;
     start_date?: string;
     /**
      * The task title. This is what you'll see in the project.
@@ -4154,11 +4881,11 @@ export type TaskAttachmentWritable = {
 
 export type TaskBucketWritable = {
     /**
-     * The bucket to move the task into. On /api/v2 this is taken from the URL; a value in the body is ignored.
+     * The bucket to move the task into. This is taken from the URL; a value in the body is ignored.
      */
     bucket_id?: number;
     /**
-     * The view the bucket belongs to. On /api/v2 this is taken from the URL; a value in the body is ignored.
+     * The view the bucket belongs to. This is taken from the URL; a value in the body is ignored.
      */
     project_view_id?: number;
     /**
@@ -4205,10 +4932,18 @@ export type TaskReadOneBodyWritable = {
      * The id of the attachment used as this task's cover image, or 0 for none.
      */
     cover_image_attachment_id?: number;
+    /**
+     * A hard cutoff distinct from due_date. Independent of due_date, start_date and end_date; setting or clearing one does not affect the others.
+     */
+    deadline?: string;
     description?: string;
     done?: boolean;
     due_date?: string;
     end_date?: string;
+    /**
+     * An estimate in seconds of how long this task will take. Independent of time-tracking entries, dates and repeat. 0 = unset, max 90 days (7776000 seconds).
+     */
+    estimated_duration?: number;
     /**
      * The task color as a hex string without the leading '#'.
      */
@@ -4232,9 +4967,17 @@ export type TaskReadOneBodyWritable = {
      */
     repeat_after?: number;
     /**
-     * How the task repeats when marked done: 0 = after repeat_after seconds, 1 = monthly (ignores repeat_after), 2 = from the current date rather than the last set date.
+     * When true and repeat_mode is 3, the next occurrence is evaluated from the completion timestamp rather than the previous due date.
+     */
+    repeat_from_completion?: boolean;
+    /**
+     * How the task repeats when marked done: 0 = after repeat_after seconds, 1 = monthly (ignores repeat_after), 2 = from the current date rather than the last set date, 3 = calendar pattern from repeat_rrule.
      */
     repeat_mode?: number;
+    /**
+     * An RFC 5545 RRULE string used when repeat_mode is 3.
+     */
+    repeat_rrule?: string;
     start_date?: string;
     /**
      * The task title. This is what you'll see in the project.
@@ -4325,6 +5068,28 @@ export type TeamWithPermissionWritable = {
      * The name of this team.
      */
     name?: string;
+};
+
+export type TemplateBodyWritable = {
+    /**
+     * The description of the template.
+     */
+    description?: string;
+    /**
+     * The name of the template.
+     */
+    title?: string;
+};
+
+export type TemplateListItemWritable = {
+    /**
+     * The description of the template.
+     */
+    description?: string;
+    /**
+     * The name of the template.
+     */
+    title?: string;
 };
 
 export type TimeEntryWritable = {
@@ -4530,14 +5295,74 @@ export type UserInfoBodyWritable = {
     username?: string;
 };
 
-export type UserRegisterWritable = {
-    email?: string;
+export type UserInviteLinkWritable = {
     /**
-     * The language of the new user as an IETF BCP 47 code (e.g. en, de-DE).
+     * Creation timestamp.
      */
-    language?: string;
-    password?: string;
-    username?: string;
+    created?: string;
+    /**
+     * Null means no expiry.
+     */
+    expires_at?: string | null;
+    /**
+     * Numeric link ID.
+     */
+    id?: number;
+    /**
+     * Null allows unlimited registrations.
+     */
+    max_uses?: number | null;
+    /**
+     * Name shown to admins and invitees.
+     */
+    name?: string;
+    /**
+     * Activate invitees without confirming their email.
+     */
+    skip_email_confirm?: boolean;
+    /**
+     * Teams the invitee will join.
+     */
+    teams?: Array<InviteLinkTeam> | null;
+    /**
+     * Secret token, returned only on creation.
+     */
+    token?: string;
+    /**
+     * Last update timestamp.
+     */
+    updated?: string;
+    /**
+     * Completed registrations.
+     */
+    uses?: number;
+};
+
+export type UserStatsWritable = {
+    /**
+     * Tasks completed in the user's readable projects within the window, by anyone.
+     */
+    completed_in_projects?: number;
+    /**
+     * Completions per day across the requested window, zero-filled for days with none.
+     */
+    completed_per_day?: Array<UserStatsDay> | null;
+    /**
+     * Tasks the requesting user authored within the window.
+     */
+    created_by_me?: number;
+    /**
+     * Undone tasks in readable projects right now. Not window-bound.
+     */
+    open?: number;
+    /**
+     * Undone, overdue-or-due-today tasks in readable projects right now. Not window-bound.
+     */
+    overdue?: number;
+    /**
+     * Per-project breakdown across readable projects with any open, completed-in-window, or overdue tasks.
+     */
+    projects?: Array<UserProjectStats> | null;
 };
 
 export type UserWithPermissionWritable = {
@@ -4696,6 +5521,141 @@ export type WebhookWritable = {
     target_url?: string;
 };
 
+export type ActivitiesListAllData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Page size (max 100).
+         */
+        per_page?: number;
+        /**
+         * Opaque cursor from a previous response's next_cursor. Omit for the first (newest) page.
+         */
+        cursor?: string;
+        /**
+         * Only return activity performed by this user id.
+         */
+        actor_id?: number;
+        /**
+         * Only return activity of this verb, e.g. task_completed.
+         */
+        verb?: string;
+    };
+    url: '/activities';
+};
+
+export type ActivitiesListAllErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type ActivitiesListAllError = ActivitiesListAllErrors[keyof ActivitiesListAllErrors];
+
+export type ActivitiesListAllResponses = {
+    /**
+     * OK
+     */
+    200: ActivityListBodyBody;
+};
+
+export type ActivitiesListAllResponse = ActivitiesListAllResponses[keyof ActivitiesListAllResponses];
+
+export type AdminInviteLinksListData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * 1-based page number.
+         */
+        page?: number;
+        /**
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
+         */
+        per_page?: number;
+        /**
+         * Search query; filters the list to items matching this string.
+         */
+        q?: string;
+    };
+    url: '/admin/invite-links';
+};
+
+export type AdminInviteLinksListErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type AdminInviteLinksListError = AdminInviteLinksListErrors[keyof AdminInviteLinksListErrors];
+
+export type AdminInviteLinksListResponses = {
+    /**
+     * OK
+     */
+    200: PaginatedUserInviteLink;
+};
+
+export type AdminInviteLinksListResponse = AdminInviteLinksListResponses[keyof AdminInviteLinksListResponses];
+
+export type AdminInviteLinksCreateData = {
+    body: CreateInviteLinkBodyWritable;
+    path?: never;
+    query?: never;
+    url: '/admin/invite-links';
+};
+
+export type AdminInviteLinksCreateErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type AdminInviteLinksCreateError = AdminInviteLinksCreateErrors[keyof AdminInviteLinksCreateErrors];
+
+export type AdminInviteLinksCreateResponses = {
+    /**
+     * Created
+     */
+    201: UserInviteLink;
+};
+
+export type AdminInviteLinksCreateResponse = AdminInviteLinksCreateResponses[keyof AdminInviteLinksCreateResponses];
+
+export type AdminInviteLinksDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * Numeric invite link ID.
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/admin/invite-links/{id}';
+};
+
+export type AdminInviteLinksDeleteErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type AdminInviteLinksDeleteError = AdminInviteLinksDeleteErrors[keyof AdminInviteLinksDeleteErrors];
+
+export type AdminInviteLinksDeleteResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type AdminInviteLinksDeleteResponse = AdminInviteLinksDeleteResponses[keyof AdminInviteLinksDeleteResponses];
+
 export type AdminOverviewData = {
     body?: never;
     path?: never;
@@ -4730,7 +5690,7 @@ export type AdminProjectsListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -4789,6 +5749,44 @@ export type AdminProjectsPatchOwnerResponses = {
 
 export type AdminProjectsPatchOwnerResponse = AdminProjectsPatchOwnerResponses[keyof AdminProjectsPatchOwnerResponses];
 
+export type AdminTeamsListData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * 1-based page number.
+         */
+        page?: number;
+        /**
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
+         */
+        per_page?: number;
+        /**
+         * Search query; filters the list to items matching this string.
+         */
+        q?: string;
+    };
+    url: '/admin/teams';
+};
+
+export type AdminTeamsListErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type AdminTeamsListError = AdminTeamsListErrors[keyof AdminTeamsListErrors];
+
+export type AdminTeamsListResponses = {
+    /**
+     * OK
+     */
+    200: PaginatedInviteLinkTeam;
+};
+
+export type AdminTeamsListResponse = AdminTeamsListResponses[keyof AdminTeamsListResponses];
+
 export type AdminUsersListData = {
     body?: never;
     path?: never;
@@ -4798,7 +5796,7 @@ export type AdminUsersListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -5385,6 +6383,31 @@ export type InfoResponses = {
 
 export type InfoResponse = InfoResponses[keyof InfoResponses];
 
+export type InviteLinksCheckData = {
+    body: InviteLinkCheckBodyWritable;
+    path?: never;
+    query?: never;
+    url: '/invite-links/check';
+};
+
+export type InviteLinksCheckErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type InviteLinksCheckError = InviteLinksCheckErrors[keyof InviteLinksCheckErrors];
+
+export type InviteLinksCheckResponses = {
+    /**
+     * OK
+     */
+    200: PublicInviteLink;
+};
+
+export type InviteLinksCheckResponse = InviteLinksCheckResponses[keyof InviteLinksCheckResponses];
+
 export type LabelsListData = {
     body?: never;
     path?: never;
@@ -5394,7 +6417,7 @@ export type LabelsListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -5642,6 +6665,31 @@ export type AuthLogoutResponses = {
 };
 
 export type AuthLogoutResponse = AuthLogoutResponses[keyof AuthLogoutResponses];
+
+export type McpInfoData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/mcp/info';
+};
+
+export type McpInfoErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type McpInfoError = McpInfoErrors[keyof McpInfoErrors];
+
+export type McpInfoResponses = {
+    /**
+     * OK
+     */
+    200: ConnectionSettings;
+};
+
+export type McpInfoResponse = McpInfoResponses[keyof McpInfoResponses];
 
 export type MigrationCsvDetectData = {
     body: {
@@ -6240,7 +7288,7 @@ export type NotificationsListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -6318,6 +7366,31 @@ export type NotificationsAtomFeedResponses = {
 };
 
 export type NotificationsAtomFeedResponse = NotificationsAtomFeedResponses[keyof NotificationsAtomFeedResponses];
+
+export type NotificationsPushPublicKeyData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/notifications/push/public-key';
+};
+
+export type NotificationsPushPublicKeyErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type NotificationsPushPublicKeyError = NotificationsPushPublicKeyErrors[keyof NotificationsPushPublicKeyErrors];
+
+export type NotificationsPushPublicKeyResponses = {
+    /**
+     * OK
+     */
+    200: PushPublicKeyBodyBody;
+};
+
+export type NotificationsPushPublicKeyResponse = NotificationsPushPublicKeyResponses[keyof NotificationsPushPublicKeyResponses];
 
 export type NotificationsMarkReadData = {
     body: DatabaseNotificationsWritable;
@@ -6405,7 +7478,7 @@ export type ProjectsListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -6475,6 +7548,33 @@ export type ProjectsCreateResponses = {
 };
 
 export type ProjectsCreateResponse = ProjectsCreateResponses[keyof ProjectsCreateResponses];
+
+export type ProjectsCountsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/projects/counts';
+};
+
+export type ProjectsCountsErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type ProjectsCountsError = ProjectsCountsErrors[keyof ProjectsCountsErrors];
+
+export type ProjectsCountsResponses = {
+    /**
+     * OK
+     */
+    200: {
+        [key: string]: ProjectTaskCount;
+    };
+};
+
+export type ProjectsCountsResponse = ProjectsCountsResponses[keyof ProjectsCountsResponses];
 
 export type ProjectsDeleteData = {
     body?: never;
@@ -6605,7 +7705,7 @@ export type ProjectTimeEntriesListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -6663,6 +7763,80 @@ export type ProjectsDuplicateResponses = {
 };
 
 export type ProjectsDuplicateResponse = ProjectsDuplicateResponses[keyof ProjectsDuplicateResponses];
+
+export type ProjectsSaveAsTemplateData = {
+    body: SaveAsTemplatePayloadWritable;
+    path: {
+        /**
+         * The numeric id of the project to snapshot into a template.
+         */
+        projectid: number;
+    };
+    query?: never;
+    url: '/projects/{projectid}/save-as-template';
+};
+
+export type ProjectsSaveAsTemplateErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type ProjectsSaveAsTemplateError = ProjectsSaveAsTemplateErrors[keyof ProjectsSaveAsTemplateErrors];
+
+export type ProjectsSaveAsTemplateResponses = {
+    /**
+     * Created
+     */
+    201: Project;
+};
+
+export type ProjectsSaveAsTemplateResponse = ProjectsSaveAsTemplateResponses[keyof ProjectsSaveAsTemplateResponses];
+
+export type ActivitiesListProjectData = {
+    body?: never;
+    path: {
+        project: number;
+    };
+    query?: {
+        /**
+         * Page size (max 100).
+         */
+        per_page?: number;
+        /**
+         * Opaque cursor from a previous response's next_cursor. Omit for the first (newest) page.
+         */
+        cursor?: string;
+        /**
+         * Only return activity performed by this user id.
+         */
+        actor_id?: number;
+        /**
+         * Only return activity of this verb, e.g. task_completed.
+         */
+        verb?: string;
+    };
+    url: '/projects/{project}/activities';
+};
+
+export type ActivitiesListProjectErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type ActivitiesListProjectError = ActivitiesListProjectErrors[keyof ActivitiesListProjectErrors];
+
+export type ActivitiesListProjectResponses = {
+    /**
+     * OK
+     */
+    200: ActivityListBodyBody;
+};
+
+export type ActivitiesListProjectResponse = ActivitiesListProjectResponses[keyof ActivitiesListProjectResponses];
 
 export type ProjectsBackgroundDeleteData = {
     body?: never;
@@ -6794,7 +7968,7 @@ export type SharesListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -6938,7 +8112,7 @@ export type ProjectTasksListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -6957,6 +8131,14 @@ export type ProjectTasksListData = {
          * If true, also include tasks whose filtered field is null.
          */
         filter_include_nulls?: boolean;
+        /**
+         * If true and viewing a project, also include tasks from all descendant (sub-)projects the user can read. Archived descendants are excluded.
+         */
+        include_child_projects?: boolean;
+        /**
+         * Project ids to drop from the include_child_projects roll-up. Only meaningful with include_child_projects=true. Ignores ids that aren't accessible descendants; the parent project can't be excluded.
+         */
+        excluded_project_ids?: Array<number> | null;
         /**
          * Fields to sort by (e.g. done, priority). Repeatable; pair positionally with order_by. The special value relevance sorts by search relevance (most relevant first, requires s; ignored when the database cannot score the query).
          */
@@ -7137,7 +8319,7 @@ export type ProjectTeamsListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -7260,7 +8442,7 @@ export type ProjectUsersListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -7415,7 +8597,7 @@ export type ProjectViewsListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -7613,7 +8795,7 @@ export type BucketsListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -7688,7 +8870,7 @@ export type ProjectViewBucketsTasksListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -7707,6 +8889,14 @@ export type ProjectViewBucketsTasksListData = {
          * If true, also include tasks whose filtered field is null.
          */
         filter_include_nulls?: boolean;
+        /**
+         * If true and viewing a project, also include tasks from all descendant (sub-)projects the user can read. Archived descendants are excluded.
+         */
+        include_child_projects?: boolean;
+        /**
+         * Project ids to drop from the include_child_projects roll-up. Only meaningful with include_child_projects=true. Ignores ids that aren't accessible descendants; the parent project can't be excluded.
+         */
+        excluded_project_ids?: Array<number> | null;
         /**
          * Fields to sort by (e.g. done, priority). Repeatable; pair positionally with order_by. The special value relevance sorts by search relevance (most relevant first, requires s; ignored when the database cannot score the query).
          */
@@ -7850,7 +9040,7 @@ export type ProjectViewTasksListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -7869,6 +9059,14 @@ export type ProjectViewTasksListData = {
          * If true, also include tasks whose filtered field is null.
          */
         filter_include_nulls?: boolean;
+        /**
+         * If true and viewing a project, also include tasks from all descendant (sub-)projects the user can read. Archived descendants are excluded.
+         */
+        include_child_projects?: boolean;
+        /**
+         * Project ids to drop from the include_child_projects roll-up. Only meaningful with include_child_projects=true. Ignores ids that aren't accessible descendants; the parent project can't be excluded.
+         */
+        excluded_project_ids?: Array<number> | null;
         /**
          * Fields to sort by (e.g. done, priority). Repeatable; pair positionally with order_by. The special value relevance sorts by search relevance (most relevant first, requires s; ignored when the database cannot score the query).
          */
@@ -7918,7 +9116,7 @@ export type WebhooksListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -8030,8 +9228,60 @@ export type WebhooksUpdateResponses = {
 
 export type WebhooksUpdateResponse = WebhooksUpdateResponses[keyof WebhooksUpdateResponses];
 
+export type PushSubscriptionsCreateData = {
+    body: PushSubscriptionWritable;
+    path?: never;
+    query?: never;
+    url: '/push-subscriptions';
+};
+
+export type PushSubscriptionsCreateErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type PushSubscriptionsCreateError = PushSubscriptionsCreateErrors[keyof PushSubscriptionsCreateErrors];
+
+export type PushSubscriptionsCreateResponses = {
+    /**
+     * Created
+     */
+    201: PushSubscriptionResponse;
+};
+
+export type PushSubscriptionsCreateResponse = PushSubscriptionsCreateResponses[keyof PushSubscriptionsCreateResponses];
+
+export type PushSubscriptionsDeleteData = {
+    body?: never;
+    path: {
+        id: number;
+    };
+    query?: never;
+    url: '/push-subscriptions/{id}';
+};
+
+export type PushSubscriptionsDeleteErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type PushSubscriptionsDeleteError = PushSubscriptionsDeleteErrors[keyof PushSubscriptionsDeleteErrors];
+
+export type PushSubscriptionsDeleteResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type PushSubscriptionsDeleteResponse = PushSubscriptionsDeleteResponses[keyof PushSubscriptionsDeleteResponses];
+
 export type AuthRegisterData = {
-    body: UserRegisterWritable;
+    body: RegisterUserRequestWritable;
     path?: never;
     query?: never;
     url: '/register';
@@ -8191,7 +9441,7 @@ export type TasksListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -8210,6 +9460,14 @@ export type TasksListData = {
          * If true, also include tasks whose filtered field is null.
          */
         filter_include_nulls?: boolean;
+        /**
+         * If true and viewing a project, also include tasks from all descendant (sub-)projects the user can read. Archived descendants are excluded.
+         */
+        include_child_projects?: boolean;
+        /**
+         * Project ids to drop from the include_child_projects roll-up. Only meaningful with include_child_projects=true. Ignores ids that aren't accessible descendants; the parent project can't be excluded.
+         */
+        excluded_project_ids?: Array<number> | null;
         /**
          * Fields to sort by (e.g. done, priority). Repeatable; pair positionally with order_by. The special value relevance sorts by search relevance (most relevant first, requires s; ignored when the database cannot score the query).
          */
@@ -8278,13 +9536,53 @@ export type TasksBulkUpdateResponses = {
 
 export type TasksBulkUpdateResponse = TasksBulkUpdateResponses[keyof TasksBulkUpdateResponses];
 
+export type TaskTimeEntriesListData = {
+    body?: never;
+    path: {
+        task_id: number;
+    };
+    query?: {
+        /**
+         * 1-based page number.
+         */
+        page?: number;
+        /**
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
+         */
+        per_page?: number;
+        /**
+         * Search query; filters the list to items matching this string.
+         */
+        q?: string;
+    };
+    url: '/tasks/{task_id}/time-entries';
+};
+
+export type TaskTimeEntriesListErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type TaskTimeEntriesListError = TaskTimeEntriesListErrors[keyof TaskTimeEntriesListErrors];
+
+export type TaskTimeEntriesListResponses = {
+    /**
+     * OK
+     */
+    200: PaginatedTimeEntry;
+};
+
+export type TaskTimeEntriesListResponse = TaskTimeEntriesListResponses[keyof TaskTimeEntriesListResponses];
+
 export type TasksDeleteData = {
     body?: never;
     path: {
-        projecttask: number;
+        task: number;
     };
     query?: never;
-    url: '/tasks/{projecttask}';
+    url: '/tasks/{task}';
 };
 
 export type TasksDeleteErrors = {
@@ -8329,7 +9627,7 @@ export type TasksReadData = {
         /**
          * The numeric id of the task.
          */
-        projecttask: number;
+        task: number;
     };
     query?: {
         /**
@@ -8341,7 +9639,7 @@ export type TasksReadData = {
          */
         format?: 'html' | 'markdown';
     };
-    url: '/tasks/{projecttask}';
+    url: '/tasks/{task}';
 };
 
 export type TasksReadErrors = {
@@ -8365,10 +9663,10 @@ export type TasksReadResponse = TasksReadResponses[keyof TasksReadResponses];
 export type PatchTasksReadData = {
     body: Array<JsonPatchOp> | null;
     path: {
-        projecttask: number;
+        task: number;
     };
     query?: never;
-    url: '/tasks/{projecttask}';
+    url: '/tasks/{task}';
 };
 
 export type PatchTasksReadErrors = {
@@ -8392,7 +9690,7 @@ export type PatchTasksReadResponse = PatchTasksReadResponses[keyof PatchTasksRea
 export type TasksUpdateData = {
     body: TaskReadOneBodyWritable;
     path: {
-        projecttask: number;
+        task: number;
     };
     query?: {
         /**
@@ -8400,7 +9698,7 @@ export type TasksUpdateData = {
          */
         format?: 'html' | 'markdown';
     };
-    url: '/tasks/{projecttask}';
+    url: '/tasks/{task}';
 };
 
 export type TasksUpdateErrors = {
@@ -8424,7 +9722,7 @@ export type TasksUpdateResponse = TasksUpdateResponses[keyof TasksUpdateResponse
 export type TaskAssigneesListData = {
     body?: never;
     path: {
-        projecttask: number;
+        task: number;
     };
     query?: {
         /**
@@ -8432,7 +9730,7 @@ export type TaskAssigneesListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -8440,7 +9738,7 @@ export type TaskAssigneesListData = {
          */
         q?: string;
     };
-    url: '/tasks/{projecttask}/assignees';
+    url: '/tasks/{task}/assignees';
 };
 
 export type TaskAssigneesListErrors = {
@@ -8464,10 +9762,10 @@ export type TaskAssigneesListResponse = TaskAssigneesListResponses[keyof TaskAss
 export type TaskAssigneesCreateData = {
     body: TaskAssgineeWritable;
     path: {
-        projecttask: number;
+        task: number;
     };
     query?: never;
-    url: '/tasks/{projecttask}/assignees';
+    url: '/tasks/{task}/assignees';
 };
 
 export type TaskAssigneesCreateErrors = {
@@ -8491,10 +9789,10 @@ export type TaskAssigneesCreateResponse = TaskAssigneesCreateResponses[keyof Tas
 export type TaskAssigneesBulkData = {
     body: BulkAssigneesWritable;
     path: {
-        projecttask: number;
+        task: number;
     };
     query?: never;
-    url: '/tasks/{projecttask}/assignees/bulk';
+    url: '/tasks/{task}/assignees/bulk';
 };
 
 export type TaskAssigneesBulkErrors = {
@@ -8518,11 +9816,11 @@ export type TaskAssigneesBulkResponse = TaskAssigneesBulkResponses[keyof TaskAss
 export type TaskAssigneesDeleteData = {
     body?: never;
     path: {
-        projecttask: number;
+        task: number;
         user: number;
     };
     query?: never;
-    url: '/tasks/{projecttask}/assignees/{user}';
+    url: '/tasks/{task}/assignees/{user}';
 };
 
 export type TaskAssigneesDeleteErrors = {
@@ -8543,231 +9841,6 @@ export type TaskAssigneesDeleteResponses = {
 
 export type TaskAssigneesDeleteResponse = TaskAssigneesDeleteResponses[keyof TaskAssigneesDeleteResponses];
 
-export type TasksDuplicateData = {
-    body?: never;
-    path: {
-        /**
-         * The numeric id of the task to duplicate.
-         */
-        projecttask: number;
-    };
-    query?: never;
-    url: '/tasks/{projecttask}/duplicate';
-};
-
-export type TasksDuplicateErrors = {
-    /**
-     * Error
-     */
-    default: VikunjaErrorModel;
-};
-
-export type TasksDuplicateError = TasksDuplicateErrors[keyof TasksDuplicateErrors];
-
-export type TasksDuplicateResponses = {
-    /**
-     * Created
-     */
-    201: TaskDuplicate;
-};
-
-export type TasksDuplicateResponse = TasksDuplicateResponses[keyof TasksDuplicateResponses];
-
-export type TaskLabelsListData = {
-    body?: never;
-    path: {
-        projecttask: number;
-    };
-    query?: {
-        /**
-         * 1-based page number.
-         */
-        page?: number;
-        /**
-         * Items per page (max 1000).
-         */
-        per_page?: number;
-        /**
-         * Search query; filters the list to items matching this string.
-         */
-        q?: string;
-    };
-    url: '/tasks/{projecttask}/labels';
-};
-
-export type TaskLabelsListErrors = {
-    /**
-     * Error
-     */
-    default: VikunjaErrorModel;
-};
-
-export type TaskLabelsListError = TaskLabelsListErrors[keyof TaskLabelsListErrors];
-
-export type TaskLabelsListResponses = {
-    /**
-     * OK
-     */
-    200: PaginatedLabelWithTaskId;
-};
-
-export type TaskLabelsListResponse = TaskLabelsListResponses[keyof TaskLabelsListResponses];
-
-export type TaskLabelsCreateData = {
-    body: LabelTaskWritable;
-    path: {
-        projecttask: number;
-    };
-    query?: never;
-    url: '/tasks/{projecttask}/labels';
-};
-
-export type TaskLabelsCreateErrors = {
-    /**
-     * Error
-     */
-    default: VikunjaErrorModel;
-};
-
-export type TaskLabelsCreateError = TaskLabelsCreateErrors[keyof TaskLabelsCreateErrors];
-
-export type TaskLabelsCreateResponses = {
-    /**
-     * Created
-     */
-    201: LabelTask;
-};
-
-export type TaskLabelsCreateResponse = TaskLabelsCreateResponses[keyof TaskLabelsCreateResponses];
-
-export type TaskLabelsBulkReplaceData = {
-    body: LabelTaskBulkWritable;
-    path: {
-        /**
-         * The numeric id of the task whose labels to replace.
-         */
-        projecttask: number;
-    };
-    query?: never;
-    url: '/tasks/{projecttask}/labels/bulk';
-};
-
-export type TaskLabelsBulkReplaceErrors = {
-    /**
-     * Error
-     */
-    default: VikunjaErrorModel;
-};
-
-export type TaskLabelsBulkReplaceError = TaskLabelsBulkReplaceErrors[keyof TaskLabelsBulkReplaceErrors];
-
-export type TaskLabelsBulkReplaceResponses = {
-    /**
-     * OK
-     */
-    200: LabelTaskBulk;
-};
-
-export type TaskLabelsBulkReplaceResponse = TaskLabelsBulkReplaceResponses[keyof TaskLabelsBulkReplaceResponses];
-
-export type TaskLabelsDeleteData = {
-    body?: never;
-    path: {
-        projecttask: number;
-        label: number;
-    };
-    query?: never;
-    url: '/tasks/{projecttask}/labels/{label}';
-};
-
-export type TaskLabelsDeleteErrors = {
-    /**
-     * Error
-     */
-    default: VikunjaErrorModel;
-};
-
-export type TaskLabelsDeleteError = TaskLabelsDeleteErrors[keyof TaskLabelsDeleteErrors];
-
-export type TaskLabelsDeleteResponses = {
-    /**
-     * No Content
-     */
-    204: void;
-};
-
-export type TaskLabelsDeleteResponse = TaskLabelsDeleteResponses[keyof TaskLabelsDeleteResponses];
-
-export type TasksMarkReadData = {
-    body?: never;
-    path: {
-        /**
-         * The numeric id of the task to mark as read.
-         */
-        projecttask: number;
-    };
-    query?: never;
-    url: '/tasks/{projecttask}/read';
-};
-
-export type TasksMarkReadErrors = {
-    /**
-     * Error
-     */
-    default: VikunjaErrorModel;
-};
-
-export type TasksMarkReadError = TasksMarkReadErrors[keyof TasksMarkReadErrors];
-
-export type TasksMarkReadResponses = {
-    /**
-     * OK
-     */
-    200: TaskReadBodyBody;
-};
-
-export type TasksMarkReadResponse = TasksMarkReadResponses[keyof TasksMarkReadResponses];
-
-export type TaskTimeEntriesListData = {
-    body?: never;
-    path: {
-        task_id: number;
-    };
-    query?: {
-        /**
-         * 1-based page number.
-         */
-        page?: number;
-        /**
-         * Items per page (max 1000).
-         */
-        per_page?: number;
-        /**
-         * Search query; filters the list to items matching this string.
-         */
-        q?: string;
-    };
-    url: '/tasks/{task_id}/time-entries';
-};
-
-export type TaskTimeEntriesListErrors = {
-    /**
-     * Error
-     */
-    default: VikunjaErrorModel;
-};
-
-export type TaskTimeEntriesListError = TaskTimeEntriesListErrors[keyof TaskTimeEntriesListErrors];
-
-export type TaskTimeEntriesListResponses = {
-    /**
-     * OK
-     */
-    200: PaginatedTimeEntry;
-};
-
-export type TaskTimeEntriesListResponse = TaskTimeEntriesListResponses[keyof TaskTimeEntriesListResponses];
-
 export type TaskAttachmentsListData = {
     body?: never;
     path: {
@@ -8782,7 +9855,7 @@ export type TaskAttachmentsListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -8935,7 +10008,7 @@ export type TaskCommentsListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -9136,6 +10209,161 @@ export type TaskCommentsUpdateResponses = {
 
 export type TaskCommentsUpdateResponse = TaskCommentsUpdateResponses[keyof TaskCommentsUpdateResponses];
 
+export type TasksDuplicateData = {
+    body?: never;
+    path: {
+        /**
+         * The numeric id of the task to duplicate.
+         */
+        task: number;
+    };
+    query?: never;
+    url: '/tasks/{task}/duplicate';
+};
+
+export type TasksDuplicateErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type TasksDuplicateError = TasksDuplicateErrors[keyof TasksDuplicateErrors];
+
+export type TasksDuplicateResponses = {
+    /**
+     * Created
+     */
+    201: TaskDuplicate;
+};
+
+export type TasksDuplicateResponse = TasksDuplicateResponses[keyof TasksDuplicateResponses];
+
+export type TaskLabelsListData = {
+    body?: never;
+    path: {
+        task: number;
+    };
+    query?: {
+        /**
+         * 1-based page number.
+         */
+        page?: number;
+        /**
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
+         */
+        per_page?: number;
+        /**
+         * Search query; filters the list to items matching this string.
+         */
+        q?: string;
+    };
+    url: '/tasks/{task}/labels';
+};
+
+export type TaskLabelsListErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type TaskLabelsListError = TaskLabelsListErrors[keyof TaskLabelsListErrors];
+
+export type TaskLabelsListResponses = {
+    /**
+     * OK
+     */
+    200: PaginatedLabelWithTaskId;
+};
+
+export type TaskLabelsListResponse = TaskLabelsListResponses[keyof TaskLabelsListResponses];
+
+export type TaskLabelsCreateData = {
+    body: LabelTaskWritable;
+    path: {
+        task: number;
+    };
+    query?: never;
+    url: '/tasks/{task}/labels';
+};
+
+export type TaskLabelsCreateErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type TaskLabelsCreateError = TaskLabelsCreateErrors[keyof TaskLabelsCreateErrors];
+
+export type TaskLabelsCreateResponses = {
+    /**
+     * Created
+     */
+    201: LabelTask;
+};
+
+export type TaskLabelsCreateResponse = TaskLabelsCreateResponses[keyof TaskLabelsCreateResponses];
+
+export type TaskLabelsBulkReplaceData = {
+    body: LabelTaskBulkWritable;
+    path: {
+        /**
+         * The numeric id of the task whose labels to replace.
+         */
+        task: number;
+    };
+    query?: never;
+    url: '/tasks/{task}/labels/bulk';
+};
+
+export type TaskLabelsBulkReplaceErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type TaskLabelsBulkReplaceError = TaskLabelsBulkReplaceErrors[keyof TaskLabelsBulkReplaceErrors];
+
+export type TaskLabelsBulkReplaceResponses = {
+    /**
+     * OK
+     */
+    200: LabelTaskBulk;
+};
+
+export type TaskLabelsBulkReplaceResponse = TaskLabelsBulkReplaceResponses[keyof TaskLabelsBulkReplaceResponses];
+
+export type TaskLabelsDeleteData = {
+    body?: never;
+    path: {
+        task: number;
+        label: number;
+    };
+    query?: never;
+    url: '/tasks/{task}/labels/{label}';
+};
+
+export type TaskLabelsDeleteErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type TaskLabelsDeleteError = TaskLabelsDeleteErrors[keyof TaskLabelsDeleteErrors];
+
+export type TaskLabelsDeleteResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type TaskLabelsDeleteResponse = TaskLabelsDeleteResponses[keyof TaskLabelsDeleteResponses];
+
 export type TasksPositionUpdateData = {
     body: TaskPositionWritable;
     path: {
@@ -9165,6 +10393,36 @@ export type TasksPositionUpdateResponses = {
 };
 
 export type TasksPositionUpdateResponse = TasksPositionUpdateResponses[keyof TasksPositionUpdateResponses];
+
+export type TasksMarkReadData = {
+    body?: never;
+    path: {
+        /**
+         * The numeric id of the task to mark as read.
+         */
+        task: number;
+    };
+    query?: never;
+    url: '/tasks/{task}/read';
+};
+
+export type TasksMarkReadErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type TasksMarkReadError = TasksMarkReadErrors[keyof TasksMarkReadErrors];
+
+export type TasksMarkReadResponses = {
+    /**
+     * OK
+     */
+    200: TaskReadBodyBody;
+};
+
+export type TasksMarkReadResponse = TasksMarkReadResponses[keyof TasksMarkReadResponses];
 
 export type TasksRelationsCreateData = {
     body: TaskRelationWritable;
@@ -9243,7 +10501,7 @@ export type TeamsListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -9535,6 +10793,194 @@ export type TeamsMembersToggleAdminResponses = {
 
 export type TeamsMembersToggleAdminResponse = TeamsMembersToggleAdminResponses[keyof TeamsMembersToggleAdminResponses];
 
+export type TemplatesListData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * 1-based page number.
+         */
+        page?: number;
+        /**
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
+         */
+        per_page?: number;
+        /**
+         * Search query; filters the list to items matching this string.
+         */
+        q?: string;
+    };
+    url: '/templates';
+};
+
+export type TemplatesListErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type TemplatesListError = TemplatesListErrors[keyof TemplatesListErrors];
+
+export type TemplatesListResponses = {
+    /**
+     * OK
+     */
+    200: PaginatedTemplateListItem;
+};
+
+export type TemplatesListResponse = TemplatesListResponses[keyof TemplatesListResponses];
+
+export type TemplatesDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * The numeric id of the template.
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/templates/{id}';
+};
+
+export type TemplatesDeleteErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type TemplatesDeleteError = TemplatesDeleteErrors[keyof TemplatesDeleteErrors];
+
+export type TemplatesDeleteResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type TemplatesDeleteResponse = TemplatesDeleteResponses[keyof TemplatesDeleteResponses];
+
+export type TemplatesReadData = {
+    body?: never;
+    path: {
+        /**
+         * The numeric id of the template.
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/templates/{id}';
+};
+
+export type TemplatesReadErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type TemplatesReadError = TemplatesReadErrors[keyof TemplatesReadErrors];
+
+export type TemplatesReadResponses = {
+    /**
+     * OK
+     */
+    200: TemplateBody;
+};
+
+export type TemplatesReadResponse = TemplatesReadResponses[keyof TemplatesReadResponses];
+
+export type PatchTemplatesReadData = {
+    body: Array<JsonPatchOp> | null;
+    path: {
+        /**
+         * The numeric id of the template.
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/templates/{id}';
+};
+
+export type PatchTemplatesReadErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type PatchTemplatesReadError = PatchTemplatesReadErrors[keyof PatchTemplatesReadErrors];
+
+export type PatchTemplatesReadResponses = {
+    /**
+     * OK
+     */
+    200: TemplateBody;
+};
+
+export type PatchTemplatesReadResponse = PatchTemplatesReadResponses[keyof PatchTemplatesReadResponses];
+
+export type TemplatesUpdateData = {
+    body: TemplateBodyWritable;
+    path: {
+        /**
+         * The numeric id of the template.
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/templates/{id}';
+};
+
+export type TemplatesUpdateErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type TemplatesUpdateError = TemplatesUpdateErrors[keyof TemplatesUpdateErrors];
+
+export type TemplatesUpdateResponses = {
+    /**
+     * OK
+     */
+    200: TemplateBody;
+};
+
+export type TemplatesUpdateResponse = TemplatesUpdateResponses[keyof TemplatesUpdateResponses];
+
+export type TemplatesInstantiateData = {
+    body: InstantiatePayloadWritable;
+    path: {
+        /**
+         * The numeric id of the template to instantiate.
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/templates/{id}/instantiate';
+};
+
+export type TemplatesInstantiateErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type TemplatesInstantiateError = TemplatesInstantiateErrors[keyof TemplatesInstantiateErrors];
+
+export type TemplatesInstantiateResponses = {
+    /**
+     * Created
+     */
+    201: Project;
+};
+
+export type TemplatesInstantiateResponse = TemplatesInstantiateResponses[keyof TemplatesInstantiateResponses];
+
 export type TimeEntriesListData = {
     body?: never;
     path?: never;
@@ -9544,7 +10990,7 @@ export type TimeEntriesListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -9816,7 +11262,7 @@ export type TokensListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -9935,7 +11381,7 @@ export type BotsListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -10374,7 +11820,7 @@ export type SessionsListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -10647,7 +12093,7 @@ export type CaldavTokensListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -10865,7 +12311,7 @@ export type UserWebhooksListData = {
          */
         page?: number;
         /**
-         * Items per page (max 1000).
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
          */
         per_page?: number;
         /**
@@ -10997,6 +12443,36 @@ export type UserWebhooksUpdateResponses = {
 };
 
 export type UserWebhooksUpdateResponse = UserWebhooksUpdateResponses[keyof UserWebhooksUpdateResponses];
+
+export type UserStatsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * The window in weeks the completed/created series and totals cover. Must be between 1 and 52; defaults to 12. Does not affect the open and overdue totals, which are point-in-time.
+         */
+        weeks?: number;
+    };
+    url: '/user/stats';
+};
+
+export type UserStatsErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type UserStatsError = UserStatsErrors[keyof UserStatsErrors];
+
+export type UserStatsResponses = {
+    /**
+     * OK
+     */
+    200: UserStats;
+};
+
+export type UserStatsResponse = UserStatsResponses[keyof UserStatsResponses];
 
 export type UserTimezonesData = {
     body?: never;

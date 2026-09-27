@@ -1,6 +1,6 @@
 <template>
 	<div
-		:class="{ 'is-loading': saving }"
+		:class="{ 'is-loading': update.isPending.value }"
 		class="defer-task loading-container"
 		@click.stop
 		@mousedown.stop
@@ -31,27 +31,24 @@
 				{{ $t('task.deferDueDate.1week') }}
 			</XButton>
 		</div>
-		<flat-pickr
+		<DatepickerInline
 			v-model="dueDate"
-			:class="{ disabled: saving }"
-			:config="flatPickerConfig"
-			:disabled="saving || undefined"
-			class="input"
+			:show-shortcuts="false"
+			@update:modelValue="onPickerUpdate"
 		/>
 	</div>
 </template>
 
 <script setup lang="ts">
-import {ref, computed, watch, onMounted, onBeforeUnmount} from 'vue'
-import {useI18n} from 'vue-i18n'
-import flatPickr from 'vue-flatpickr-component'
+import {parseDateOrNull} from '@/helpers/parseDateOrNull'
+import {ref, watch, onBeforeUnmount} from 'vue'
+import {useDebounceFn} from '@vueuse/core'
 
-import {useTaskStore} from '@/stores/tasks'
-import type {ITask} from '@/modelTypes/ITask'
-import {useFlatpickrLanguage} from '@/helpers/useFlatpickrLanguage'
-import {useTimeFormat} from '@/composables/useTimeFormat'
+import DatepickerInline from '@/components/input/DatepickerInline.vue'
+
+import {useUpdateTaskMutation} from '@/client/queries/taskMutations'
+import type {Task as ITask} from '@/client/generated'
 import {useDateOnly} from '@/composables/useDateOnly'
-import {TIME_FORMAT} from '@/constants/timeFormat'
 import {roundToNaturalDayBoundary} from '@/helpers/time/roundToNaturalDayBoundary'
 import {createDateFromString} from '@/helpers/time/createDateFromString'
 
@@ -63,24 +60,16 @@ const emit = defineEmits<{
 	'update:modelValue': [value: ITask]
 }>()
 
-const {t} = useI18n({useScope: 'global'})
-const {store: timeFormat} = useTimeFormat()
 const {store: dateOnly} = useDateOnly()
 
-const taskStore = useTaskStore()
+const update = useUpdateTaskMutation()
 const task = ref<ITask>()
-// Scope the loading indicator to this widget's own save; taskStore.isLoading is
-// global and would flip on any app-wide task activity.
-const saving = ref(false)
 
 // We're saving the due date separately to prevent null errors in very short periods where the task is null.
-// flatpickr writes a 'Y-m-d' string back into the v-model, so this is not always a Date.
-const dueDate = ref<Date | string | null>(null)
+const dueDate = ref<Date | null>(null)
 const lastValue = ref<Date | null>(null)
-const changeInterval = ref<ReturnType<typeof setInterval>>()
 
-// The only place a picker value is read: a bare `new Date('YYYY-MM-DD')` is UTC midnight,
-// which is the previous evening west of UTC.
+// Deferring a date-only due date keeps it on the end-of-day boundary.
 function normalise(value: Date | string | null | undefined): Date | null {
 	if (!value) {
 		return null
@@ -94,48 +83,27 @@ watch(
 	() => props.modelValue,
 	(value) => {
 		task.value = { ...value }
-		dueDate.value = value.dueDate
-		lastValue.value = normalise(value.dueDate)
+		dueDate.value = parseDateOrNull(value.due_date)
+		lastValue.value = normalise(value.due_date)
 	},
 	{immediate: true},
 )
 
-onMounted(() => {
-	// Because we don't really have other ways of handling change since if we let flatpickr
-	// change events trigger updates, it would trigger a flatpickr change event which would trigger
-	// an update which would trigger a change event and so on...
-	// This is either a bug in flatpickr or in the vue component of it.
-	// To work around that, we're only updating if something changed and check each second and when closing the popup.
-	if (changeInterval.value) {
-		clearInterval(changeInterval.value)
-	}
-
-	changeInterval.value = setInterval(updateDueDate, 1000)
-})
-
-onBeforeUnmount(() => {
-	if (changeInterval.value) {
-		clearInterval(changeInterval.value)
-	}
-	updateDueDate()
-})
-
-const flatPickerConfig = computed(() => ({
-	altFormat: dateOnly.value ? t('date.altFormatShort') : t('date.altFormatLong'),
-	altInput: true,
-	dateFormat: dateOnly.value ? 'Y-m-d' : 'Y-m-d H:i',
-	enableTime: !dateOnly.value,
-	time_24hr: timeFormat.value === TIME_FORMAT.HOURS_24,
-	inline: true,
-	locale: useFlatpickrLanguage().value,
-}))
-
 function deferDays(days: number) {
-	const newDate = normalise(dueDate.value) ?? new Date()
-	newDate.setDate(newDate.getDate() + days)
-	dueDate.value = newDate
+	debouncedUpdateDueDate.cancel()
+	const deferred = normalise(dueDate.value) ?? new Date()
+	deferred.setDate(deferred.getDate() + days)
+	dueDate.value = deferred
 	updateDueDate()
 }
+
+const debouncedUpdateDueDate = useDebounceFn(updateDueDate, 500)
+
+function onPickerUpdate() {
+	debouncedUpdateDueDate()
+}
+
+onBeforeUnmount(() => debouncedUpdateDueDate.flush())
 
 async function updateDueDate() {
 	const next = normalise(dueDate.value)
@@ -147,18 +115,14 @@ async function updateDueDate() {
 		return
 	}
 
-	saving.value = true
-	try {
-		const newTask = await taskStore.update({
-			...task.value,
-			dueDate: next,
-		})
-		lastValue.value = normalise(newTask.dueDate)
-		task.value = newTask
-		emit('update:modelValue', newTask)
-	} finally {
-		saving.value = false
-	}
+	const newTask = await update.mutateAsync({
+		...task.value,
+		id: task.value.id!,
+		due_date: next.toISOString(),
+	})
+	lastValue.value = normalise(newTask.due_date)
+	task.value = newTask
+	emit('update:modelValue', newTask)
 }
 </script>
 
@@ -170,42 +134,27 @@ $defer-task-max-width: 350px + 100px;
 	inline-size: 100%;
 	max-inline-size: $defer-task-max-width;
 
-	@media screen and (max-width: ($defer-task-max-width)) {
-		inset-inline-start: .5rem;
-		inset-inline-end: .5rem;
-		max-inline-size: 100%;
-		inline-size: calc(100vw - 1rem - 2rem);
+	.bottom-sheet & {
+		max-inline-size: none;
+		padding: 0 1rem 1rem;
+
+		> .label {
+			display: none;
+		}
 	}
 }
 
 .defer-days {
 	justify-content: space-between;
 	display: flex;
+	gap: .5rem;
 	margin: .5rem 0;
-}
 
-:deep() {
-	input.input {
-		display: none;
-	}
+	.bottom-sheet & {
+		margin-block-start: 0;
 
-	.flatpickr-calendar {
-		margin: 0 auto;
-		box-shadow: none;
-
-		@media screen and (max-width: ($defer-task-max-width)) {
-			max-inline-size: 100%;
-		}
-
-		span {
-			inline-size: auto !important;
-		}
-
-	}
-
-	.flatpickr-innerContainer {
-		@media screen and (max-width: ($defer-task-max-width)) {
-			overflow: scroll;
+		> * {
+			flex: 1;
 		}
 	}
 }

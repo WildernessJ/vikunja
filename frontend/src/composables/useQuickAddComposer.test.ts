@@ -5,8 +5,7 @@ import {createPinia, setActivePinia} from 'pinia'
 import {useQuickAddComposer} from './useQuickAddComposer'
 import {PrefixMode} from '@/modules/quickAddMagic'
 import {PRIORITIES} from '@/constants/priorities'
-import ProjectModel from '@/models/project'
-import TaskReminderModel from '@/models/taskReminder'
+import {normalizeProject} from '@/client/queries/projects'
 
 describe('useQuickAddComposer', () => {
 	// The composer reads the date-only setting from the auth store.
@@ -105,9 +104,9 @@ describe('useQuickAddComposer', () => {
 		const {effectiveReminders, setOverride} = useQuickAddComposer(title, mode)
 
 		expect(effectiveReminders.value).toHaveLength(1)
-		expect(effectiveReminders.value[0].relativePeriod).toBe(-86400)
+		expect(effectiveReminders.value[0].relative_period).toBe(-86400)
 
-		const chipReminder = new TaskReminderModel({reminder: new Date('2026-08-01T09:00:00Z'), relativeTo: null})
+		const chipReminder = {reminder: '2026-08-01T09:00:00.000Z'}
 		setOverride('reminders', [chipReminder])
 		expect(effectiveReminders.value).toEqual([chipReminder])
 	})
@@ -120,7 +119,7 @@ describe('useQuickAddComposer', () => {
 		expect(effectiveProjectName.value).toBe('groceries')
 		expect(effectiveProject.value).toBeNull()
 
-		const project = new ProjectModel({id: 9, title: 'Work'})
+		const project = normalizeProject({id: 9, title: 'Work'})
 		setOverride('project', project)
 		await nextTick()
 		expect(effectiveProject.value).toEqual(project)
@@ -137,7 +136,7 @@ describe('useQuickAddComposer', () => {
 		setOverride('priority', PRIORITIES.LOW)
 		expect(toStoreOverrides()).toEqual({priority: PRIORITIES.LOW})
 
-		const project = new ProjectModel({id: 3, title: 'Home'})
+		const project = normalizeProject({id: 3, title: 'Home'})
 		setOverride('project', project)
 		expect(toStoreOverrides()).toEqual({priority: PRIORITIES.LOW, projectId: 3})
 	})

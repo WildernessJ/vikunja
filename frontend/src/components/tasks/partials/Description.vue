@@ -42,7 +42,7 @@
 			edit-shortcut="KeyE"
 			:enable-discard-shortcut="true"
 			:enable-mentions="true"
-			:project-id="modelValue.projectId"
+			:project-id="modelValue.project_id"
 			:storage-key="descriptionStorageKey"
 			@update:modelValue="saveWithDelay"
 			@save="save"
@@ -51,7 +51,7 @@
 </template>
 
 <script setup lang="ts">
-import {ref, computed, watch, watchEffect, onBeforeUnmount} from 'vue'
+import {ref, computed, watch, onBeforeUnmount} from 'vue'
 import {onBeforeRouteLeave} from 'vue-router'
 import {useI18n} from 'vue-i18n'
 
@@ -60,15 +60,13 @@ import Editor from '@/components/input/AsyncEditor'
 
 import { clearEditorDraft } from '@/helpers/editorDraftStorage'
 import { isEditorContentEmpty } from '@/helpers/editorContentEmpty'
-import { uploadFilesForEditor } from '@/helpers/attachments'
-import type { ITask } from '@/modelTypes/ITask'
-import { useTaskStore } from '@/stores/tasks'
-
-export type AttachmentUploadFunction = (file: File, onSuccess: (attachmentUrl: string) => void) => Promise<string>
+import {generateAttachmentUrl} from '@/helpers/attachments'
+import type {Task as ITask} from '@/client/generated'
+import {useUploadAttachmentsMutation} from '@/client/queries/attachments'
+import {useUpdateTaskMutation} from '@/client/queries/taskMutations'
 
 const props = defineProps<{
 	modelValue: ITask,
-	attachmentUpload: AttachmentUploadFunction,
 	canWrite: boolean,
 }>()
 
@@ -78,15 +76,20 @@ const emit = defineEmits<{
 
 const description = ref<string>('')
 const hasChanges = ref(false)
-watchEffect(() => {
-	description.value = props.modelValue.description
-	hasChanges.value = false
-})
+watch(
+	() => [props.modelValue.id, props.modelValue.description] as const,
+	([id, value], previous) => {
+		if (id === previous?.[0] && hasChanges.value) return
+		description.value = value ?? ''
+		hasChanges.value = false
+	},
+	{immediate: true},
+)
 
 const saved = ref(false)
 const saving = ref(false)
 
-const taskStore = useTaskStore()
+const updateTask = useUpdateTaskMutation()
 
 const {t} = useI18n({useScope: 'global'})
 
@@ -202,8 +205,9 @@ async function save() {
 	saving.value = true
 
 	try {
-		const updated = await taskStore.update({
+		const updated = await updateTask.mutateAsync({
 			...props.modelValue,
+			id: props.modelValue.id!,
 			description: description.value,
 		})
 		emit('update:modelValue', updated)
@@ -214,7 +218,7 @@ async function save() {
 		saved.value = true
 	} catch (error) {
 		// If the task was deleted (404), silently skip saving
-		if ((error as {response?: {status?: number}})?.response?.status === 404) {
+		if ((error as {status?: number} | null)?.status === 404) {
 			return
 		}
 		hasChanges.value = true
@@ -225,8 +229,21 @@ async function save() {
 	}
 }
 
+// the editor toasts the rejection itself, a mutation toast would duplicate it
+const uploadAttachments = useUploadAttachmentsMutation(() => false)
+
 function uploadCallback(files: File[] | FileList): Promise<string[]> {
-	return uploadFilesForEditor(props.attachmentUpload, files)
+	const taskId = props.modelValue.id!
+	return Promise.all(Array.from(files).map(async file => {
+		const result = await uploadAttachments.mutateAsync({
+			taskId,
+			files: [file],
+		})
+		const [uploaded] = result.success ?? []
+		// forwarded verbatim: the editor's toast translates the error code, which a rewrapped message would lose
+		if (uploaded?.id === undefined) throw result.errors?.[0] ?? new Error('Attachment upload returned no file')
+		return generateAttachmentUrl(taskId, uploaded.id)
+	}))
 }
 </script>
 

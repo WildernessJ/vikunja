@@ -1,7 +1,7 @@
 import {translate} from '@/message'
-import type {IProject} from '@/modelTypes/IProject'
+import type {Project} from '@/client/generated'
 
-export function getProjectTitle(project: Pick<IProject, 'id' | 'title'>) {
+export function getProjectTitle(project: Required<Pick<Project, 'id' | 'title'>>) {
 	if (project.id === -1) {
 		return translate('project.pseudo.favorites.title')
 	}

@@ -10,17 +10,15 @@ import {parseBooleanProp} from '@/helpers/time/parseBooleanProp'
 import {useRouteFilters, type UseRouteFiltersReturn} from '@/composables/useRouteFilters'
 import {useGanttTaskList, type UseGanttTaskListReturn} from './useGanttTaskList'
 
-import type {IProject} from '@/modelTypes/IProject'
-import type {TaskFilterParams} from '@/services/taskCollection'
+import type {TaskFilterParams} from '@/client/queries/tasks'
 
 import type {DateISO} from '@/types/DateISO'
 import type {DateKebab} from '@/types/DateKebab'
-import type {IProjectView} from '@/modelTypes/IProjectView'
 
 // convenient internal filter object
 export interface GanttFilters {
-	projectId: IProject['id']
-	viewId: IProjectView['id'],
+	projectId: number
+	viewId: number,
 	dateFrom: DateISO
 	dateTo: DateISO
 	showTasksWithoutDates: boolean
@@ -42,7 +40,7 @@ function getDefaultDateTo() {
 }
 
 // FIXME: use zod for this
-function ganttRouteToFilters(route: Partial<RouteLocationNormalized>, projectId: IProject['id'], viewId: IProjectView['id']): GanttFilters {
+function ganttRouteToFilters(route: Partial<RouteLocationNormalized>, projectId: number, viewId: number): GanttFilters {
 	return {
 		projectId,
 		viewId,
@@ -52,7 +50,7 @@ function ganttRouteToFilters(route: Partial<RouteLocationNormalized>, projectId:
 	}
 }
 
-function ganttGetDefaultFilters(projectId: IProject['id'], viewId: IProjectView['id']): GanttFilters {
+function ganttGetDefaultFilters(projectId: number, viewId: number): GanttFilters {
 	return ganttRouteToFilters({}, projectId, viewId)
 }
 
@@ -92,8 +90,7 @@ function ganttFiltersToApiParams(filters: GanttFilters): TaskFilterParams {
 		order_by: ['asc', 'asc', 'desc'],
 		filter: buildDateWindowFilterQuery(dateFrom, dateTo),
 		filter_include_nulls: filters.showTasksWithoutDates,
-		s: '',
-		expand: 'subtasks',
+		expand: ['subtasks'],
 	}
 }
 
@@ -103,8 +100,8 @@ export type UseGanttFiltersReturn =
 
 export function useGanttFilters(
 	route: Ref<RouteLocationNormalized>,
-	projectId: Ref<IProject['id']>,
-	viewId: Ref<IProjectView['id']>,
+	projectId: Ref<number>,
+	viewId: Ref<number>,
 ): UseGanttFiltersReturn {
 	const viewFiltersStore = useViewFiltersStore()
 

@@ -2,10 +2,9 @@ import {describe, it, expect, vi, beforeEach} from 'vitest'
 import {mount, flushPromises} from '@vue/test-utils'
 import {createPinia, setActivePinia} from 'pinia'
 
-// Only the service (HTTP) layer is mocked here - useTaskStore and the label queries run
-// for real, so the AddTask -> createNewTask -> addLabelsToTask -> ensureLabelsExist chain
-// actually executes, unlike AddTask.test.ts (mocks the whole tasks store) or
-// tasks.createNewTask.test.ts (calls the store directly, bypassing AddTask's overrides).
+// Only the generated client (HTTP) layer is mocked here - useQuickAddTask and the task
+// mutations run for real, so the AddTask -> createNewTask -> addLabelsToTask -> ensureLabelsExist
+// chain actually executes, unlike AddTask.test.ts (mocks useQuickAddTask).
 
 const errorMock = vi.hoisted(() => vi.fn())
 vi.mock('@/message', () => ({
@@ -16,13 +15,6 @@ vi.mock('@/message', () => ({
 
 const taskCreateMock = vi.hoisted(() => vi.fn())
 const taskBulkCreateMock = vi.hoisted(() => vi.fn())
-vi.mock('@/services/task', () => ({
-	default: class {
-		create = taskCreateMock
-		bulkCreate = taskBulkCreateMock
-		getAll = vi.fn().mockResolvedValue([])
-	},
-}))
 
 const labelCreateMock = vi.hoisted(() => vi.fn())
 // createLabel writes the new label into the query cache, so a later ensureLabels()
@@ -31,19 +23,25 @@ const labelCache = vi.hoisted(() => ({value: [] as Array<{title?: string}>}))
 vi.mock('@/client/queries/labels', () => ({
 	ensureLabels: vi.fn(async () => labelCache.value),
 	refreshLabels: vi.fn(async () => labelCache.value),
-	createLabel: async (input: {title: string}) => {
-		const label = await labelCreateMock(input)
-		labelCache.value.push(label)
-		return label
-	},
+	useCreateLabelMutation: () => ({
+		mutateAsync: async (input: {title: string}) => {
+			const label = await labelCreateMock(input)
+			labelCache.value.push(label)
+			return label
+		},
+	}),
 	getLabelByExactTitle: (labels: Array<{title?: string}>, title: string) =>
 		labels.find(label => label.title?.toLowerCase() === title.toLowerCase()),
 }))
 
 const labelTaskCreateMock = vi.hoisted(() => vi.fn())
 vi.mock('@/client/generated', () => ({
+	tasksCreate: taskCreateMock,
+	tasksBulkCreate: taskBulkCreateMock,
 	taskLabelsCreate: labelTaskCreateMock,
 	taskLabelsDelete: vi.fn().mockResolvedValue({data: {}}),
+	tasksRelationsCreate: vi.fn().mockResolvedValue({data: {}}),
+	projectsUsersSearch: vi.fn().mockResolvedValue({data: {items: []}}),
 }))
 
 vi.mock('@/composables/useLabels', () => ({
@@ -55,11 +53,6 @@ vi.mock('@/composables/useLabels', () => ({
 	}),
 }))
 
-vi.mock('@/services/taskRelation', () => ({
-	default: class {
-		create = vi.fn().mockResolvedValue({})
-	},
-}))
 
 vi.mock('@/router', () => ({
 	default: {
@@ -84,30 +77,22 @@ vi.mock('@/stores/auth', () => ({
 			defaultProjectId: 1,
 			frontendSettings: {
 				quickAddMagicMode: 'vikunja',
-				quickAddDefaultReminders: false,
+				quickAddDefaultReminders: [],
 			},
 		},
 	}),
 }))
 
-vi.mock('@/stores/projects', () => ({
-	useProjectStore: () => ({
-		projects: {},
-		findProjectByExactname: vi.fn().mockReturnValue(null),
-		findProjectByIdentifier: vi.fn().mockReturnValue(null),
-	}),
-}))
-
 vi.mock('@/stores/base', () => ({useBaseStore: () => ({})}))
-vi.mock('@/stores/kanban', () => ({useKanbanStore: () => ({})}))
-vi.mock('@/stores/projectCounts', () => ({useProjectCountsStore: () => ({loadCounts: vi.fn().mockResolvedValue(undefined)})}))
 vi.mock('@/stores/config', () => ({useConfigStore: () => ({concurrentWrites: true})}))
 
+import {QueryClient, VueQueryPlugin} from '@tanstack/vue-query'
 import AddTask from './AddTask.vue'
 
 function mountAddTask() {
 	return mount(AddTask, {
 		global: {
+			plugins: [[VueQueryPlugin, {queryClient: new QueryClient()}]],
 			mocks: {$t: (key: string) => key},
 			directives: {focus: {}},
 			stubs: {
@@ -132,10 +117,10 @@ describe('AddTask integration - real task/label store chain (#57)', () => {
 	beforeEach(() => {
 		setActivePinia(createPinia())
 		errorMock.mockClear()
-		taskCreateMock.mockReset().mockImplementation(async task => task)
-		taskBulkCreateMock.mockReset().mockImplementation(async (tasks: {title: string}[]) => ({
-			tasks: tasks.map((t, index) => ({...t, id: index + 1})),
-			error: null,
+		taskCreateMock.mockReset().mockImplementation(async ({path, body}: {path: {project: number}, body: object}) =>
+			({data: {...body, id: 1, project_id: path.project}}))
+		taskBulkCreateMock.mockReset().mockImplementation(async ({path, body}: {path: {project: number}, body: {tasks: object[]}}) => ({
+			data: {tasks: body.tasks.map((t, index) => ({...t, id: index + 1, project_id: path.project}))},
 		}))
 		labelCreateMock.mockReset()
 		labelCache.value = []
@@ -183,7 +168,7 @@ describe('AddTask integration - real task/label store chain (#57)', () => {
 		await flushPromises()
 
 		expect(taskBulkCreateMock).toHaveBeenCalledOnce()
-		expect(taskBulkCreateMock.mock.calls[0][0]).toHaveLength(2)
+		expect(taskBulkCreateMock.mock.calls[0][0].body.tasks).toHaveLength(2)
 		expect(errorMock).toHaveBeenCalledOnce()
 		expect(labelTaskCreateMock).not.toHaveBeenCalled()
 	})

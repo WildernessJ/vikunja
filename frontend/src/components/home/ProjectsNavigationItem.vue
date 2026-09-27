@@ -30,8 +30,8 @@
 				/>
 				<div class="color-bubble-wrapper">
 					<ColorBubble
-						v-if="project.hexColor !== ''"
-						:color="project.hexColor"
+						v-if="project.hex_color !== ''"
+						:color="project.hex_color"
 						:aria-label="$t('project.color')"
 					/>
 					<span
@@ -41,7 +41,7 @@
 						<Icon icon="filter" />
 					</span>
 					<span
-						v-if="canEditOrder && project.id > 0 && project.maxPermission !== null && project.maxPermission > PERMISSIONS.READ"
+						v-if="canEditOrder && project.id > 0 && typeof project.max_permission === 'number' && project.max_permission > PERMISSIONS.READ"
 						class="icon menu-item-icon handle drag-handle"
 						@click.stop.prevent
 					>
@@ -57,14 +57,14 @@
 			<BaseButton
 				v-if="canToggleFavorite"
 				class="favorite"
-				:class="{'is-favorite': project.isFavorite}"
-				@click="projectStore.toggleProjectFavorite(project)"
+				:class="{'is-favorite': project.is_favorite}"
+				@click="toggleProjectFavorite"
 			>
-				<span class="is-sr-only">{{ project.isFavorite ? $t('project.unfavorite') : $t('project.favorite') }}</span>
-				<Icon :icon="project.isFavorite ? 'star' : ['far', 'star']" />
+				<span class="is-sr-only">{{ project.is_favorite ? $t('project.unfavorite') : $t('project.favorite') }}</span>
+				<Icon :icon="project.is_favorite ? 'star' : ['far', 'star']" />
 			</BaseButton>
 			<ProjectSettingsDropdown
-				v-if="project.maxPermission !== null && project.maxPermission > PERMISSIONS.READ"
+				v-if="typeof project.max_permission === 'number' && project.max_permission > PERMISSIONS.READ"
 				class="menu-list-dropdown"
 				:project="project"
 			>
@@ -105,14 +105,15 @@
 
 <script setup lang="ts">
 import {computed, ref, onUnmounted, watch} from 'vue'
-import {useProjectStore} from '@/stores/projects'
-import {useBaseStore} from '@/stores/base'
-import {useTaskStore} from '@/stores/tasks'
-import {useProjectCountsStore} from '@/stores/projectCounts'
+import {useProjects} from '@/composables/useProjects'
+import {useCurrentProject} from '@/composables/useCurrentProject'
+import {draggedProjectId} from '@/composables/useDraggedProject'
+import {useTaskDragState} from '@/composables/useTaskDragState'
+import {useProjectCounts} from '@/client/queries/projectCounts'
 import {useAuthStore} from '@/stores/auth'
 import {useStorage} from '@vueuse/core'
 
-import type {IProject} from '@/modelTypes/IProject'
+import type {ProjectResponse} from '@/client/queries/projects'
 
 import BaseButton from '@/components/base/BaseButton.vue'
 import ProjectSettingsDropdown from '@/components/project/ProjectSettingsDropdown.vue'
@@ -121,37 +122,41 @@ import ColorBubble from '@/components/misc/ColorBubble.vue'
 import CountBadge from '@/components/misc/CountBadge.vue'
 import ProjectsNavigation from '@/components/home/ProjectsNavigation.vue'
 import {PERMISSIONS} from '@/constants/permissions'
-import {isSavedFilter} from '@/services/savedFilter'
+import {
+	getSavedFilterIdFromProjectId,
+	isSavedFilterProject,
+	usePatchProjectFavoriteMutation,
+} from '@/client/queries/projects'
+import {usePatchSavedFilterFavoriteMutation} from '@/client/queries/savedFilters'
 
 const props = defineProps<{
-	project: IProject,
+	project: ProjectResponse,
 	isLoading?: boolean,
 	canCollapse?: boolean,
 	canEditOrder?: boolean,
 }>()
 
-const taskStore = useTaskStore()
-const projectStore = useProjectStore()
+const {draggedTask} = useTaskDragState()
 const isHoveredDuringDrag = ref(false)
 
 // A project drag reveals a dedicated nest drop-zone under every eligible project.
 // projectDragActive MUST gate isNestTarget — without it the zone would render at
 // rest and break the resting sidebar layout.
-const projectDragActive = computed(() => projectStore.draggedProjectId !== null)
+const projectDragActive = computed(() => draggedProjectId.value !== null)
 const isNestTarget = computed(() =>
 	projectDragActive.value
 	&& props.project.id > 0
-	&& props.project.maxPermission !== null
-	&& props.project.maxPermission > PERMISSIONS.READ
-	&& !isSavedFilter(props.project)
+	&& typeof props.project.max_permission === 'number'
+	&& props.project.max_permission > PERMISSIONS.READ
+	&& !isSavedFilterProject(props.project)
 	// getAncestors() includes the project itself, so this also excludes the dragged
 	// project's own row — no separate self-check needed.
-	&& !projectStore.getAncestors(props.project).some(a => a.id === projectStore.draggedProjectId),
+	&& !projectList.getAncestors(props.project).some(a => a.id === draggedProjectId.value),
 )
 
 // Track mouse position during drag to detect hover (mouseenter doesn't fire during drag)
 function handleMouseMove(e: MouseEvent) {
-	if (!taskStore.draggedTask) {
+	if (!draggedTask.value) {
 		isHoveredDuringDrag.value = false
 		return
 	}
@@ -172,8 +177,8 @@ function handleMouseMove(e: MouseEvent) {
 
 // Only add the listener when a task is being dragged
 // Use capture phase to receive events before Sortable.js can prevent them
-watch(() => taskStore.draggedTask, (draggedTask) => {
-	if (draggedTask) {
+watch(draggedTask, task => {
+	if (task) {
 		document.addEventListener('mousemove', handleMouseMove, true)
 		document.addEventListener('dragover', handleMouseMove, true)
 	} else {
@@ -190,21 +195,23 @@ onUnmounted(() => {
 
 // Show drop target highlight when a task is being dragged and this project is hovered
 const isDropTarget = computed(() => {
-	if (!taskStore.draggedTask || !isHoveredDuringDrag.value) {
+	if (!draggedTask.value || !isHoveredDuringDrag.value) {
 		return false
 	}
 	// Highlight any valid project (not a pseudo project, has write permission)
 	// The actual drop logic will handle the case when it's the same project (no-op)
 	return props.project.id > 0
-		&& props.project.maxPermission !== null
-		&& props.project.maxPermission > PERMISSIONS.READ
+		&& typeof props.project.max_permission === 'number'
+		&& props.project.max_permission > PERMISSIONS.READ
 })
 
-const baseStore = useBaseStore()
-const currentProject = computed(() => baseStore.currentProject)
+const projectList = useProjects()
+const projectFavoriteMutation = usePatchProjectFavoriteMutation()
+const savedFilterFavoriteMutation = usePatchSavedFilterFavoriteMutation()
+const {currentProject} = useCurrentProject()
 
 const authStore = useAuthStore()
-const projectCountsStore = useProjectCountsStore()
+const projectCounts = useProjectCounts()
 
 // Pseudo-projects (Favorites at id -1, saved filters below -1) must never show a count badge.
 const showSidebarCount = computed(() =>
@@ -213,7 +220,7 @@ const showSidebarCount = computed(() =>
 )
 
 const sidebarCount = computed(() => {
-	const count = projectCountsStore.getForProject(props.project.id)
+	const count = projectCounts.getForProject(props.project.id)
 	return authStore.settings.frontendSettings.projectSidebarCount === 'dueOverdue'
 		? count?.dueOverdue ?? 0
 		: count?.open ?? 0
@@ -233,9 +240,8 @@ const childProjectsOpen = computed({
 })
 
 const childProjects = computed(() => {
-	return projectStore.getChildProjects(props.project.id)
-		.filter(p => !p.isArchived)
-		.sort((a, b) => a.position - b.position)
+	return projectList.getChildProjects(props.project.id)
+		.filter(p => !p.is_archived)
 })
 
 const canToggleFavorite = computed(() => {
@@ -244,11 +250,29 @@ const canToggleFavorite = computed(() => {
 	// 2. Saved filters (id < -1) - user owns their own filters
 	if (props.project.id === -1) return false  // Favorites pseudo-project
 	if (props.project.id > 0) {
-		return props.project.maxPermission !== null && props.project.maxPermission > PERMISSIONS.READ
+		return typeof props.project.max_permission === 'number' &&
+			props.project.max_permission > PERMISSIONS.READ
 	}
 	// Saved filters (negative IDs except -1)
-	return isSavedFilter(props.project)
+	return isSavedFilterProject(props.project)
 })
+
+async function toggleProjectFavorite() {
+	const project = props.project
+	if (!canToggleFavorite.value || project.is_archived) {
+		return
+	}
+
+	const isFavorite = !project.is_favorite
+	if (isSavedFilterProject(project)) {
+		await savedFilterFavoriteMutation.mutateAsync({
+			id: getSavedFilterIdFromProjectId(project.id),
+			isFavorite,
+		})
+		return
+	}
+	await projectFavoriteMutation.mutateAsync({id: project.id, isFavorite})
+}
 </script>
 
 <style lang="scss" scoped>

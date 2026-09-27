@@ -4,23 +4,51 @@ import {mount, flushPromises, enableAutoUnmount} from '@vue/test-utils'
 import {setActivePinia, createPinia} from 'pinia'
 import {createRouter, createMemoryHistory, RouterView, type Router} from 'vue-router'
 
-import type {ITask} from '@/modelTypes/ITask'
-import TaskModel from '@/models/task'
+import type {Task as ITask} from '@/client/generated'
+import {createTaskDraft} from '@/helpers/task'
+import {normalizeTask} from '@/client/queries/tasks'
 
-const getAll = vi.fn<(...args: unknown[]) => Promise<ITask[]>>(async () => [])
-vi.mock('@/services/taskCollection', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('@/services/taskCollection')>()
+import {QueryClient, VueQueryPlugin} from '@tanstack/vue-query'
+
+type TaskListRequest = {
+	path: {project: number, view: number},
+	query: Record<string, unknown> & {page: number},
+}
+
+const sdk = vi.hoisted(() => ({
+	projectViewTasksList: vi.fn(),
+}))
+
+vi.mock('@/client/generated', () => sdk)
+
+function taskListResponse(items: ITask[], page: number) {
 	return {
-		...actual,
-		default: class {
-			loading = false
-			totalPages = 1
-			getAll = getAll
+		data: {
+			items,
+			page,
+			total_pages: 5,
 		},
 	}
+}
+
+vi.mock('@/message', () => ({error: vi.fn(), success: vi.fn()}))
+import {error} from '@/message'
+const queryClient = new QueryClient({defaultOptions: {queries: {retry: false}}})
+
+beforeEach(() => {
+	queryClient.clear()
+	localStorage.clear()
+	setActivePinia(createPinia())
+	// The list refuses to fetch for a logged-out session (#44 follow-up).
+	useAuthStore().setAuthenticated(true)
+	vi.mocked(error).mockClear()
+	sdk.projectViewTasksList.mockReset()
+	sdk.projectViewTasksList.mockImplementation(
+		async ({query}: TaskListRequest) => taskListResponse([], query.page),
+	)
 })
 
-import {useTaskList, buildStoredQuery, defaultSortToSortBy, sortByToDefaultArrays} from './useTaskList'
+import {useTaskList, buildStoredQuery, defaultSortToSortBy, sortByToDefaultArrays, type SortBy} from './useTaskList'
 import {useAuthStore} from '@/stores/auth'
 import {useViewFiltersStore} from '@/stores/viewFilters'
 
@@ -58,10 +86,15 @@ describe('buildStoredQuery', () => {
 	})
 })
 
-// The second positional argument passed to TaskCollectionService.getAll carries
-// the sort_by/order_by the backend uses to decide whether to rank by relevance.
-function lastRequestParams(): Record<string, unknown> {
-	return getAll.mock.calls.at(-1)?.[1] as Record<string, unknown>
+function lastQuery(): Record<string, unknown> {
+	return (sdk.projectViewTasksList.mock.lastCall?.[0] as TaskListRequest).query
+}
+
+function listRequests() {
+	return sdk.projectViewTasksList.mock.calls.map(([request]) => ({
+		path: (request as TaskListRequest).path,
+		query: (request as TaskListRequest).query,
+	}))
 }
 
 async function mountTaskList(
@@ -82,48 +115,22 @@ async function mountTaskList(
 		},
 	})
 
-	mount(TestComponent, {global: {plugins: [router]}})
+	mount(TestComponent, {global: {plugins: [router, [VueQueryPlugin, {queryClient}]]}})
 	await flushPromises()
 	await nextTick()
 	return router
 }
 
-describe('useTaskList sort handling for relevance ranking', () => {
-	beforeEach(() => {
-		localStorage.clear()
-		setActivePinia(createPinia())
-		// loadTasks refuses to fetch for a logged-out session (issue #44 follow-up)
-		useAuthStore().setAuthenticated(true)
-		getAll.mockClear()
-	})
-
-	it('omits the sort while searching with the default sort so the backend ranks by relevance', async () => {
-		await mountTaskList({s: 'find me'})
-
-		const params = lastRequestParams()
-		expect(params.s).toBe('find me')
-		expect(params.sort_by).toEqual([])
-		expect(params.order_by).toEqual([])
-	})
-
-	it('keeps an explicit user sort while searching so the user sort is respected', async () => {
-		await mountTaskList({s: 'find me', sort: 'title:asc'})
-
-		const params = lastRequestParams()
-		expect(params.s).toBe('find me')
-		expect(params.sort_by).toEqual(['title'])
-		expect(params.order_by).toEqual(['asc'])
-	})
-
-	it('sends the default sort when not searching', async () => {
+describe('useTaskList does not fetch when logged out (#44 follow-up)', () => {
+	it('sends no request for a logged-out session', async () => {
+		useAuthStore().setAuthenticated(false)
 		await mountTaskList({})
+		expect(sdk.projectViewTasksList).not.toHaveBeenCalled()
+	})
 
-		const params = lastRequestParams()
-		expect(params.s).toBe('')
-		expect(params.sort_by).not.toHaveLength(0)
-		// id always sorts last so other sort columns take precedence.
-		expect(params.sort_by).toEqual(['id'])
-		expect(params.order_by).toEqual(['desc'])
+	it('loads when authenticated', async () => {
+		await mountTaskList({})
+		expect(sdk.projectViewTasksList).toHaveBeenCalled()
 	})
 })
 
@@ -166,95 +173,95 @@ describe('sortByToDefaultArrays', () => {
 })
 
 describe('useTaskList sortByDefault precedence (persisted default vs URL sort)', () => {
-	beforeEach(() => {
-		localStorage.clear()
-		setActivePinia(createPinia())
-		useAuthStore().setAuthenticated(true)
-		getAll.mockClear()
-	})
-
 	it('applies the persisted default when the URL has no explicit sort', async () => {
 		await mountTaskList({}, {priority: 'desc'})
 
-		const params = lastRequestParams()
-		expect(params.sort_by).toEqual(['priority'])
-		expect(params.order_by).toEqual(['desc'])
+		expect(lastQuery().sort_by).toEqual(['priority'])
+		expect(lastQuery().order_by).toEqual(['desc'])
 	})
 
 	it('lets an explicit URL sort override the persisted default', async () => {
 		await mountTaskList({sort: 'title:asc'}, {priority: 'desc'})
 
-		const params = lastRequestParams()
-		expect(params.sort_by).toEqual(['title'])
-		expect(params.order_by).toEqual(['asc'])
+		expect(lastQuery().sort_by).toEqual(['title'])
+		expect(lastQuery().order_by).toEqual(['asc'])
 	})
 
 	it('accepts a reactive getter and reflects its current value', async () => {
 		await mountTaskList({}, () => ({due_date: 'asc'}))
 
-		const params = lastRequestParams()
-		expect(params.sort_by).toEqual(['due_date'])
-		expect(params.order_by).toEqual(['asc'])
+		expect(lastQuery().sort_by).toEqual(['due_date'])
+		expect(lastQuery().order_by).toEqual(['asc'])
 	})
 
 	it('re-resolves the default sort when the getter result changes (e.g. the view finished loading)', async () => {
-		const router = createRouter({
-			history: createMemoryHistory(),
-			routes: [{path: '/', name: 'home', component: {render: () => null}}],
-		})
-		await router.push({path: '/'})
-		await router.isReady()
+		const persistedDefault = ref<SortBy>({})
+		await mountTaskList({}, () => persistedDefault.value)
 
-		const persistedDefault = ref<import('./useTaskList').SortBy>({})
-
-		const TestComponent = defineComponent({
-			setup() {
-				useTaskList(() => 1, () => 1, () => persistedDefault.value)
-				return () => h('div')
-			},
-		})
-
-		mount(TestComponent, {global: {plugins: [router]}})
-		await flushPromises()
-		await nextTick()
-
-		expect(lastRequestParams().sort_by).toEqual([])
+		expect(lastQuery().sort_by).toEqual([])
 
 		persistedDefault.value = {priority: 'desc'}
 		await flushPromises()
 		await nextTick()
 
-		const params = lastRequestParams()
-		expect(params.sort_by).toEqual(['priority'])
-		expect(params.order_by).toEqual(['desc'])
+		expect(lastQuery().sort_by).toEqual(['priority'])
+		expect(lastQuery().order_by).toEqual(['desc'])
 	})
 })
 
-describe('useTaskList restoring stored query into the url', () => {
-	beforeEach(() => {
-		localStorage.clear()
-		setActivePinia(createPinia())
-		useAuthStore().setAuthenticated(true)
-		getAll.mockClear()
+describe('useTaskList sort handling for relevance ranking', () => {
+	it('omits the sort while searching with the default sort so the backend ranks by relevance', async () => {
+		await mountTaskList({s: 'find me'})
+
+		const query = lastQuery()
+		expect(query.q).toBe('find me')
+		expect(query.sort_by).toEqual([])
+		expect(query.order_by).toEqual([])
 	})
 
-	it('writes the persisted sort into the url when the url has none', async () => {
-		localStorage.setItem('viewFilters', JSON.stringify({1: {sort: 'due_date:asc'}}))
+	it('keeps an explicit user sort while searching so the user sort is respected', async () => {
+		await mountTaskList({s: 'find me', sort: 'title:asc'})
 
-		const router = await mountTaskList({})
+		const query = lastQuery()
+		expect(query.q).toBe('find me')
+		expect(query.sort_by).toEqual(['title'])
+		expect(query.order_by).toEqual(['asc'])
+	})
+
+	it.each(['abc', '0'])('loads the first page when the url asks for page %s', async (page) => {
+		await mountTaskList({page})
+
+		expect(lastQuery().page).toBe(1)
+	})
+
+	it('sends the default sort when not searching', async () => {
+		await mountTaskList({})
+
+		const query = lastQuery()
+		expect(query.q).toBe('')
+		// id always sorts last so other sort columns take precedence.
+		expect(query.sort_by).toEqual(['id'])
+		expect(query.order_by).toEqual(['desc'])
+	})
+})
+
+describe('useTaskList error reporting', () => {
+	it('toasts a failing load instead of showing an empty list', async () => {
+		sdk.projectViewTasksList.mockRejectedValueOnce(new Error('Server is on fire'))
+
+		await mountTaskList({})
 		await flushPromises()
 
-		expect(getAll).toHaveBeenCalledTimes(1)
-		expect(router.currentRoute.value.query.sort).toBe('due_date:asc')
-		expect(lastRequestParams().sort_by).toEqual(['due_date'])
+		expect(error).toHaveBeenCalledWith(expect.objectContaining({message: 'Server is on fire'}))
 	})
 
-	it('keeps an explicit url sort over the persisted one', async () => {
-		localStorage.setItem('viewFilters', JSON.stringify({1: {sort: 'due_date:asc'}}))
+	it('stays silent when the request was aborted', async () => {
+		sdk.projectViewTasksList.mockRejectedValueOnce(new DOMException('aborted', 'AbortError'))
 
-		const router = await mountTaskList({sort: 'title:desc'})
+		await mountTaskList({})
+		await flushPromises()
 
-		expect(router.currentRoute.value.query.sort).toBe('title:desc')
+		expect(error).not.toHaveBeenCalled()
 	})
 })
 
@@ -280,19 +287,12 @@ async function mountRoutedTaskList() {
 		}],
 	})
 	await router.push('/projects/1/11')
-	mount(defineComponent({render: () => h(RouterView)}), {global: {plugins: [router]}})
+	mount(defineComponent({render: () => h(RouterView)}), {global: {plugins: [router, [VueQueryPlugin, {queryClient}]]}})
 	await flushPromises()
 	return {router, taskList: taskList!}
 }
 
 describe('useTaskList navigation and pagination', () => {
-	beforeEach(() => {
-		localStorage.clear()
-		setActivePinia(createPinia())
-		useAuthStore().setAuthenticated(true)
-		getAll.mockReset()
-	})
-
 	it.each([1, 3])('restores the sort and page %i when returning to a project', async (page) => {
 		const {router, taskList} = await mountRoutedTaskList()
 		taskList.sortByParam.value = {due_date: 'asc'}
@@ -300,58 +300,59 @@ describe('useTaskList navigation and pagination', () => {
 		taskList.currentPage.value = page
 		await flushPromises()
 
-		getAll.mockClear()
+		sdk.projectViewTasksList.mockClear()
 		await router.push('/projects/2/21')
 		await flushPromises()
-		expect(getAll.mock.calls).toEqual([[
-			{projectId: 2, viewId: 21},
-			expect.objectContaining({sort_by: ['position'], order_by: ['asc']}),
-			1,
-		]])
+		expect(listRequests()).toEqual([{
+			path: {project: 2, view: 21},
+			query: expect.objectContaining({sort_by: ['position'], order_by: ['asc'], page: 1}),
+		}])
 		expect(taskList.sortByParam.value).toEqual({position: 'asc'})
 
-		getAll.mockClear()
+		sdk.projectViewTasksList.mockClear()
 		await router.push('/projects/1/11')
 		await flushPromises()
-		expect(getAll.mock.calls).toEqual([[
-			{projectId: 1, viewId: 11},
-			expect.objectContaining({sort_by: ['due_date'], order_by: ['asc']}),
-			page,
-		]])
+		expect(listRequests()).toEqual([{
+			path: {project: 1, view: 11},
+			query: expect.objectContaining({sort_by: ['due_date'], order_by: ['asc'], page}),
+		}])
 		expect(router.currentRoute.value.query.sort).toBe('due_date:asc')
 		expect(taskList.sortByParam.value).toEqual({due_date: 'asc'})
 		expect(taskList.currentPage.value).toBe(page)
-		expect(lastRequestParams().sort_by).toEqual(['due_date'])
 	})
 
-	it('keeps an explicit sort when navigating to a project with a saved sort', async () => {
-		const {router, taskList} = await mountRoutedTaskList()
-		useViewFiltersStore().setViewQuery(21, {sort: 'due_date:asc'})
+	it('loads a restored saved query once and never with the pre-restore params', async () => {
+		const {router} = await mountRoutedTaskList()
+		useViewFiltersStore().setViewQuery(21, {sort: 'due_date:asc', page: '2'})
 
-		await router.push('/projects/2/21?sort=title:desc')
+		sdk.projectViewTasksList.mockClear()
+		await router.push('/projects/2/21')
 		await flushPromises()
-		expect(taskList.sortByParam.value).toEqual({title: 'desc'})
-		expect(lastRequestParams().sort_by).toEqual(['title'])
+
+		expect(listRequests()).toEqual([{
+			path: {project: 2, view: 21},
+			query: expect.objectContaining({sort_by: ['due_date'], order_by: ['asc'], page: 2}),
+		}])
 	})
 
 	it('ignores a response from a project the user has left', async () => {
 		const {router, taskList} = await mountRoutedTaskList()
-		let resolveOld!: (tasks: ITask[]) => void
-		let resolveCurrent!: (tasks: ITask[]) => void
-		getAll.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve }))
+		let resolveOld!: (response: unknown) => void
+		let resolveCurrent!: (response: unknown) => void
+		sdk.projectViewTasksList.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve }))
 		const previousLoad = taskList.loadTasks()
 
-		getAll.mockImplementationOnce(() => new Promise(resolve => { resolveCurrent = resolve }))
+		sdk.projectViewTasksList.mockImplementationOnce(() => new Promise(resolve => { resolveCurrent = resolve }))
 		await router.push('/projects/2/21')
 		await flushPromises()
 		expect(taskList.tasks.value).toEqual([])
 
-		const currentTasks = [new TaskModel({id: 2, projectId: 2, title: 'Current project task'})]
-		resolveCurrent(currentTasks)
+		const currentTasks = [normalizeTask(createTaskDraft({id: 2, project_id: 2, title: 'Current project task'}))]
+		resolveCurrent(taskListResponse(currentTasks, 1))
 		await flushPromises()
 		expect(taskList.tasks.value).toEqual(currentTasks)
 
-		resolveOld([new TaskModel({id: 1, projectId: 1, title: 'Previous project task'})])
+		resolveOld(taskListResponse([createTaskDraft({id: 1, project_id: 1, title: 'Previous project task'})], 1))
 		await previousLoad
 		expect(taskList.tasks.value).toEqual(currentTasks)
 	})
@@ -365,6 +366,6 @@ describe('useTaskList navigation and pagination', () => {
 		taskList.sortByParam.value = {due_date: 'asc'}
 		await flushPromises()
 		expect(taskList.currentPage.value).toBe(1)
-		expect(lastRequestParams().sort_by).toEqual(['due_date'])
+		expect(lastQuery().sort_by).toEqual(['due_date'])
 	})
 })

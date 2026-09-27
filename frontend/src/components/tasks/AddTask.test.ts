@@ -8,17 +8,25 @@ const bulkCreateSucceeds = async (entries: {title: string}[]) => ({
 	tasks: entries.map(({title}, index) => ({id: index + 1, title, relatedTasks: {}})),
 	error: null,
 })
-const ensureLabelsExistMock = vi.fn().mockResolvedValue([])
+const ensureLabelsExistMock = vi.fn().mockResolvedValue({labels: [], skipped: []})
 const findProjectIdMock = vi.fn()
 
-vi.mock('@/stores/tasks', () => ({
-	useTaskStore: () => ({
-		isLoading: false,
+vi.mock('@/composables/useQuickAddTask', () => ({
+	useQuickAddTask: () => ({
+		isLoading: {value: false},
 		ensureLabelsExist: ensureLabelsExistMock,
 		findProjectId: findProjectIdMock,
 		createNewTask: createNewTaskMock,
 		createNewTasksBulk: createNewTasksBulkMock,
 	}),
+	// Mirrors the real helper: one toast for everything the batch resolve skipped.
+	reportSkippedLabels: (skipped: string[]) => {
+		if (skipped.length) errorMock({message: `task.label.createFailed:${JSON.stringify({labels: skipped.join(', ')})}`})
+	},
+}))
+
+vi.mock('@/client/queries/taskMutations', () => ({
+	useCreateTaskRelationMutation: () => ({mutateAsync: vi.fn().mockResolvedValue({})}),
 }))
 
 // false = the production default: relation writes run sequentially.
@@ -45,7 +53,7 @@ vi.mock('@/stores/auth', () => ({
 				get quickAddMagicMode() {
 					return quickAddMagicModeMock.value
 				},
-				quickAddDefaultReminders: false,
+				quickAddDefaultReminders: [],
 			},
 		},
 	}),
@@ -58,24 +66,6 @@ vi.mock('@/composables/useLabels', () => ({
 		filterLabelsByQuery: () => [],
 		getLabelsByExactTitles: () => [],
 	}),
-}))
-
-vi.mock('@/stores/projects', () => ({
-	useProjectStore: () => ({
-		projects: {},
-	}),
-}))
-
-vi.mock('@/services/task', () => ({
-	default: class {
-		getAll = vi.fn().mockResolvedValue([])
-	},
-}))
-
-vi.mock('@/services/taskRelation', () => ({
-	default: class {
-		create = vi.fn().mockResolvedValue({})
-	},
 }))
 
 vi.mock('vue-router', () => ({
@@ -244,12 +234,11 @@ describe('AddTask label failure surfacing (#57)', () => {
 	})
 
 	it('does not toast from AddTask itself and forwards only the resolved labels, avoiding a double toast', async () => {
-		// Simulates what the store's ensureLabelsExist now does on a partial failure:
-		// toast once, and resolve without the failed label.
-		ensureLabelsExistMock.mockReset().mockImplementation(async (labels: string[]) => {
-			errorMock({message: `task.label.createFailed:${JSON.stringify({labels: 'groceries'})}`})
-			return labels.filter(l => l !== 'groceries').map(l => ({id: 1, title: l}))
-		})
+		// Simulates ensureLabelsExist on a partial failure: the failed label comes back as skipped.
+		ensureLabelsExistMock.mockReset().mockImplementation(async (labels: string[]) => ({
+			labels: labels.filter(l => l !== 'groceries').map(l => ({id: 1, title: l})),
+			skipped: labels.filter(l => l === 'groceries'),
+		}))
 
 		const wrapper = mountAddTask()
 		const textarea = wrapper.find('textarea')
@@ -267,10 +256,10 @@ describe('AddTask label failure surfacing (#57)', () => {
 	it('toasts exactly once for a multi-task submission sharing a label that fails to create', async () => {
 		// Same simulation as the single-task test: the batch pre-resolve is the only
 		// place that ever sees the failed title, so it's the only place that toasts.
-		ensureLabelsExistMock.mockReset().mockImplementation(async (labels: string[]) => {
-			errorMock({message: `task.label.createFailed:${JSON.stringify({labels: 'groceries'})}`})
-			return labels.filter(l => l !== 'groceries').map(l => ({id: 1, title: l}))
-		})
+		ensureLabelsExistMock.mockReset().mockImplementation(async (labels: string[]) => ({
+			labels: labels.filter(l => l !== 'groceries').map(l => ({id: 1, title: l})),
+			skipped: labels.filter(l => l === 'groceries'),
+		}))
 
 		const wrapper = mountAddTask()
 		const textarea = wrapper.find('textarea')
@@ -291,7 +280,7 @@ describe('AddTask label failure surfacing (#57)', () => {
 	})
 
 	it('attaches successfully-resolved labels to every task in a multi-task submission', async () => {
-		ensureLabelsExistMock.mockReset().mockResolvedValue([{id: 1, title: 'shopping'}])
+		ensureLabelsExistMock.mockReset().mockResolvedValue({labels: [{id: 1, title: 'shopping'}], skipped: []})
 
 		const wrapper = mountAddTask()
 		const textarea = wrapper.find('textarea')

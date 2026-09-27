@@ -50,7 +50,7 @@
 							<Icon :icon="['far', 'sun']" />
 						</span>
 						{{ $t('navigation.today') }}
-						<CountBadge :count="projectCountsStore.todayTotal" />
+						<CountBadge :count="todayTotal" />
 					</RouterLink>
 				</li>
 				<li v-if="isNavItemVisible('projects')">
@@ -108,7 +108,7 @@
 		</nav>
 
 		<Loading
-			v-if="projectStore.isLoading"
+			v-if="projectList.isLoading"
 			variant="small"
 		/>
 		<template v-else>
@@ -163,7 +163,7 @@
 </template>
 
 <script setup lang="ts">
-import {computed, onMounted} from 'vue'
+import {computed} from 'vue'
 
 import {SHORTCUTS} from '@/constants/shortcuts'
 import PoweredByLink from '@/components/home/PoweredByLink.vue'
@@ -172,25 +172,20 @@ import Loading from '@/components/misc/Loading.vue'
 import CountBadge from '@/components/misc/CountBadge.vue'
 
 import {useBaseStore} from '@/stores/base'
-import {useProjectStore} from '@/stores/projects'
+import {useProjects} from '@/composables/useProjects'
 import {useAuthStore} from '@/stores/auth'
 import {useConfigStore} from '@/stores/config'
-import {useProjectCountsStore} from '@/stores/projectCounts'
+import {useProjectCounts} from '@/client/queries/projectCounts'
 import {PRO_FEATURE} from '@/constants/proFeatures'
 import ProjectsNavigation from '@/components/home/ProjectsNavigation.vue'
 import {normalizeHiddenNavItems, type ToggleableNavKey} from '@/components/home/navigationItems'
-import type {IProject} from '@/modelTypes/IProject'
 import {useSidebarResize} from '@/composables/useSidebarResize'
 
 const baseStore = useBaseStore()
-const projectStore = useProjectStore()
+const projectList = useProjects()
 const authStore = useAuthStore()
 const configStore = useConfigStore()
-const projectCountsStore = useProjectCountsStore()
-
-onMounted(() => {
-	projectCountsStore.loadCounts()
-})
+const {todayTotal} = useProjectCounts()
 
 const timeTrackingEnabled = computed(() => configStore.isProFeatureEnabled(PRO_FEATURE.TIME_TRACKING))
 
@@ -202,10 +197,9 @@ function isNavItemVisible(key: ToggleableNavKey) {
 
 const {sidebarWidth, isResizing, startResize, isMobile} = useSidebarResize()
 
-// Cast readonly arrays to mutable type - the arrays are not actually mutated by the component
-const projects = computed(() => projectStore.notArchivedRootProjects as IProject[])
-const favoriteProjects = computed(() => projectStore.favoriteProjects as IProject[])
-const savedFilterProjects = computed(() => projectStore.savedFilterProjects as IProject[])
+const projects = computed(() => projectList.notArchivedRootProjects)
+const favoriteProjects = computed(() => projectList.favoriteProjects)
+const savedFilterProjects = computed(() => projectList.savedFilterProjects)
 </script>
 
 <style lang="scss" scoped>

@@ -19,7 +19,7 @@
 			</slot>
 		</template>
 
-		<template v-if="isSavedFilter(project)">
+		<template v-if="isSavedFilterProject(project)">
 			<DropdownItem
 				:to="{ name: 'filter.settings.edit', params: { projectId: project.id } }"
 				icon="pen"
@@ -42,7 +42,7 @@
 			</DropdownItem>
 		</template>
 
-		<template v-else-if="project.isArchived">
+		<template v-else-if="project.is_archived">
 			<DropdownItem
 				:to="{ name: 'project.settings.archive', params: { projectId: project.id } }"
 				icon="archive"
@@ -89,7 +89,7 @@
 				{{ $t('menu.duplicate') }}
 			</DropdownItem>
 			<DropdownItem
-				v-if="(project.maxPermission ?? PERMISSIONS.READ) >= PERMISSIONS.READ_WRITE"
+				v-if="(project.max_permission ?? PERMISSIONS.READ) >= PERMISSIONS.READ_WRITE"
 				:to="{ name: 'project.settings.saveTemplate', params: { projectId: project.id } }"
 				icon="copy"
 			>
@@ -107,9 +107,9 @@
 				class="has-no-shadow"
 				entity="project"
 				:entity-id="project.id"
-				:model-value="project.subscription"
+				:model-value="project.subscription ?? null"
 				type="dropdown"
-				@update:modelValue="setSubscriptionInStore"
+				@toggle="subscribed => subscriptionMutation.mutateAsync({projectId: project.id, subscribed})"
 			/>
 			<DropdownItem
 				:to="{ name: 'project.settings.webhooks', params: { projectId: project.id } }"
@@ -125,7 +125,7 @@
 			</DropdownItem>
 			<slot name="before-delete" />
 			<DropdownItem
-				v-if="forceAllActions || project.maxPermission === PERMISSIONS.ADMIN"
+				v-if="forceAllActions || project.max_permission === PERMISSIONS.ADMIN"
 				v-tooltip="isDefaultProject ? $t('menu.cantDeleteIsDefault') : ''"
 				:to="{ name: 'project.settings.delete', params: { projectId: project.id } }"
 				icon="trash-alt"
@@ -139,45 +139,30 @@
 </template>
 
 <script setup lang="ts">
-import {computed, ref, watchEffect} from 'vue'
+import {computed} from 'vue'
 
 import BaseButton from '@/components/base/BaseButton.vue'
 import Dropdown from '@/components/misc/Dropdown.vue'
 import DropdownItem from '@/components/misc/DropdownItem.vue'
 import Subscription from '@/components/misc/Subscription.vue'
-import type {IProject} from '@/modelTypes/IProject'
-import type {ISubscription} from '@/modelTypes/ISubscription'
+import type {Project} from '@/client/generated'
 
-import {isSavedFilter} from '@/services/savedFilter'
+import {isSavedFilterProject, useSetProjectSubscriptionMutation} from '@/client/queries/projects'
 import {useConfigStore} from '@/stores/config'
-import {useProjectStore} from '@/stores/projects'
 import {useAuthStore} from '@/stores/auth'
 import {PERMISSIONS} from '@/constants/permissions'
 
 const props = withDefaults(defineProps<{
-	project: IProject
+	project: Project & Required<Pick<Project, 'id'>>
 	forceAllActions?: boolean
 }>(), {
 	forceAllActions: false,
 })
 
-const projectStore = useProjectStore()
-const subscription = ref<ISubscription | null>(null)
-watchEffect(() => {
-	subscription.value = props.project.subscription ?? null
-})
+const subscriptionMutation = useSetProjectSubscriptionMutation()
 
 const configStore = useConfigStore()
 const backgroundsEnabled = computed(() => configStore.enabledBackgroundProviders?.length > 0)
-
-function setSubscriptionInStore(sub: ISubscription | null) {
-	subscription.value = sub
-	const updatedProject = {
-		...props.project,
-		subscription: sub as ISubscription,
-	}
-	projectStore.setProject(updatedProject)
-}
 
 const authStore = useAuthStore()
 const isDefaultProject = computed(() => props.project?.id === authStore.settings.defaultProjectId)

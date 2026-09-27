@@ -1,7 +1,8 @@
 import {AuthenticatedHTTPFactory, apiV2Url} from '@/helpers/fetcher'
 import {objectToCamelCase} from '@/helpers/case'
 import type {ITemplate} from '@/modelTypes/ITemplate'
-import type {IProject} from '@/modelTypes/IProject'
+import type {Project} from '@/client/generated'
+import {normalizeProject, type ProjectResponse} from '@/client/queries/projects'
 
 interface PaginatedResponse<T> {
 	items: T[]
@@ -19,19 +20,19 @@ export async function getTemplates(): Promise<ITemplate[]> {
 	return (data?.items ?? []).map(item => objectToCamelCase(item) as ITemplate)
 }
 
-export async function saveProjectAsTemplate(projectId: number, name: string, description = ''): Promise<IProject> {
+export async function saveProjectAsTemplate(projectId: number, name: string, description = ''): Promise<ProjectResponse> {
 	const http = AuthenticatedHTTPFactory()
-	const {data} = await http.post(apiV2Url(`projects/${projectId}/save-as-template`), {name, description})
-	return objectToCamelCase(data) as IProject
+	const {data} = await http.post<Project>(apiV2Url(`projects/${projectId}/save-as-template`), {name, description})
+	return normalizeProject(data)
 }
 
-export async function instantiateTemplate(templateId: number, title: string, parentProjectId = 0): Promise<IProject> {
+export async function instantiateTemplate(templateId: number, title: string, parentProjectId = 0): Promise<ProjectResponse> {
 	const http = AuthenticatedHTTPFactory()
 	const {data} = await http.post(apiV2Url(`templates/${templateId}/instantiate`), {
 		title,
 		parent_project_id: parentProjectId,
 	})
-	return objectToCamelCase(data) as IProject
+	return normalizeProject(data as Project)
 }
 
 export async function renameTemplate(templateId: number, title: string, description = ''): Promise<ITemplate> {

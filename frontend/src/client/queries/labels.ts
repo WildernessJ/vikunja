@@ -1,4 +1,5 @@
-import {queryOptions, useMutation} from '@tanstack/vue-query'
+import {mutationOptions, queryOptions, useMutation} from '@tanstack/vue-query'
+import type {QueryClient} from '@tanstack/vue-query'
 
 import {
 	labelsCreate,
@@ -8,6 +9,8 @@ import {
 } from '@/client/generated'
 import type {Label, LabelWritable} from '@/client/generated'
 import {queryClient} from '@/client/queryClient'
+import {fetchAllPages} from './fetchAllPages'
+import {API_MAX_PER_PAGE} from './pagination'
 import {colorFromHex} from '@/helpers/color/colorFromHex'
 import {i18n} from '@/i18n'
 import {success, translate} from '@/message'
@@ -31,20 +34,8 @@ export function createLabelDraft(label: Partial<LabelWritable> = {}): LabelDraft
 	}
 }
 
-async function fetchAllLabels(): Promise<Label[]> {
-	const result: Label[] = []
-	let page = 1
-
-	while (true) {
-		const {data} = await labelsList({query: {page, per_page: 1000}})
-		result.push(...(data.items ?? []))
-		if (page >= (data.total_pages ?? 1)) {
-			break
-		}
-		page++
-	}
-
-	return result
+function fetchAllLabels(): Promise<Label[]> {
+	return fetchAllPages(async page => (await labelsList({query: {page, per_page: API_MAX_PER_PAGE}})).data)
 }
 
 export function sortLabelsAlphabetically(labels: Label[], locale = i18n.global.locale.value): Label[] {
@@ -109,48 +100,88 @@ function labelBody(label: CreateLabelInput): LabelWritable {
 	}
 }
 
-export async function createLabel(label: CreateLabelInput): Promise<Label> {
-	await queryClient.cancelQueries({queryKey: labelKeys.all})
-	const {data} = await labelsCreate({body: labelBody(label)})
-	queryClient.setQueryData<Label[]>(labelKeys.all, current => current ? [...current, data] : current)
-	return data
+export function createLabelMutationOptions() {
+	return mutationOptions({
+		mutationFn: async (label: CreateLabelInput) => {
+			const {data} = await labelsCreate({body: labelBody(label)})
+			return data
+		},
+		onSuccess: (created, _label, _context, {client}) => {
+			client.setQueryData<Label[]>(labelKeys.all, current => current ? [...current, created] : current)
+		},
+		onSettled: (_data, _error, _label, _context, {client}) =>
+			client.invalidateQueries({queryKey: labelKeys.all}),
+	})
 }
 
-export async function updateLabel({id, ...label}: UpdateLabelInput): Promise<Label> {
-	await queryClient.cancelQueries({queryKey: labelKeys.all})
-	const {data} = await labelsUpdate({path: {id}, body: labelBody(label)})
-	queryClient.setQueryData<Label[]>(labelKeys.all, current =>
-		current?.map(existing => existing.id === data.id ? data : existing),
-	)
-	return data
+async function snapshotLabels(client: QueryClient): Promise<Label[] | undefined> {
+	await client.cancelQueries({queryKey: labelKeys.all})
+	return client.getQueryData<Label[]>(labelKeys.all)
 }
 
-export async function deleteLabel(label: Label): Promise<void> {
-	if (typeof label.id === 'undefined') {
-		throw new Error('Cannot delete a label without an id')
+function restoreLabels(client: QueryClient, previous: Label[] | undefined) {
+	if (previous) {
+		client.setQueryData<Label[]>(labelKeys.all, previous)
 	}
+}
 
-	await queryClient.cancelQueries({queryKey: labelKeys.all})
-	await labelsDelete({path: {id: label.id}})
-	queryClient.setQueryData<Label[]>(labelKeys.all, current =>
-		current?.filter(existing => existing.id !== label.id),
-	)
+export function updateLabelMutationOptions() {
+	return mutationOptions({
+		mutationFn: async ({id, ...label}: UpdateLabelInput) => {
+			const {data} = await labelsUpdate({path: {id}, body: labelBody(label)})
+			return data
+		},
+		onMutate: async ({id, ...label}, {client}) => {
+			const previous = await snapshotLabels(client)
+			client.setQueryData<Label[]>(labelKeys.all, current =>
+				current?.map(existing => existing.id === id ? {...existing, ...labelBody(label)} : existing),
+			)
+			return {previous}
+		},
+		onError: (_error, _label, context, {client}) => restoreLabels(client, context?.previous),
+		onSuccess: (updated, _label, _context, {client}) => {
+			client.setQueryData<Label[]>(labelKeys.all, current =>
+				current?.map(existing => existing.id === updated.id ? updated : existing),
+			)
+			success({message: translate('label.edit.success')})
+		},
+		onSettled: (_data, _error, _label, _context, {client}) =>
+			client.invalidateQueries({queryKey: labelKeys.all}),
+	})
+}
+
+export function deleteLabelMutationOptions() {
+	return mutationOptions({
+		mutationFn: async (label: Label) => {
+			if (typeof label.id === 'undefined') {
+				throw new Error('Cannot delete a label without an id')
+			}
+			await labelsDelete({path: {id: label.id}})
+		},
+		onMutate: async (label, {client}) => {
+			const previous = await snapshotLabels(client)
+			client.setQueryData<Label[]>(labelKeys.all, current =>
+				current?.filter(existing => existing.id !== label.id),
+			)
+			return {previous}
+		},
+		onError: (_error, _label, context, {client}) => restoreLabels(client, context?.previous),
+		onSuccess: () => {
+			success({message: translate('label.deleteSuccess')})
+		},
+		onSettled: (_data, _error, _label, _context, {client}) =>
+			client.invalidateQueries({queryKey: labelKeys.all}),
+	})
 }
 
 export function useCreateLabelMutation() {
-	return useMutation({mutationFn: createLabel})
+	return useMutation(createLabelMutationOptions())
 }
 
 export function useUpdateLabelMutation() {
-	return useMutation({
-		mutationFn: updateLabel,
-		onSuccess: () => success({message: translate('label.edit.success')}),
-	})
+	return useMutation(updateLabelMutationOptions())
 }
 
 export function useDeleteLabelMutation() {
-	return useMutation({
-		mutationFn: deleteLabel,
-		onSuccess: () => success({message: translate('label.deleteSuccess')}),
-	})
+	return useMutation(deleteLabelMutationOptions())
 }

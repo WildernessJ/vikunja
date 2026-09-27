@@ -5,6 +5,10 @@ import {createI18n} from 'vue-i18n'
 import en from '@/i18n/lang/en.json'
 import PropertyChip from './PropertyChip.vue'
 
+
+// happy-dom has no Popover API; Popup only needs the calls to exist.
+HTMLElement.prototype.showPopover ??= function showPopover() {}
+HTMLElement.prototype.hidePopover ??= function hidePopover() {}
 const i18n = createI18n({legacy: false, locale: 'en', messages: {en}})
 
 function mountChip(props: Partial<InstanceType<typeof PropertyChip>['$props']> = {}) {

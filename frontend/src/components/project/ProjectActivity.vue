@@ -109,12 +109,10 @@ import ProjectWrapper from '@/components/project/ProjectWrapper.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
 import User from '@/components/misc/User.vue'
 
-import ProjectService from '@/services/project'
-import ProjectModel from '@/models/project'
+import {ensureProject} from '@/client/queries/projects'
 import {useActivityService} from '@/services/activity'
 import {formatDateSince} from '@/helpers/time/formatDate'
 
-import {useProjectStore} from '@/stores/projects'
 import {useBaseStore} from '@/stores/base'
 
 import type {IActivity} from '@/modelTypes/IActivity'
@@ -125,7 +123,6 @@ const props = defineProps<{
 }>()
 
 const {t} = useI18n()
-const projectStore = useProjectStore()
 const baseStore = useBaseStore()
 const activityService = useActivityService()
 
@@ -172,9 +169,8 @@ function verbPhrase(verb: string): string {
 async function loadProject() {
 	isLoadingProject.value = true
 	try {
-		const loaded = await new ProjectService().get(new ProjectModel({id: props.projectId}))
-		projectStore.setProject(loaded)
-		baseStore.handleSetCurrentProject({project: loaded})
+		await ensureProject(props.projectId)
+		baseStore.setCurrentProject({id: props.projectId})
 	} finally {
 		isLoadingProject.value = false
 	}

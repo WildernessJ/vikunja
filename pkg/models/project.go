@@ -991,6 +991,10 @@ func CreateProject(s *xorm.Session, project *Project, auth web.Auth, createBackl
 	if err != nil {
 		return
 	}
+	_, err = s.Insert(&ProjectTaskCounter{ProjectID: project.ID})
+	if err != nil {
+		return
+	}
 
 	// Give the bot continued access to the project it created.
 	if doer.IsBot() {
@@ -1055,8 +1059,8 @@ func CreateNewProjectForUser(s *xorm.Session, u *user.User) (err error) {
 }
 
 // RegisterUser creates a user plus their default inbox project; shared by /register and the admin create-user route.
-func RegisterUser(s *xorm.Session, u *user.User) (*user.User, error) {
-	newUser, err := user.CreateUser(s, u)
+func RegisterUser(s *xorm.Session, u *user.User, options ...user.CreateUserOptions) (*user.User, error) {
+	newUser, err := user.CreateUser(s, u, options...)
 	if err != nil {
 		return nil, err
 	}
@@ -1511,6 +1515,16 @@ func (p *Project) Delete(s *xorm.Session, a web.Auth) (err error) {
 	}
 
 	err = deleteProjectAncestors(s, p.ID)
+	if err != nil {
+		return
+	}
+
+	_, err = s.Where("project_id = ?", p.ID).Delete(&TaskIndexAlias{})
+	if err != nil {
+		return
+	}
+
+	_, err = s.ID(p.ID).Delete(&ProjectTaskCounter{})
 	if err != nil {
 		return
 	}

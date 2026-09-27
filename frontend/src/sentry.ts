@@ -1,7 +1,11 @@
 import type {App} from 'vue'
 import type {Router} from 'vue-router'
-import {shouldDropEvent} from './helpers/sentryFilters'
+import {shouldDropEvent, stripNavigationFragment} from './helpers/sentryFilters'
 import {VERSION} from './version.json'
+
+function withoutFragment(url: string) {
+	return url.split('#')[0]
+}
 
 export default async function setupSentry(app: App, router: Router) {
 	const Sentry = await import('@sentry/vue')
@@ -18,7 +22,15 @@ export default async function setupSentry(app: App, router: Router) {
 			// Without click detection there are no slow/multi click breadcrumbs, and
 			// so no rage click issues — those are impatience, not bugs, and they
 			// drown out actual errors.
-			Sentry.replayIntegration({slowClickTimeout: 0}),
+			Sentry.replayIntegration({
+				slowClickTimeout: 0,
+				beforeAddRecordingEvent(event) {
+					if (event.type === 5 && event.data.tag === 'performanceSpan') {
+						event.data.payload = stripNavigationFragment(event.data.payload)
+					}
+					return event
+				},
+			}),
 			Sentry.vueIntegration({ tracingOptions: { trackComponents: true } }),
 		],
 
@@ -50,6 +62,7 @@ export default async function setupSentry(app: App, router: Router) {
 		],
 
 
+		beforeSendSpan: stripNavigationFragment,
 		beforeSend(event, hint) {
 			if (shouldDropEvent(hint.originalException, event)) {
 				return null
@@ -67,10 +80,10 @@ export default async function setupSentry(app: App, router: Router) {
 			const target = event.target
 
 			if (target instanceof HTMLImageElement) {
-				// An empty or placeholder src resolves to the page URL and fires an error event
-				// without ever requesting anything, so there's no failed load to report.
-				const src = target.getAttribute('src')
-				if (!src || src === '#') return
+				// An empty, blank or fragment-only src resolves to the page itself, which is never an image.
+				if (!target.src || withoutFragment(target.src) === withoutFragment(document.URL)) return
+				// Users can put any src into their descriptions and comments, a broken one is not our bug.
+				if (target.closest('[data-user-content]')) return
 
 				Sentry.captureMessage(
 					`Failed to load image: ${target.src}`,

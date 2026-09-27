@@ -16,12 +16,11 @@ import {
 } from '@/helpers/filters'
 
 import {useLabels} from '@/composables/useLabels'
-import {useProjectStore} from '@/stores/projects'
-import UserService from '@/services/user'
-import ProjectUserService from '@/services/projectUsers'
-import type { IUser } from '@/modelTypes/IUser'
-import type { IProject } from '@/modelTypes/IProject'
+import {useProjects} from '@/composables/useProjects'
+import {searchProjectUsers, searchUsers} from '@/client/queries/userSearch'
+import type {User as IUser} from '@/client/generated'
 import type { Label } from '@/client/generated'
+import type {ProjectResponse} from '@/client/queries/projects'
 
 export interface FilterAutocompleteOptions {
 	projectId?: number
@@ -88,7 +87,7 @@ export function calculateReplacementRange(
 export interface AutocompleteItem {
 	id: number | string
 	title: string
-	item: Label | IUser | IProject
+	item: Label | IUser | ProjectResponse
 	fieldType: AutocompleteField
 	context: AutocompleteContext
 }
@@ -104,9 +103,7 @@ export default Extension.create<FilterAutocompleteOptions>({
 
 	addProseMirrorPlugins() {
 		const {filterLabelsByQuery} = useLabels()
-		const projectStore = useProjectStore()
-		const userService = new UserService()
-		const projectUserService = new ProjectUserService()
+		const projectList = useProjects()
 
 		let popupElement: HTMLElement | null = null
 		let component: VueRenderer | null = null
@@ -234,10 +231,9 @@ export default Extension.create<FilterAutocompleteOptions>({
 							let userSuggestions: SuggestionItem[]
 							try {
 								if (this.options.projectId) {
-									// @ts-expect-error - projectId is used for URL replacement but not part of IAbstract
-									userSuggestions = await projectUserService.getAll({projectId: this.options.projectId}, {s: autocompleteContext.search}) as SuggestionItem[]
+									userSuggestions = await searchProjectUsers(this.options.projectId, autocompleteContext.search) as SuggestionItem[]
 								} else {
-									userSuggestions = await userService.getAll({} as IUser, {s: autocompleteContext.search}) as SuggestionItem[]
+									userSuggestions = await searchUsers(autocompleteContext.search) as SuggestionItem[]
 								}
 								// Show suggestions even with empty search, but limit if we have many
 								if (autocompleteContext.search === '' && userSuggestions.length > 10) {
@@ -253,7 +249,7 @@ export default Extension.create<FilterAutocompleteOptions>({
 				}
 
 				if (fieldType === 'projects' && !this.options.projectId) {
-					return projectStore.searchProject(autocompleteContext.search).filter((project): project is IProject => project !== undefined) as SuggestionItem[]
+					return projectList.searchProject(autocompleteContext.search) as SuggestionItem[]
 				}
 			} catch (error) {
 				console.error('Error fetching suggestions:', error)
@@ -391,7 +387,7 @@ export default Extension.create<FilterAutocompleteOptions>({
 							// Handle selection
 							const newValue = item.fieldType === 'users'
 								? (item.item as IUser).username
-								: (item.item as IProject | Label).title
+								: (item.item as ProjectResponse | Label).title
 							// Use currentAutocompleteContext (outer variable) for up-to-date positions
 							// The local autocompleteContext would be stale since this callback
 							// was created on first component render

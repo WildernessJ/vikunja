@@ -1,4 +1,4 @@
-import type {ITaskReminder} from '@/modelTypes/ITaskReminder'
+import type {TaskReminder} from '@/client/generated'
 import type {IRepeatAfter} from '@/types/IRepeatAfter'
 import type {TASK_REPEAT_MODES} from '@/types/IRepeatMode'
 
@@ -29,7 +29,7 @@ export interface ParsedTaskText {
 	assignees: string[],
 	repeats: IRepeatAfter | null,
 	rruleRepeat: IRRuleRepeat | null,
-	reminders: ITaskReminder[],
+	reminders: TaskReminder[],
 }
 
 export interface Prefixes {
