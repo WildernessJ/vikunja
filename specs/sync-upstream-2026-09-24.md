@@ -613,8 +613,8 @@ Commits: `260368474` (E1), `f77db4282` (E2), `e52a892ce` (product fixes), `22e6e
 
 - Planner: this spec; producer `01a0d3a9-f676-7412-9c93-a7ca184f9c4e`.
 - Executor/build report: Phases A–B in the Execution Log above; producer `18a66fd6-b0d8-4f19-bf4d-790e540019c4`. Phase C producer `08db9c30-8a45-4f9c-a373-c4a833f13032`. Phase D (halted at the E2E gate) producer `52f29721-9de6-46ab-bb66-cd2524d58fa6`. Phase E (halted at the Phase E gate on one flaky upstream-added test) producer `8ac27ef6-cd87-4aec-b3d2-f53b9bfd7a10`. Rules 6–7 and final gate (plan and build in one session, at Jason's request) producer `a3ce2539-7363-4e9d-995b-b6542c0d3fee`.
-- Reviewer report: pending; record producer session ID beside the report.
-- Verifier report: pending; record producer session ID beside the report.
-- Cold-audit Pass 1/Pass 2 report: pending; record the same auditor session ID beside both passes.
+- Reviewer report (2026-09-27, live variant): judgment pass found no blocker; merged as `27c13667b`. Producer `49ed650e-1ef4-47bb-874f-ffe7efbfa7bc`.
+- Verifier report: five per-phase verifier passes (merges A–D, including the owed `git show --cc` review, and Phase E), all SURVIVES. Producer `49ed650e-1ef4-47bb-874f-ffe7efbfa7bc`.
+- Cold-audit Pass 1/Pass 2 report: no findings, no omissions; verdict ship after live acceptance, which passed. One auditor agent for both passes, dispatched from `49ed650e-1ef4-47bb-874f-ffe7efbfa7bc`. Output in the worktree's local `.flow-audit.md`.
 
 Report presence never certifies acceptance. Implementation approval, evidence acceptance, and exact-candidate merge approval remain separate decisions.
