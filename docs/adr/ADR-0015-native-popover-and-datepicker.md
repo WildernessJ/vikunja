@@ -1,5 +1,5 @@
 ---
-status: Proposed
+status: Enacted
 date: 2026-09-24
 deciders: Jason
 supersedes: ADR-0004
