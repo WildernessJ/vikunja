@@ -48,10 +48,11 @@ history lives in `../context/RUN_LOG.md`. Upstream's own decisions don't need AD
 | [ADR-0013](ADR-0013-v1-path-params-beat-body.md) | On `/api/v1`, URL path params beat the request body, enforced at the generic handler layer | Accepted | 2026-08-14 | — |
 | [ADR-0014](ADR-0014-date-only-canonical-timestamp.md) | Date-only mode stores a canonical timestamp (23:59 end-of-day), not a backend all-day flag | Accepted | 2026-08-18 | — |
 | [ADR-0015](ADR-0015-native-popover-and-datepicker.md) | Adopt upstream's native popover and date picker | Enacted | 2026-09-24 | supersedes ADR-0004; ADR-0014 |
+| [ADR-0016](ADR-0016-sync-at-release-tags.md) | Sync at upstream release tags; merge off-cycle only for high-severity fixes | Accepted | 2026-09-27 | refines ADR-0006 |
 
 ## How to add a new ADR
 
-1. **Pick the next number** (never reused, even if an ADR is later superseded) — next is **0016**.
+1. **Pick the next number** (never reused, even if an ADR is later superseded) — next is **0017**.
 2. **Copy [`ADR-TEMPLATE.md`](ADR-TEMPLATE.md)** to `ADR-NNNN-<short-slug>.md`; fill in front matter + body (MADR).
 3. If it **supersedes** an existing ADR, set `supersedes:` here and `superseded-by:` + `status:` on the old one.
 4. **Add a row above** and link it from `../context/PROJECT_STATE.md` → References.
