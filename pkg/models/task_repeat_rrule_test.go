@@ -341,6 +341,20 @@ func TestUpdateDone_RRuleMode(t *testing.T) {
 		assert.Equal(t, 0, weeks%2, "next due must be an even number of weeks from the original due date (INTERVAL=2 phase), got %d weeks", weeks)
 	})
 
+	t.Run("overdue daily task comes back due tomorrow, not later today", func(t *testing.T) {
+		oldTask := &Task{
+			RepeatMode:  TaskRepeatModeRRule,
+			RepeatRRule: "FREQ=DAILY",
+			DueDate:     lateYesterday(),
+		}
+		newTask := &Task{Done: true}
+
+		updateDone(oldTask, newTask)
+
+		require.False(t, newTask.Done)
+		assertAfterToday(t, newTask.DueDate)
+	})
+
 	t.Run("UNTIL bound reached: task stays done", func(t *testing.T) {
 		oldTask := &Task{
 			Done:        false,

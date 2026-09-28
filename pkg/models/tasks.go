@@ -1944,6 +1944,15 @@ func addOneMonthToDate(d time.Time) time.Time {
 	return time.Date(d.Year(), d.Month()+1, d.Day(), d.Hour(), d.Minute(), d.Second(), d.Nanosecond(), config.GetTimeZone())
 }
 
+// endOfDay returns the last instant of t's calendar day in the service time zone.
+// ponytail: service time zone, not the task owner's; switch to the user's
+// time zone if owners in other zones see the day boundary in the wrong place.
+func endOfDay(t time.Time) time.Time {
+	tz := config.GetTimeZone()
+	y, m, d := t.In(tz).Date()
+	return time.Date(y, m, d+1, 0, 0, 0, 0, tz).Add(-time.Nanosecond)
+}
+
 // addRepeatIntervalToTime advances t by whole multiples of duration until
 // it is strictly after now. The previous O(n) loop made a one-second
 // interval with an ancient due_date trivial DoS (GHSA-r4fg-73rc-hhh7);
@@ -1985,6 +1994,12 @@ func setTaskDatesDefault(oldTask, newTask *Task) {
 	now := time.Now()
 
 	repeatDuration := time.Duration(oldTask.RepeatAfter) * time.Second
+
+	// A task repeating daily or less often was done today, so its next dates
+	// must not fall later on the same day.
+	if repeatDuration >= 24*time.Hour {
+		now = endOfDay(now)
+	}
 
 	// assuming we'll merge the new task over the old task
 	if !oldTask.DueDate.IsZero() {
@@ -2088,10 +2103,13 @@ func setTaskDatesRRuleRepeat(oldTask, newTask *Task) {
 	// occurrence floor, so anchoring there to keep 09:00 means it cannot emit
 	// anything earlier. Preserving time-of-day wins over honoring "from now" for
 	// this spec-uncovered edge — do not "fix" it back by anchoring Dtstart on now.
+	//
+	// Every supported FREQ is daily or coarser, so the next occurrence must not
+	// fall later on the completion day: the floor is the end of that day.
 	dtstart := oldTask.DueDate
 	cutoff := oldTask.DueDate
-	if oldTask.RepeatFromCompletion || cutoff.Before(now) {
-		cutoff = now
+	if floor := endOfDay(now); oldTask.RepeatFromCompletion || cutoff.Before(floor) {
+		cutoff = floor
 	}
 	if dtstart.IsZero() {
 		dtstart = now
@@ -2105,7 +2123,7 @@ func setTaskDatesRRuleRepeat(oldTask, newTask *Task) {
 
 	base := oldTask.DueDate
 	if base.IsZero() {
-		base = cutoff
+		base = now
 	}
 	delta := next.Sub(base)
 

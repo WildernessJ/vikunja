@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"code.vikunja.io/api/pkg/config"
 	"code.vikunja.io/api/pkg/db"
 	"code.vikunja.io/api/pkg/events"
 	"code.vikunja.io/api/pkg/files"
@@ -2003,6 +2004,39 @@ func TestUpdateDone_DoSRegression_AncientDueDate(t *testing.T) {
 	assert.True(t, newTask.StartDate.After(start), "new start date must be strictly after now")
 	assert.True(t, newTask.EndDate.After(start), "new end date must be strictly after now")
 	assert.False(t, newTask.Done, "repeating task should be unmarked as done")
+}
+
+// lateYesterday returns yesterday at 23:59:59 in the service time zone. A daily
+// task due then is overdue now, and one interval later still falls on today.
+func lateYesterday() time.Time {
+	now := time.Now().In(config.GetTimeZone())
+	return time.Date(now.Year(), now.Month(), now.Day()-1, 23, 59, 59, 0, now.Location())
+}
+
+func assertAfterToday(t *testing.T, got time.Time) {
+	t.Helper()
+	tz := config.GetTimeZone()
+	y, m, d := time.Now().In(tz).Date()
+	tomorrow := time.Date(y, m, d+1, 0, 0, 0, 0, tz)
+	assert.False(t, got.Before(tomorrow), "next due %s must not fall on the completion day", got.In(tz))
+}
+
+func TestUpdateDone_OverdueDailyTaskComesBackTomorrow(t *testing.T) {
+	due := lateYesterday()
+	oldTask := &Task{
+		RepeatAfter: 86400,
+		RepeatMode:  TaskRepeatModeDefault,
+		DueDate:     due,
+		Reminders:   []*TaskReminder{{Reminder: due}},
+	}
+	newTask := &Task{Done: true}
+
+	updateDone(oldTask, newTask)
+
+	require.False(t, newTask.Done)
+	assertAfterToday(t, newTask.DueDate)
+	assertAfterToday(t, newTask.Reminders[0].Reminder)
+	assert.Equal(t, due.Hour(), newTask.DueDate.In(due.Location()).Hour(), "time of day must be kept")
 }
 
 func TestAddRepeatIntervalToTime(t *testing.T) {
