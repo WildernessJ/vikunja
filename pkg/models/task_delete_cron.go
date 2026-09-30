@@ -47,7 +47,7 @@ func deleteExpiredTasks(now time.Time) {
 	err := s.Unscoped().
 		Where(builder.And(
 			builder.NotNull{"deleted_at"},
-			builder.Lt{"deleted_at": now.Add(-TaskDeleteRetention)},
+			builder.Lt{"deleted_at": now.Add(-TaskDeleteRetention).UTC()},
 		)).
 		Find(&tasks)
 	s.Close()

@@ -55,9 +55,9 @@ func checkForExpiringAPITokensAt(now time.Time) {
 	// Find all tokens expiring within the next 7 days that haven't expired yet
 	var tokens []*APIToken
 	err := s.Where(
-		builder.Gt{"expires_at": now},
+		builder.Gt{"expires_at": now.UTC()},
 	).And(
-		builder.Lte{"expires_at": sevenDays},
+		builder.Lte{"expires_at": sevenDays.UTC()},
 	).Find(&tokens)
 	if err != nil {
 		log.Errorf(logPrefix+"Error getting expiring tokens: %s", err)

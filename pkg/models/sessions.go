@@ -216,6 +216,20 @@ func DeleteAllUserSessions(s *xorm.Session, userID int64) error {
 	return err
 }
 
+// deleteStaleSessions deletes short sessions older than ServiceJWTTTL and long
+// sessions older than ServiceJWTTTLLong.
+func deleteStaleSessions(s *xorm.Session, now time.Time) (int64, error) {
+	now = now.UTC()
+	shortMaxAge := time.Duration(config.ServiceJWTTTL.GetInt64()) * time.Second
+	longMaxAge := time.Duration(config.ServiceJWTTTLLong.GetInt64()) * time.Second
+
+	return s.
+		Where("(is_long_session = ? AND last_active < ?) OR (is_long_session = ? AND last_active < ?)",
+			false, now.Add(-shortMaxAge),
+			true, now.Add(-longMaxAge)).
+		Delete(&Session{})
+}
+
 // RegisterSessionCleanupCron registers a cron to delete sessions whose refresh
 // tokens have expired. Uses is_long_session to pick the right cutoff so short
 // sessions don't linger for the full long TTL. Runs hourly.
@@ -226,17 +240,7 @@ func RegisterSessionCleanupCron() {
 		s := db.NewSession()
 		defer s.Close()
 
-		now := time.Now()
-		shortMaxAge := time.Duration(config.ServiceJWTTTL.GetInt64()) * time.Second
-		longMaxAge := time.Duration(config.ServiceJWTTTLLong.GetInt64()) * time.Second
-
-		// Delete short sessions older than ServiceJWTTTL
-		// and long sessions older than ServiceJWTTTLLong
-		deleted, err := s.
-			Where("(is_long_session = ? AND last_active < ?) OR (is_long_session = ? AND last_active < ?)",
-				false, now.Add(-shortMaxAge),
-				true, now.Add(-longMaxAge)).
-			Delete(&Session{})
+		deleted, err := deleteStaleSessions(s, time.Now())
 		if err != nil {
 			log.Errorf(logPrefix+"Error removing stale sessions: %s", err)
 			return
