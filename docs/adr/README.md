@@ -38,7 +38,7 @@ history lives in `../context/RUN_LOG.md`. Upstream's own decisions don't need AD
 | [ADR-0003](ADR-0003-model-date-column-convention.md) | One date-column convention for frontend models, enforced by an auto-enumerating test | Enacted | 2026-07-17 | — |
 | [ADR-0004](ADR-0004-popup-renders-content-only-when-open.md) | Shared Popup renders content only when open (v-if + Transition), not always-mounted | Superseded by ADR-0015 (2026-09-27) | 2026-07-17 | — |
 | [ADR-0005](ADR-0005-config-driven-cron-fails-soft.md) | Config-driven cron schedules fail soft (Critical log + disable), not fatal | Enacted | 2026-07-17 | — |
-| [ADR-0006](ADR-0006-upstream-sync-via-merge.md) | Sync with upstream via full merge commits, not cherry-picks | Enacted | 2026-07-21 | — |
+| [ADR-0006](ADR-0006-upstream-sync-via-merge.md) | Sync with upstream via full merge commits, not cherry-picks | Superseded by ADR-0017 (2026-09-30) | 2026-07-21 | — |
 | [ADR-0007](ADR-0007-quote-close-heuristic.md) | Quoted magic-token spans close on a quote followed by space/end-of-string | Enacted | 2026-07-22 | ADR-0002 |
 | [ADR-0008](ADR-0008-reminder-magic-trailing-only.md) | Reminder `~` magic-text tokens parse only from the trailing run | Enacted | 2026-07-23 | ADR-0002, ADR-0007 |
 | [ADR-0009](ADR-0009-detail-title-autocomplete-accept-only.md) | Task-detail title parses magic-text on autocomplete-accept only (4 prefix tokens) | Enacted | 2026-07-23 | ADR-0002, ADR-0008 |
@@ -48,11 +48,12 @@ history lives in `../context/RUN_LOG.md`. Upstream's own decisions don't need AD
 | [ADR-0013](ADR-0013-v1-path-params-beat-body.md) | On `/api/v1`, URL path params beat the request body, enforced at the generic handler layer | Accepted | 2026-08-14 | — |
 | [ADR-0014](ADR-0014-date-only-canonical-timestamp.md) | Date-only mode stores a canonical timestamp (23:59 end-of-day), not a backend all-day flag | Accepted | 2026-08-18 | — |
 | [ADR-0015](ADR-0015-native-popover-and-datepicker.md) | Adopt upstream's native popover and date picker | Enacted | 2026-09-24 | supersedes ADR-0004; ADR-0014 |
-| [ADR-0016](ADR-0016-sync-at-release-tags.md) | Sync at upstream release tags; merge off-cycle only for high-severity fixes | Accepted | 2026-09-27 | refines ADR-0006 |
+| [ADR-0016](ADR-0016-sync-at-release-tags.md) | Sync at upstream release tags; merge off-cycle only for high-severity fixes | Superseded by ADR-0017 (2026-09-30) | 2026-09-27 | refines ADR-0006 |
+| [ADR-0017](ADR-0017-stop-upstream-syncs.md) | Stop upstream syncs; port security fixes one at a time | Accepted | 2026-09-30 | supersedes ADR-0006, ADR-0016 |
 
 ## How to add a new ADR
 
-1. **Pick the next number** (never reused, even if an ADR is later superseded) — next is **0017**.
+1. **Pick the next number** (never reused, even if an ADR is later superseded) — next is **0018**.
 2. **Copy [`ADR-TEMPLATE.md`](ADR-TEMPLATE.md)** to `ADR-NNNN-<short-slug>.md`; fill in front matter + body (MADR).
 3. If it **supersedes** an existing ADR, set `supersedes:` here and `superseded-by:` + `status:` on the old one.
 4. **Add a row above** and link it from `../context/PROJECT_STATE.md` → References.

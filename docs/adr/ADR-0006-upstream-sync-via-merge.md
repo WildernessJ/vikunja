@@ -1,8 +1,9 @@
 ---
-status: Enacted
+status: Superseded by ADR-0017
 date: 2026-07-21
 deciders: Jason
 phase: —
+superseded-by: ADR-0017
 ---
 
 # ADR-0006: Sync with upstream via full merge commits, not cherry-picks

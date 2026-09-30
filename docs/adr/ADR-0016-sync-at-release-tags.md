@@ -1,8 +1,9 @@
 ---
-status: Accepted
+status: Superseded by ADR-0017
 date: 2026-09-27
 deciders: Jason
 phase: —
+superseded-by: ADR-0017
 ---
 
 # ADR-0016: Sync at upstream release tags; merge off-cycle only for high-severity fixes
