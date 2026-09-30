@@ -1,7 +1,8 @@
 # CLAUDE.md — vikunja (WildernessJ fork)
 
 This file is the primary source of fork guidance. `AGENTS.md` is upstream's file, imported
-verbatim below — never edit it on this fork, so upstream syncs merge clean. Put fork guidance
+verbatim below — never edit it on this fork, so upstream security fixes that touch it
+cherry-pick clean (syncs stopped: ADR-0017). Put fork guidance
 here. Codex CLI gets this file from the SessionStart hook in `.codex/hooks.json` (local-only).
 Codex skips an untrusted hook without a warning — after any edit to `hooks.json`, trust it
 again with `/hooks`.
