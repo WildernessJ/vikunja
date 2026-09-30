@@ -196,7 +196,7 @@ func DeleteInviteLinkAsAdmin(s *xorm.Session, doer *user.User, id int64) error {
 
 func usableInviteLinkQuery(s *xorm.Session, token string) *xorm.Session {
 	return s.Where(builder.Eq{"token_hash": utils.Sha256Hex(token)}).
-		And(builder.Or(builder.IsNull{"expires_at"}, builder.Gt{"expires_at": time.Now()})).
+		And(builder.Or(builder.IsNull{"expires_at"}, builder.Gt{"expires_at": time.Now().UTC()})).
 		And("max_uses IS NULL OR uses < max_uses")
 }
 

@@ -373,7 +373,7 @@ func pruneActivities(s *xorm.Session, retentionDays int, now time.Time) (int64, 
 	if retentionDays <= 0 {
 		return 0, nil
 	}
-	cutoff := now.AddDate(0, 0, -retentionDays)
+	cutoff := now.AddDate(0, 0, -retentionDays).UTC()
 	return s.Where("created < ?", cutoff).Delete(&Activity{})
 }
 

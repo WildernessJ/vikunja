@@ -465,6 +465,13 @@ type UserExportStatus struct {
 	Expires time.Time `json:"expires" readOnly:"true" doc:"When the export will be automatically deleted (7 days after creation)."`
 }
 
+// findOldExportFiles returns the export files among fileIDs that are older than 7 days.
+func findOldExportFiles(s *xorm.Session, fileIDs []int64, now time.Time) ([]*files.File, error) {
+	fs := []*files.File{}
+	err := s.Where("created < ?", now.Add(-time.Hour*24*7).UTC()).In("id", fileIDs).Find(&fs)
+	return fs, err
+}
+
 func RegisterOldExportCleanupCron() {
 	const logPrefix = "[User Export Cleanup Cron] "
 
@@ -484,8 +491,7 @@ func RegisterOldExportCleanupCron() {
 			fileIDs = append(fileIDs, u.ExportFileID)
 		}
 
-		fs := []*files.File{}
-		err = s.Where("created < ?", time.Now().Add(-time.Hour*24*7)).In("id", fileIDs).Find(&fs)
+		fs, err := findOldExportFiles(s, fileIDs, time.Now())
 		if err != nil {
 			log.Errorf(logPrefix+"Could not get users with export files: %s", err)
 			return

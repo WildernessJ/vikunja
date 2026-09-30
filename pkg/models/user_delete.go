@@ -43,7 +43,7 @@ func RegisterUserDeletionCron() {
 func deleteUsers() {
 	s := db.NewSession()
 	users := []*user.User{}
-	err := s.Where(builder.Lt{"deletion_scheduled_at": time.Now()}).
+	err := s.Where(builder.Lt{"deletion_scheduled_at": time.Now().UTC()}).
 		Find(&users)
 	s.Close()
 	if err != nil {
