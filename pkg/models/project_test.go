@@ -56,30 +56,13 @@ func TestProject_CreateOrUpdate(t *testing.T) {
 				"description":       project.Description,
 				"parent_project_id": nil,
 			}, false)
-			db.AssertExists(t, "project_views", map[string]interface{}{
-				"project_id": project.ID,
-				"view_kind":  ProjectViewKindList,
-			}, false)
-			db.AssertExists(t, "project_views", map[string]interface{}{
-				"project_id": project.ID,
-				"view_kind":  ProjectViewKindGantt,
-			}, false)
-			db.AssertExists(t, "project_views", map[string]interface{}{
-				"project_id": project.ID,
-				"view_kind":  ProjectViewKindTable,
-			}, false)
-			db.AssertExists(t, "project_views", map[string]interface{}{
-				"project_id":                project.ID,
-				"view_kind":                 ProjectViewKindKanban,
-				"bucket_configuration_mode": BucketConfigurationModeManual,
-			}, false)
-
-			kanbanView := &ProjectView{}
-			_, err = s.Where("project_id = ? AND view_kind = ?", project.ID, ProjectViewKindKanban).Get(kanbanView)
-			require.NoError(t, err)
-			db.AssertExists(t, "buckets", map[string]interface{}{
-				"project_view_id": kanbanView.ID,
-			}, false)
+			// Fork: a new project gets a List view only (FORK-CHANGES).
+			views := []*ProjectView{}
+			require.NoError(t, s.Where("project_id = ?", project.ID).Find(&views))
+			require.Len(t, views, 1)
+			assert.Equal(t, ProjectViewKindList, views[0].ViewKind)
+			require.NotNil(t, views[0].Filter)
+			assert.Equal(t, "done = false", views[0].Filter.Filter)
 		})
 		t.Run("pseudo parent project id is rejected", func(t *testing.T) {
 			db.LoadAndAssertFixtures(t)
@@ -130,7 +113,8 @@ func TestProject_CreateOrUpdate(t *testing.T) {
 			err = s.Commit()
 			require.NoError(t, err)
 
-			// Get the kanban view
+			// Fork: new projects get no Kanban view; adding one creates the buckets.
+			addKanbanViewForTest(t, s, project.ID, usr)
 			kanbanView := &ProjectView{}
 			_, err = s.Where("project_id = ? AND view_kind = ?", project.ID, ProjectViewKindKanban).Get(kanbanView)
 			require.NoError(t, err)

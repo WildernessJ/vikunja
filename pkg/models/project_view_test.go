@@ -310,6 +310,7 @@ func TestProjectView_Update(t *testing.T) {
 			Filters: &TaskCollection{Filter: "done = false"},
 		}
 		require.NoError(t, sf.Create(s, u))
+		addKanbanViewForTest(t, s, getProjectIDFromSavedFilterID(sf.ID), u)
 
 		view := &ProjectView{}
 		exists, err := s.

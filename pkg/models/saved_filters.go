@@ -140,7 +140,7 @@ func (sf *SavedFilter) Create(s *xorm.Session, auth web.Auth) (err error) {
 		return
 	}
 
-	err = CreateDefaultViewsForProject(s, &Project{ID: getProjectIDFromSavedFilterID(sf.ID)}, auth, true, false)
+	err = createDefaultListView(s, &Project{ID: getProjectIDFromSavedFilterID(sf.ID)}, auth, false)
 	return err
 }
 

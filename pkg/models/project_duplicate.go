@@ -116,7 +116,7 @@ func (pd *ProjectDuplicate) Create(s *xorm.Session, doer web.Auth) (err error) {
 	if !isTemplateMode {
 		pd.Project.Title += " - duplicate"
 	}
-	err = CreateProject(s, pd.Project, doer, false, false)
+	err = CreateProject(s, pd.Project, doer, false)
 	if err != nil {
 		// If there is no available unique project identifier, just reset it.
 		if IsErrProjectIdentifierIsNotUnique(err) {

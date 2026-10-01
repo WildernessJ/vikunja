@@ -245,10 +245,10 @@ func createProjectWithEverything(s *xorm.Session, project *models.ProjectWithTas
 
 	project.ID = 0
 	project.Project.BackgroundFileID = 0
-	err = models.CreateProject(s, &project.Project, user, false, false)
+	err = models.CreateProject(s, &project.Project, user, false)
 	if err != nil && models.IsErrProjectIdentifierIsNotUnique(err) {
 		project.Identifier = ""
-		err = models.CreateProject(s, &project.Project, user, false, false)
+		err = models.CreateProject(s, &project.Project, user, false)
 	}
 	if err != nil {
 		return

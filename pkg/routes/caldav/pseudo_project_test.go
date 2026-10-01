@@ -54,7 +54,7 @@ const inaccessibleProjectID = 20
 var caldavFilterUser = &user.User{ID: 15, Username: "user15"}
 var caldavOtherUser = &user.User{ID: 1, Username: "user1"}
 
-// Goes through the model instead of a raw insert, which would skip the default views TaskCollection.ReadAll branches on.
+// Goes through the model instead of a raw insert, which would skip the default List view.
 func createSavedFilter(t *testing.T, u *user.User, filter string) int64 {
 	t.Helper()
 

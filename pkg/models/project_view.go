@@ -869,7 +869,10 @@ func GetProjectViewByID(s *xorm.Session, id int64) (view *ProjectView, err error
 	return
 }
 
-func CreateDefaultViewsForProject(s *xorm.Session, project *Project, a web.Auth, createBacklogBucket bool, createDefaultListFilter bool) (err error) {
+// createDefaultListView gives a new project or saved filter a single List view.
+// Fork: upstream gives new projects List, Gantt, Table and Kanban. Imports still call
+// CreateDefaultViewsForProject, because imported buckets need a Kanban view.
+func createDefaultListView(s *xorm.Session, project *Project, a web.Auth, createDefaultListFilter bool) (err error) {
 	list := &ProjectView{
 		ProjectID: project.ID,
 		Title:     "List",
@@ -881,10 +884,21 @@ func CreateDefaultViewsForProject(s *xorm.Session, project *Project, a web.Auth,
 			Filter: "done = false",
 		}
 	}
-	err = createProjectView(s, list, a, createBacklogBucket, true)
+	err = createProjectView(s, list, a, false, true)
 	if err != nil {
 		return
 	}
+
+	project.Views = []*ProjectView{list}
+	return
+}
+
+func CreateDefaultViewsForProject(s *xorm.Session, project *Project, a web.Auth, createBacklogBucket bool, createDefaultListFilter bool) (err error) {
+	err = createDefaultListView(s, project, a, createDefaultListFilter)
+	if err != nil {
+		return
+	}
+	list := project.Views[0]
 
 	gantt := &ProjectView{
 		ProjectID: project.ID,

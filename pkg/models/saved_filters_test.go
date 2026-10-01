@@ -75,6 +75,12 @@ func TestSavedFilter_Create(t *testing.T) {
 			delete(vals, "filters")
 		}
 		db.AssertExists(t, "saved_filters", vals, true)
+
+		// Fork: a new saved filter gets a List view only (FORK-CHANGES).
+		views := []*ProjectView{}
+		require.NoError(t, s.Where("project_id = ?", getProjectIDFromSavedFilterID(sf.ID)).Find(&views))
+		require.Len(t, views, 1)
+		assert.Equal(t, ProjectViewKindList, views[0].ViewKind)
 	})
 	t.Run("invalid filter string", func(t *testing.T) {
 		db.LoadAndAssertFixtures(t)
