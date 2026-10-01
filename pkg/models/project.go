@@ -950,7 +950,7 @@ func checkProjectBeforeUpdateOrDelete(s *xorm.Session, project *Project) (err er
 	return nil
 }
 
-func CreateProject(s *xorm.Session, project *Project, auth web.Auth, createBacklogBucket bool, createDefaultViews bool) (err error) {
+func CreateProject(s *xorm.Session, project *Project, auth web.Auth, createDefaultViews bool) (err error) {
 	err = project.CheckIsArchived(s)
 	if err != nil {
 		return err
@@ -970,8 +970,15 @@ func CreateProject(s *xorm.Session, project *Project, auth web.Auth, createBackl
 		}
 		project.Owner = owner
 	} else {
-		project.OwnerID = doer.ID
-		project.Owner = doer
+		// A JWT resolves to a user stub without a DB lookup. Load the user so a deleted
+		// user's still-valid token cannot create an orphan project. The Kanban bucket
+		// insert used to fail on this by accident; new projects no longer get Kanban.
+		owner, err := user.GetUserByID(s, doer.ID)
+		if err != nil {
+			return err
+		}
+		project.OwnerID = owner.ID
+		project.Owner = owner
 	}
 
 	err = checkProjectBeforeUpdateOrDelete(s, project)
@@ -1025,7 +1032,7 @@ func CreateProject(s *xorm.Session, project *Project, auth web.Auth, createBackl
 	}
 
 	if createDefaultViews {
-		err = CreateDefaultViewsForProject(s, project, auth, createBacklogBucket, true)
+		err = createDefaultListView(s, project, auth, true)
 		if err != nil {
 			return
 		}
@@ -1384,7 +1391,7 @@ func updateProjectByTaskID(s *xorm.Session, taskID int64) (err error) {
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /projects [put]
 func (p *Project) Create(s *xorm.Session, a web.Auth) (err error) {
-	err = CreateProject(s, p, a, true, true)
+	err = CreateProject(s, p, a, true)
 	if err != nil {
 		return
 	}

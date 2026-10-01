@@ -22,10 +22,24 @@ import (
 
 	"code.vikunja.io/api/pkg/db"
 	"code.vikunja.io/api/pkg/user"
+	"code.vikunja.io/api/pkg/web"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"xorm.io/xorm"
 )
+
+// addKanbanViewForTest adds the Kanban view that new projects and saved filters
+// no longer get by default (fork: List view only).
+func addKanbanViewForTest(t *testing.T, s *xorm.Session, projectID int64, a web.Auth) {
+	t.Helper()
+	require.NoError(t, (&ProjectView{
+		ProjectID:               projectID,
+		Title:                   "Kanban",
+		ViewKind:                ProjectViewKindKanban,
+		BucketConfigurationMode: BucketConfigurationModeManual,
+	}).Create(s, a))
+}
 
 func TestSavedFilterUpdateInsertsNonZeroPosition(t *testing.T) {
 	db.LoadAndAssertFixtures(t)
@@ -40,6 +54,7 @@ func TestSavedFilterUpdateInsertsNonZeroPosition(t *testing.T) {
 	u := &user.User{ID: 1}
 	err := sf.Create(s, u)
 	require.NoError(t, err)
+	addKanbanViewForTest(t, s, getProjectIDFromSavedFilterID(sf.ID), u)
 
 	err = sf.Update(s, u)
 	require.NoError(t, err)
@@ -69,6 +84,7 @@ func TestCronInsertsNonZeroPosition(t *testing.T) {
 	u := &user.User{ID: 1}
 	err := sf.Create(s, u)
 	require.NoError(t, err)
+	addKanbanViewForTest(t, s, getProjectIDFromSavedFilterID(sf.ID), u)
 
 	view := &ProjectView{}
 	exists, err := s.Where("project_id = ? AND view_kind = ?", getProjectIDFromSavedFilterID(sf.ID), ProjectViewKindKanban).Get(view)
@@ -136,6 +152,7 @@ func TestCronCreatesNonZeroPositions(t *testing.T) {
 	u := &user.User{ID: 1}
 	err := sf.Create(s, u)
 	require.NoError(t, err)
+	addKanbanViewForTest(t, s, getProjectIDFromSavedFilterID(sf.ID), u)
 
 	// Get the kanban view for this filter
 	view := &ProjectView{}
@@ -172,6 +189,7 @@ func TestFilterUpdateCreatesNonZeroPositions(t *testing.T) {
 	u := &user.User{ID: 1}
 	err := sf.Create(s, u)
 	require.NoError(t, err)
+	addKanbanViewForTest(t, s, getProjectIDFromSavedFilterID(sf.ID), u)
 
 	// Update the filter (this triggers position creation)
 	err = sf.Update(s, u)
@@ -203,6 +221,7 @@ func TestMultipleNewTasksGetDistinctPositions(t *testing.T) {
 	u := &user.User{ID: 1}
 	err := sf.Create(s, u)
 	require.NoError(t, err)
+	addKanbanViewForTest(t, s, getProjectIDFromSavedFilterID(sf.ID), u)
 
 	err = sf.Update(s, u)
 	require.NoError(t, err)

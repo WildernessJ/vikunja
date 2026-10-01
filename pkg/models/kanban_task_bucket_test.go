@@ -457,6 +457,7 @@ func TestTaskBucket_Update(t *testing.T) {
 		}
 		err := sf.Create(s, u)
 		require.NoError(t, err)
+		addKanbanViewForTest(t, s, getProjectIDFromSavedFilterID(sf.ID), u)
 
 		filterProjectID := getProjectIDFromSavedFilterID(sf.ID)
 
