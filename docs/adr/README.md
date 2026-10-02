@@ -51,10 +51,11 @@ history lives in `../context/RUN_LOG.md`. Upstream's own decisions don't need AD
 | [ADR-0016](ADR-0016-sync-at-release-tags.md) | Sync at upstream release tags; merge off-cycle only for high-severity fixes | Superseded by ADR-0017 (2026-09-30) | 2026-09-27 | refines ADR-0006 |
 | [ADR-0017](ADR-0017-stop-upstream-syncs.md) | Stop upstream syncs; port security fixes one at a time | Accepted | 2026-09-30 | supersedes ADR-0006, ADR-0016 |
 | [ADR-0018](ADR-0018-list-only-default-views.md) | New projects and saved filters get a List view only | Accepted | 2026-10-01 | — |
+| [ADR-0019](ADR-0019-regenerate-swagger-and-yaegi-on-the-fork.md) | The fork regenerates its swagger docs and yaegi symbols | Accepted | 2026-10-02 | — |
 
 ## How to add a new ADR
 
-1. **Pick the next number** (never reused, even if an ADR is later superseded) — next is **0019**.
+1. **Pick the next number** (never reused, even if an ADR is later superseded) — next is **0020**.
 2. **Copy [`ADR-TEMPLATE.md`](ADR-TEMPLATE.md)** to `ADR-NNNN-<short-slug>.md`; fill in front matter + body (MADR).
 3. If it **supersedes** an existing ADR, set `supersedes:` here and `superseded-by:` + `status:` on the old one.
 4. **Add a row above** and link it from `../context/PROJECT_STATE.md` → References.

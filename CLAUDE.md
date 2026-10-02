@@ -16,6 +16,11 @@ again with `/hooks`.
   on **both** a UI element (toast/label) **and** an API/notification (email), add the
   string to **both** `en.json` files. Nothing flags a miss; the gap only shows as a
   missing string on the surface you forgot.
+- Generated files: `.agents/docs/api.md` and `git-workflow.md` say CI regenerates
+  `pkg/swagger/`. On the fork, no CI job does. After an API annotation change or a change to
+  a symbol that yaegi extracts, run `mage generate:swagger-docs` and
+  `mage generate:yaegi-symbols` and commit the output unchanged (ADR-0019). Hand edits stay
+  forbidden.
 
 ## Build and test
 
