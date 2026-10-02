@@ -3797,8 +3797,8 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "type": "integer",
-                        "description": "User ID",
+                        "type": "string",
+                        "description": "Username",
                         "name": "userID",
                         "in": "path",
                         "required": true
@@ -3863,8 +3863,8 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "type": "integer",
-                        "description": "User ID",
+                        "type": "string",
+                        "description": "Username",
                         "name": "userID",
                         "in": "path",
                         "required": true
@@ -6946,8 +6946,8 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "type": "integer",
-                        "description": "User ID",
+                        "type": "string",
+                        "description": "Username",
                         "name": "userID",
                         "in": "path",
                         "required": true
@@ -6993,7 +6993,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "type": "integer",
+                        "type": "string",
                         "description": "The username of the user you want to remove",
                         "name": "username",
                         "in": "path",
@@ -9792,6 +9792,10 @@ const docTemplate = `{
                     "description": "True if a project is a favorite. Favorite projects show up in a separate parent project. This value depends on the user making the call to the api.",
                     "type": "boolean"
                 },
+                "is_template": {
+                    "description": "Whether this project is a template. Templates are hidden from normal project listings and task collections; they are managed through the template endpoints.",
+                    "type": "boolean"
+                },
                 "max_permission": {
                     "$ref": "#/definitions/models.Permission"
                 },
@@ -9915,6 +9919,20 @@ const docTemplate = `{
                     "description": "The ID of the bucket where new tasks without a bucket are added to. By default, this is the leftmost bucket in a view.",
                     "type": "integer"
                 },
+                "default_order_by": {
+                    "description": "The order for each default_sort_by field, either asc or desc. Parallel to default_sort_by.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "default_sort_by": {
+                    "description": "The default sort fields applied on load in List and Table views when the client sends no explicit sort. Mirrors the sort_by query contract.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "done_bucket_id": {
                     "description": "If tasks are moved to the done bucket, they are marked as done. If they are marked as done individually, they are moved into the done bucket.",
                     "type": "integer"
@@ -9950,13 +9968,14 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "view_kind": {
-                    "description": "The kind of this view. Can be ` + "`" + `list` + "`" + `, ` + "`" + `gantt` + "`" + `, ` + "`" + `table` + "`" + ` or ` + "`" + `kanban` + "`" + `.",
+                    "description": "The kind of this view. Can be ` + "`" + `list` + "`" + `, ` + "`" + `gantt` + "`" + `, ` + "`" + `table` + "`" + `, ` + "`" + `kanban` + "`" + ` or ` + "`" + `calendar` + "`" + `.",
                     "type": "string",
                     "enum": [
                         "list",
                         "gantt",
                         "table",
-                        "kanban"
+                        "kanban",
+                        "calendar"
                     ]
                 }
             }
@@ -10048,12 +10067,14 @@ const docTemplate = `{
             "enum": [
                 "due_date",
                 "start_date",
-                "end_date"
+                "end_date",
+                "deadline"
             ],
             "x-enum-varnames": [
                 "ReminderRelationDueDate",
                 "ReminderRelationStartDate",
-                "ReminderRelationEndDate"
+                "ReminderRelationEndDate",
+                "ReminderRelationDeadline"
             ]
         },
         "models.RouteDetail": {
@@ -10216,6 +10237,10 @@ const docTemplate = `{
                         }
                     ]
                 },
+                "deadline": {
+                    "description": "A hard cutoff distinct from due_date (\"when it must be done\" vs \"when I plan to work on it\"). Independent of due_date, start_date and end_date.",
+                    "type": "string"
+                },
                 "deleted_at": {
                     "description": "A timestamp when this task was deleted. Soft-deleted tasks are kept for 30 days before they are removed permanently.\nomitzero keeps the field out of the JSON of regular tasks — it only ever appears on soft-deleted ones (the later trash listing).",
                     "type": "string"
@@ -10239,6 +10264,10 @@ const docTemplate = `{
                 "end_date": {
                     "description": "When this task ends.",
                     "type": "string"
+                },
+                "estimated_duration": {
+                    "description": "A pure estimate in seconds, independent of time-tracking entries and dates. 0 = unset, max 90 days.",
+                    "type": "integer"
                 },
                 "hex_color": {
                     "description": "The task color in hex",
@@ -10314,13 +10343,21 @@ const docTemplate = `{
                     "description": "An amount in seconds this task repeats itself. If this is set, when marking the task as done, it will mark itself as \"undone\" and then increase all remindes and the due date by its amount.",
                     "type": "integer"
                 },
+                "repeat_from_completion": {
+                    "description": "When true and repeat_mode is 3, the next occurrence is evaluated from the completion timestamp rather than the previous due date.",
+                    "type": "boolean"
+                },
                 "repeat_mode": {
-                    "description": "Can have three possible values which will trigger when the task is marked as done: 0 = repeats after the amount specified in repeat_after, 1 = repeats all dates each months (ignoring repeat_after), 3 = repeats from the current date rather than the last set date.",
+                    "description": "Can have four possible values which will trigger when the task is marked as done: 0 = repeats after the amount specified in repeat_after, 1 = repeats all dates each months (ignoring repeat_after), 2 = repeats from the current date rather than the last set date, 3 = repeats on the calendar pattern in repeat_rrule.",
                     "allOf": [
                         {
                             "$ref": "#/definitions/models.TaskRepeatMode"
                         }
                     ]
+                },
+                "repeat_rrule": {
+                    "description": "An RFC 5545 RRULE string used when repeat_mode is 3 (calendar-pattern recurrence, e.g. \"every 3rd Friday\").",
+                    "type": "string"
                 },
                 "start_date": {
                     "description": "When this task starts.",
@@ -10405,12 +10442,22 @@ const docTemplate = `{
         "models.TaskCollection": {
             "type": "object",
             "properties": {
+                "excluded_project_ids": {
+                    "description": "ExcludedProjectIDs is only meaningful together with IncludeChildProjects. Each listed id is\ndropped from the resolved descendant set; a still-included child of an excluded project is\nkept (per-project exclusion, not subtree exclusion). The parent project itself is never\nexcludable. Ids that aren't accessible descendants of the parent are silently ignored.",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
                 "filter": {
                     "description": "The filter query to match tasks by. Check out https://vikunja.io/docs/filters for a full explanation.",
                     "type": "string"
                 },
                 "filter_include_nulls": {
                     "description": "If set to true, the result will also include null values",
+                    "type": "boolean"
+                },
+                "include_child_projects": {
                     "type": "boolean"
                 },
                 "order_by": {
@@ -10536,6 +10583,10 @@ const docTemplate = `{
                 "reminder": {
                     "description": "The absolute time when the user wants to be reminded of the task.",
                     "type": "string"
+                },
+                "repeat_rrule": {
+                    "description": "An RFC 5545 RRULE string. When set, the reminder re-arms to the rule's next\noccurrence after firing instead of being one-shot. Absolute reminders only —\nRelativeTo must be empty. Canonical \"no rule\" is the empty string; NULL and \"\"\nare equivalent on read.",
+                    "type": "string"
                 }
             }
         },
@@ -10544,12 +10595,14 @@ const docTemplate = `{
             "enum": [
                 0,
                 1,
-                2
+                2,
+                3
             ],
             "x-enum-varnames": [
                 "TaskRepeatModeDefault",
                 "TaskRepeatModeMonth",
-                "TaskRepeatModeFromCurrentDate"
+                "TaskRepeatModeFromCurrentDate",
+                "TaskRepeatModeRRule"
             ]
         },
         "models.TaskUnreadStatus": {
