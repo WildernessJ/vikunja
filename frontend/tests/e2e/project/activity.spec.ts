@@ -15,7 +15,7 @@ test.describe('Project Activity', () => {
 		// Mark the task done through the UI so the update flow dispatches the
 		// done-transition event that the capture listener records.
 		await page.goto(`/tasks/${task.id}`)
-		await page.locator('.task-view .action-buttons .button').filter({hasText: 'Mark task done!'}).click()
+		await page.locator('.task-view .task-detail-menu .button--mark-done').click()
 		await expect(page.locator('.task-view .is-done')).toBeVisible()
 
 		// Open the project Activity panel.

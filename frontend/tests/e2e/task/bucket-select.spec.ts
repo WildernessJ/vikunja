@@ -253,7 +253,7 @@ test.describe('Task Bucket Select', () => {
 		}
 	})
 
-	test('Keeps action buttons visible after changing the bucket', async ({authenticatedPage: page}) => {
+	test('the property chips stay visible after the bucket changes', async ({authenticatedPage: page}) => {
 		const {project, view, buckets, task} = await createKanbanTaskInBucket()
 
 		await page.goto(`/projects/${project.id}/${view.id}`)
@@ -266,7 +266,8 @@ test.describe('Task Bucket Select', () => {
 		await page.locator('.task-view .subtitle .dropdown-item').filter({hasText: buckets[1].title}).click()
 		await expect(page.locator('.global-notification')).toContainText('Success')
 
-		// Action buttons should still be visible
-		await expect(page.locator('.task-view .action-buttons .button').filter({hasText: 'Done'})).toBeVisible()
+		// The property chips and the done button should still be visible
+		await expect(page.locator('.task-view .task-property-chips [data-chip="labels"]')).toBeVisible()
+		await expect(page.locator('.task-view .task-detail-menu .button--mark-done')).toBeVisible()
 	})
 })

@@ -5,8 +5,8 @@ import {UserFactory} from '../../factories/user'
 import {createDefaultViews} from '../project/prepareProjects'
 import {login} from '../../support/authenticateUser'
 
+// The fork always shows the relation search on a task without relations; no button opens it.
 async function openRelatedTasksForm(page) {
-	await page.locator('.task-view .action-buttons .button').filter({hasText: 'Add Relation'}).click()
 	const input = page.locator('.task-relations .multiselect input').first()
 	await expect(input).toBeVisible()
 	return input
@@ -53,7 +53,10 @@ test.describe('Related tasks quick add magic', () => {
 
 		await relatedTaskLink.click()
 		await expect(page).toHaveURL(/\/tasks\/\d+/)
-		await expect(page.locator('.task-view .details.labels-list .multiselect .input-wrapper span.tag').filter({hasText: 'Urgent'}))
+		// The related task opens in a modal over the parent task's detail view.
+		const relatedTaskView = page.locator('.task-detail-view-modal .task-view')
+		await relatedTaskView.locator('[data-chip="labels"] .property-chip-button').click()
+		await expect(relatedTaskView.locator('[data-chip="labels"] .property-chip-popup .multiselect .input-wrapper span.tag').filter({hasText: 'Urgent'}))
 			.toBeVisible({timeout: 10000})
 	})
 
@@ -75,8 +78,11 @@ test.describe('Related tasks quick add magic', () => {
 		await expect(relatedTaskLink).not.toContainText('!4')
 
 		await relatedTaskLink.click()
+		// The related task opens in a modal over the parent task's detail view.
+		const relatedTaskView = page.locator('.task-detail-view-modal .task-view')
 		// Priority 4 is "Urgent"
-		await expect(page.locator('.task-view .columns.details select').first()).toHaveValue('4', {timeout: 10000})
+		await relatedTaskView.locator('[data-chip="priority"] .property-chip-button').click()
+		await expect(relatedTaskView.locator('[data-chip="priority"] .property-chip-popup .select select')).toHaveValue('4', {timeout: 10000})
 	})
 
 	test('Creates the related task in another project via +project prefix', async ({authenticatedPage: page}) => {

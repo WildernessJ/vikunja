@@ -13,27 +13,24 @@ test.describe('Task deadline', () => {
 		await page.goto(`/tasks/${task.id}`)
 		await page.waitForLoadState('networkidle')
 
-		const setDeadlineButton = page.locator('.task-view .action-buttons .button').filter({hasText: 'Set Deadline'})
-		await expect(setDeadlineButton).toBeVisible({timeout: 10000})
-		await setDeadlineButton.click()
-
-		const datepickerShow = page.locator('.task-view .columns.details .column').filter({hasText: 'Deadline'}).locator('.date-input .datepicker .show')
-		await expect(datepickerShow).toBeVisible()
+		const datepickerShow = page.locator('.task-view [data-chip="deadline"] .datepicker .show')
+		await expect(datepickerShow).toBeVisible({timeout: 10000})
 		await datepickerShow.click()
 
 		const tomorrowButton = page.locator('.datepicker .datepicker-popup button').filter({hasText: 'Tomorrow'})
 		await expect(tomorrowButton).toBeVisible()
 
 		const save = page.waitForResponse(r =>
-			r.url().includes(`/tasks/${task.id}`) && r.request().method() === 'POST',
+			r.url().includes(`/tasks/${task.id}`) && r.request().method() === 'PATCH',
 		)
 		await tomorrowButton.click()
 		const confirmButton = page.locator('[data-cy="closeDatepicker"]').filter({hasText: 'Confirm'})
 		await expect(confirmButton).toBeVisible()
 		await confirmButton.click()
 
+		// The v2 client sends a Request object, so Playwright sees no request body; read the saved task.
 		const r = await save
-		const body = r.request().postDataJSON()
+		const body = await r.json()
 		expect(body.deadline).toBeTruthy()
 		expect(body.deadline).not.toBe('0001-01-01T00:00:00Z')
 		await expect(page.locator('.global-notification')).toContainText('Success')

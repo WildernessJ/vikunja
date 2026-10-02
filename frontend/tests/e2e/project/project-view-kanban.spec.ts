@@ -303,13 +303,14 @@ test.describe('Project View Kanban', () => {
 		await expect(page.locator('.kanban .bucket .tasks .task').filter({hasText: task.title})).toBeVisible()
 		await page.locator('.kanban .bucket .tasks .task').filter({hasText: task.title}).click()
 
-		await page.locator('.task-view .action-buttons .button', {timeout: 3000}).filter({hasText: /^Move$/}).click()
-		const multiselectInput = page.locator('.task-view .content.details .field .multiselect.control .input-wrapper input')
+		await page.locator('.task-view [data-chip="project"] .property-chip-button').click()
+		const multiselect = page.locator('.task-view [data-chip="project"] .property-chip-popup .multiselect.control')
+		const multiselectInput = multiselect.locator('.input-wrapper input')
 		await expect(multiselectInput).toBeVisible({timeout: 5000})
 		await multiselectInput.click()
 		await multiselectInput.pressSequentially(projects[1].title)
 		// Wait for search results to appear before clicking
-		const searchResults = page.locator('.task-view .content.details .field .multiselect.control .search-results')
+		const searchResults = multiselect.locator('.search-results')
 		await searchResults.waitFor({state: 'visible'})
 		await searchResults.locator('> *').first().click()
 
@@ -333,8 +334,9 @@ test.describe('Project View Kanban', () => {
 
 		await expect(page.locator('.kanban .bucket .tasks .task').filter({hasText: task.title})).toBeVisible()
 		await page.locator('.kanban .bucket .tasks .task').filter({hasText: task.title}).click()
-		await expect(page.locator('.task-view .action-buttons .button').filter({hasText: 'Delete'})).toBeVisible()
-		await page.locator('.task-view .action-buttons .button').filter({hasText: 'Delete'}).click()
+		// The fork's delete action lives in the task detail's More Actions menu.
+		await page.locator('.task-view .task-detail-menu').getByRole('button', {name: 'More Actions'}).click()
+		await page.locator('.task-view .task-detail-menu .dropdown-content').getByText('Delete', {exact: true}).click()
 		await expect(page.locator('dialog[open] .modal-content .modal-header')).toContainText('Delete this task')
 		await page.locator('dialog[open] .modal-content .actions .button').filter({hasText: 'Do it!'}).click()
 
