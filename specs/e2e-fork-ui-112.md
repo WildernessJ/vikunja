@@ -21,6 +21,18 @@ Decisions that Jason made on 2026-10-02:
 - OpenID: skip the test when no Dex server is configured.
 - #112 is split in two cycles. This is cycle 1.
 
+Amendment after build session 1 halted (plan session 2, 2026-10-02, Jason):
+
+- The scope of cycle 1 includes one line in `magefile.go`:
+  `VIKUNJA_RATELIMIT_TOKENREFRESHLIMIT=1000` in the `mage test:e2e` API environment. It sits next
+  to `VIKUNJA_RATELIMIT_NOAUTHLIMIT=1000`. This is test harness configuration, not product code.
+  Reason: the selector fixes remove many 30-second timeouts, so the suite sends more token-refresh
+  requests per minute. The default limit of 60 per minute per IP then returns 429 to three tests
+  that passed in the baseline. See the Execution Log.
+- The registration "confirmation notice" test is skipped when `MAILER_API_URL` is not set. This
+  applies the OpenID rule: skip a test when its external server is not there. `mage test:e2e`
+  does not start Mailpit.
+
 The failure groups and their diagnosed causes:
 
 | Group | Tests | Cause |
@@ -74,6 +86,14 @@ All paths are under `frontend/tests/`.
      `test.skip(!process.env.VIKUNJA_E2E_DEX, 'needs a Dex OpenID server')` at the start of the
      describe block.
 
+5. **Token-refresh rate limit (amendment).** In `magefile.go`, add
+   `"VIKUNJA_RATELIMIT_TOKENREFRESHLIMIT=1000",` on the line after
+   `"VIKUNJA_RATELIMIT_NOAUTHLIMIT=1000",` in the `apiCmd` environment. Change nothing else in
+   `magefile.go`.
+
+Build session 2 starts from commit `f8dc46f98`. Items 1 to 4 are done there. Do item 5, then run
+the Verification section again.
+
 ## Execution routing
 
 - Driver (the build session): items 1, 2, 3 (selector replacements) and the OpenID skip. These are
@@ -98,6 +118,11 @@ proves they fail. Red-first list, in order:
 
 Each one must fail before its change and pass after it (or become a fixme with an issue).
 
+Item 5 red-first: the full run of build session 1 is the red evidence. The three tests in the
+Execution Log failed with 429 responses. Before the full run, confirm that the item 5 line makes
+the API accept more than 60 refresh requests per minute. One way: start the e2e API the way mage
+does and send 61 `POST /api/v1/user/token/refresh` requests in one minute. Expect no 429.
+
 ## Verification
 
 Run every command from the worktree root `/Volumes/ext-ssd/Github/fix-e2e-fork-ui-112`. Save the
@@ -116,13 +141,16 @@ Done looks like this:
   #112. The count is about 55.
 - No test that passed in the baseline fails.
 - Lint and typecheck exit 0.
-- The diff touches only `frontend/tests/` and this spec.
+- The three rate-limit tests in the Execution Log pass in the full run.
+- The diff touches only `frontend/tests/`, this spec, and the one item 5 line in `magefile.go`.
 
 ## Stop criteria
 
 Halt, record the reason in the Execution Log, commit and stop if any of these occur:
 
 - A fix needs a change outside `frontend/tests/` (product code, `magefile.go`, `vite.config.ts`).
+  The one item 5 line in `magefile.go` is the only exception.
+- The full run still returns 429 to any test after item 5.
 - A test that passed in the baseline fails after the group B fixture change, and a small,
   test-only change does not fix it.
 - More than three tests become fixmes for product bugs. That many bugs means the "test-only"
