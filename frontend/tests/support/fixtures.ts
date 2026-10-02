@@ -1,6 +1,6 @@
 import {test as base, type APIRequestContext, type Page} from '@playwright/test'
 import {Factory} from './factory'
-import {login, createFakeUser} from './authenticateUser'
+import {login, createFakeUser, setupApiUrl} from './authenticateUser'
 
 export const test = base.extend<{
 	apiContext: APIRequestContext;
@@ -8,6 +8,13 @@ export const test = base.extend<{
 	currentUser: any;
 	userToken: string;
 }>({
+	// Every page talks to the API on its own port. Without this, the frontend uses
+	// the relative `/api/v1` from index.html, which the preview server does not proxy.
+	page: async ({page}, use) => {
+		await setupApiUrl(page)
+		await use(page)
+	},
+
 	apiContext: [async ({playwright}, use) => {
 		const baseURL = process.env.API_URL || 'http://localhost:3456/api/v1/'
 		const apiContext = await playwright.request.newContext({

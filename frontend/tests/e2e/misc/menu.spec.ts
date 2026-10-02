@@ -20,10 +20,12 @@ test.describe('The Menu', () => {
 		await expect(page.locator('.menu-container')).toHaveClass(/is-active/)
 		await page.locator('body').click()
 
-		await page.locator('body').press('ControlOrMeta+e')
+		// The Desktop Chrome device sends a Windows user agent, so the app binds Mod to
+		// Control. ControlOrMeta would send Meta on a macOS host.
+		await page.locator('body').press('Control+e')
 		await expect(page.locator('.menu-container')).not.toHaveClass(/is-active/)
 
-		await page.locator('body').press('ControlOrMeta+e')
+		await page.locator('body').press('Control+e')
 		await expect(page.locator('.menu-container')).toHaveClass(/is-active/)
 	})
 

@@ -1,11 +1,9 @@
 import {randomBytes} from 'node:crypto'
 import {test, expect} from '../../support/fixtures'
 import {UserFactory} from '../../factories/user'
-import {setupApiUrl} from '../../support/authenticateUser'
 
 test.describe('Registration', () => {
 	test.beforeEach(async ({page}) => {
-		await setupApiUrl(page)
 		await UserFactory.create(1, {
 			username: 'test',
 		})
@@ -32,6 +30,9 @@ test.describe('Registration', () => {
 	})
 
 	test('Should show a confirmation notice when the email needs to be verified', async ({browser, baseURL, request}) => {
+		// Needs Mailpit and a second API with the mailer on (MAILER_API_URL). Upstream CI
+		// starts both; `mage test:e2e` starts neither.
+		test.skip(!process.env.MAILER_API_URL, 'needs a mailer-enabled API and Mailpit')
 		const publicUrl = new URL('/', baseURL).href
 		const apiUrl = (process.env.MAILER_API_URL || 'http://127.0.0.1:3457/api/v1').replace(/\/$/, '')
 		const mailpitUrl = process.env.MAILPIT_URL || 'http://127.0.0.1:8025'

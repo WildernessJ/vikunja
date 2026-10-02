@@ -95,12 +95,11 @@ test.describe('Home Page Task Overview', () => {
 		await page.goto(`/projects/${tasks[0].project_id}/1`)
 		await page.waitForLoadState('networkidle')
 		const taskResponsePromise = page.waitForResponse(response =>
-			response.url().includes('/api/v2/projects/') &&
-			response.url().includes('/tasks/bulk') &&
+			/\/api\/v2\/projects\/\d+\/tasks$/.test(new URL(response.url()).pathname) &&
 			response.request().method() === 'POST',
 		)
-		await page.locator('.task-add textarea').fill(newTaskTitle)
-		await page.locator('.task-add textarea').press('Enter')
+		await page.locator('.task-add .add-task-textarea').fill(newTaskTitle)
+		await page.locator('.task-add .add-task-textarea').press('Enter')
 		await taskResponsePromise
 		await page.goto('/')
 		await page.waitForLoadState('networkidle')
@@ -149,8 +148,7 @@ test.describe('Home Page Task Overview', () => {
 
 		// Wait for the task creation request to complete
 		const createTaskPromise = page.waitForResponse(response =>
-			response.url().includes('/api/v2/projects/') &&
-			response.url().includes('/tasks/bulk') &&
+			/\/api\/v2\/projects\/\d+\/tasks$/.test(new URL(response.url()).pathname) &&
 			response.request().method() === 'POST',
 		)
 		await addTaskInput.press('Enter')
