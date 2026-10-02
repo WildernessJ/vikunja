@@ -84,6 +84,17 @@ describe('TaskPropertyChips', () => {
 		expect(wrapper.findAll('.date-chip')).toHaveLength(4)
 	})
 
+	it('marks each chip with a unique data-chip key for the e2e tests', () => {
+		const wrapper = mountChips()
+
+		const keys = ['project', 'due', 'start', 'end', 'deadline', 'priority', 'labels',
+			'assignees', 'reminders', 'repeat', 'percent-done', 'duration', 'color']
+		for (const key of keys) {
+			expect(wrapper.findAll(`[data-chip="${key}"]`), key).toHaveLength(1)
+		}
+		expect(wrapper.findAll('[data-chip]')).toHaveLength(keys.length)
+	})
+
 	it('opens the priority widget in its popup when the priority chip is clicked', async () => {
 		const wrapper = mountChips()
 

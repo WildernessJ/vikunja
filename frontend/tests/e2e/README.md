@@ -4,8 +4,8 @@
 
 Like the Dex login test, email confirmation needs external services. CI starts
 Mailpit and a separate mail-enabled API before Playwright. Tests connect through
-`MAILER_API_URL` (default `http://127.0.0.1:3457/api/v1`) and `MAILPIT_URL`
-(default `http://127.0.0.1:8025`). The main test API keeps mail disabled.
+`MAILER_API_URL` and `MAILPIT_URL` (default `http://127.0.0.1:8025`).
+`MAILER_API_URL` has no default: the confirmation-notice test skips when it is not set. The main test API keeps mail disabled.
 
 For local runs, start Mailpit in one terminal:
 

@@ -2,6 +2,7 @@
 	<div class="task-property-chips">
 		<!-- Project -->
 		<PropertyChip
+			data-chip="project"
 			ref="projectChipRef"
 			icon="list"
 			:label="projectChipLabel"
@@ -18,6 +19,7 @@
 		<!-- Due date - Datepicker owns its own trigger + popup, so it isn't nested
 		     inside another PropertyChip popup (that would need two clicks to open). -->
 		<div
+			data-chip="due"
 			class="date-chip"
 			:class="{'is-unset': dueDateModel === null}"
 		>
@@ -36,6 +38,7 @@
 
 		<!-- Start date -->
 		<div
+			data-chip="start"
 			class="date-chip"
 			:class="{'is-unset': startDateModel === null}"
 		>
@@ -54,6 +57,7 @@
 
 		<!-- End date -->
 		<div
+			data-chip="end"
 			class="date-chip"
 			:class="{'is-unset': endDateModel === null}"
 		>
@@ -71,6 +75,7 @@
 
 		<!-- Deadline -->
 		<div
+			data-chip="deadline"
 			class="date-chip"
 			:class="{'is-unset': deadlineModel === null}"
 		>
@@ -88,6 +93,7 @@
 
 		<!-- Priority -->
 		<PropertyChip
+			data-chip="priority"
 			ref="priorityChipRef"
 			:is-set="task.priority !== PRIORITIES.UNSET"
 			:show-clear="task.priority !== PRIORITIES.UNSET && canWrite"
@@ -110,6 +116,7 @@
 
 		<!-- Labels -->
 		<PropertyChip
+			data-chip="labels"
 			ref="labelsChipRef"
 			icon="tags"
 			:label="labelsChipLabel"
@@ -129,6 +136,7 @@
 
 		<!-- Assignees -->
 		<PropertyChip
+			data-chip="assignees"
 			ref="assigneesChipRef"
 			icon="users"
 			:label="assigneesChipLabel"
@@ -147,6 +155,7 @@
 
 		<!-- Reminders -->
 		<PropertyChip
+			data-chip="reminders"
 			ref="remindersChipRef"
 			:icon="['far', 'clock']"
 			:label="remindersChipLabel"
@@ -164,6 +173,7 @@
 
 		<!-- Repeat -->
 		<PropertyChip
+			data-chip="repeat"
 			icon="history"
 			:label="repeatChipLabel"
 			:is-set="isRepeatSet"
@@ -181,6 +191,7 @@
 
 		<!-- % Done -->
 		<PropertyChip
+			data-chip="percent-done"
 			icon="percent"
 			:label="percentDoneChipLabel"
 			:is-set="(task.percent_done ?? 0) > 0"
@@ -196,6 +207,7 @@
 
 		<!-- Duration -->
 		<PropertyChip
+			data-chip="duration"
 			:icon="['far', 'hourglass']"
 			:label="durationChipLabel"
 			:is-set="(task.estimated_duration ?? 0) > 0"
@@ -211,6 +223,7 @@
 
 		<!-- Color -->
 		<PropertyChip
+			data-chip="color"
 			ref="colorChipRef"
 			icon="fill-drip"
 			:label="$t('task.attributes.color')"
