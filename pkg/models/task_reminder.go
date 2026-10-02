@@ -264,7 +264,7 @@ func getTasksWithRemindersDueAndTheirUsers(s *xorm.Session, now time.Time, cond 
 	err = s.
 		Join("INNER", "tasks", "tasks.id = task_reminders.task_id").
 		// All reminders from -12h to +14h to include all time zones
-		Where("reminder >= ? and reminder < ?", now.Add(time.Hour*-12).Format(dbTimeFormat), nextMinute.Add(time.Hour*14).Format(dbTimeFormat)).
+		Where("reminder >= ? and reminder < ?", now.Add(time.Hour*-12).UTC().Format(dbTimeFormat), nextMinute.Add(time.Hour*14).UTC().Format(dbTimeFormat)).
 		And("tasks.done = false").
 		And("tasks.deleted_at IS NULL").
 		Find(&reminders)
