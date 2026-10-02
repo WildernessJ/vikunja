@@ -28,8 +28,7 @@ test.describe('Quick add default reminders', () => {
 		await page.locator('.input[placeholder="Add a task…"]').fill('Buy milk tomorrow')
 
 		const createTaskPromise = page.waitForResponse(response =>
-			response.url().includes('/api/v2/projects/') &&
-			response.url().includes('/tasks/bulk') &&
+			/\/api\/v2\/projects\/\d+\/tasks$/.test(new URL(response.url()).pathname) &&
 			response.request().method() === 'POST',
 		)
 		await page.locator('.button').filter({hasText: 'Add'}).click()
@@ -39,8 +38,8 @@ test.describe('Quick add default reminders', () => {
 		await expect(taskLink).toBeVisible({timeout: 10000})
 		await taskLink.click()
 
-		// Reminders section auto-expands when the task already has reminders.
-		const reminderInput = page.locator('.task-view .columns.details .reminder-input').first()
+		await page.locator('.task-view .task-property-chips .property-chip-button').filter({hasText: '1 reminder'}).click()
+		const reminderInput = page.locator('.popup .property-chip-popup .reminder-input').first()
 		await expect(reminderInput).toBeVisible({timeout: 10000})
 		await expect(reminderInput).toContainText('2 hours before Due Date')
 	})

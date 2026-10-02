@@ -4,7 +4,6 @@ import {ProjectViewFactory} from '../../factories/project_view'
 import {TaskFactory} from '../../factories/task'
 import {UserFactory} from '../../factories/user'
 import {LinkShareFactory} from '../../factories/link_sharing'
-import {setupApiUrl} from '../../support/authenticateUser'
 import type {Locator, Page} from '@playwright/test'
 
 const VIEW_KIND_CALENDAR = 4
@@ -260,8 +259,8 @@ test.describe('Project View Calendar', () => {
 		await cell.locator('.calendar-day-body').click()
 		await expect(cell.locator('.add-task-textarea')).toBeVisible()
 
-		await cell.locator('.qac-chip-button').first().click()
-		const searchInput = cell.locator('.popup .qac-chip-popup .multiselect input')
+		await cell.locator('.property-chip-button').first().click()
+		const searchInput = cell.locator('.popup .property-chip-popup .multiselect input')
 		// A real pointer click hit-tests at the element's coordinates and fails
 		// if the popup is painted clipped by an overflow: hidden ancestor.
 		await searchInput.click()
@@ -278,7 +277,6 @@ test.describe('Project View Calendar', () => {
 	})
 
 	test('Read-only link share shows tasks but no drag handles', async ({page}) => {
-		await setupApiUrl(page)
 		await UserFactory.create()
 		const project = await ProjectFactory.create(1)
 		await ProjectViewFactory.create(1, {

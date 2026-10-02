@@ -6,7 +6,6 @@ import {login, setupApiUrl} from '../../support/authenticateUser'
 
 test.describe('Invite links', () => {
 	test.beforeEach(async ({page}) => {
-		await setupApiUrl(page)
 		await LicenseFactory.enable(['admin_panel', 'user_invites'])
 	})
 

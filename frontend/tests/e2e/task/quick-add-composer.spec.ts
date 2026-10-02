@@ -22,20 +22,19 @@ test.describe('Quick add composer', () => {
 
 		// With quick add magic disabled, chips are pure structured pickers - opening the
 		// priority chip must not attempt any text parsing of the title.
-		await page.locator('.qac-chip-button').filter({hasText: 'No Priority'}).click()
-		await page.locator('.popup .qac-chip-popup-priority select').selectOption(String(PRIORITIES.HIGH))
+		await page.locator('.property-chip-button').filter({hasText: 'No Priority'}).click()
+		await page.locator('.popup .property-chip-popup select').selectOption(String(PRIORITIES.HIGH))
 
-		await page.locator('.qac-chip-button').filter({hasText: 'Labels' }).click()
+		await page.locator('.property-chip-button').filter({hasText: 'Labels' }).click()
 		// Only the open popup's content is mounted (Popup.vue v-if), so `.popup`
 		// uniquely targets it - closed chip popups aren't in the DOM.
-		const labelInput = page.locator('.popup .qac-chip-popup .multiselect input')
+		const labelInput = page.locator('.popup .property-chip-popup .multiselect input')
 		await labelInput.fill('errand')
 		await labelInput.press('Enter')
 
 		const createTaskPromise = page.waitForResponse(response =>
-			response.url().includes('/projects/') &&
-			response.url().includes('/tasks') &&
-			response.request().method() === 'PUT',
+			/\/api\/v2\/projects\/\d+\/tasks$/.test(new URL(response.url()).pathname) &&
+			response.request().method() === 'POST',
 		)
 		await page.locator('.button').filter({hasText: 'Add'}).click()
 		await createTaskPromise
@@ -44,9 +43,9 @@ test.describe('Quick add composer', () => {
 		await expect(taskLink).toBeVisible({timeout: 10000})
 		await taskLink.click()
 
-		await expect(page.locator('.task-view .details.labels-list .multiselect .input-wrapper span.tag').filter({hasText: 'errand'}))
+		await expect(page.locator('.task-view .task-property-chips .property-chip-button').filter({hasText: 'errand'}))
 			.toBeVisible({timeout: 10000})
-		await expect(page.locator('.task-view .action-buttons, .task-view .details').filter({hasText: 'High'}))
+		await expect(page.locator('.task-view .task-property-chips .property-chip-button').filter({hasText: 'High'}))
 			.toBeVisible({timeout: 10000})
 	})
 
@@ -59,13 +58,12 @@ test.describe('Quick add composer', () => {
 		// !3 parses to HIGH priority via vikunja-mode quick add magic.
 		await page.locator('.add-task-textarea').fill('Buy milk !3')
 
-		await page.locator('.qac-chip-button').filter({hasText: 'High' }).click()
-		await page.locator('.popup .qac-chip-popup-priority select').selectOption(String(PRIORITIES.URGENT))
+		await page.locator('.property-chip-button').filter({hasText: 'High' }).click()
+		await page.locator('.popup .property-chip-popup select').selectOption(String(PRIORITIES.URGENT))
 
 		const createTaskPromise = page.waitForResponse(response =>
-			response.url().includes('/projects/') &&
-			response.url().includes('/tasks') &&
-			response.request().method() === 'PUT',
+			/\/api\/v2\/projects\/\d+\/tasks$/.test(new URL(response.url()).pathname) &&
+			response.request().method() === 'POST',
 		)
 		await page.locator('.button').filter({hasText: 'Add'}).click()
 		await createTaskPromise
@@ -76,7 +74,7 @@ test.describe('Quick add composer', () => {
 		await expect(taskLink).not.toContainText('!3')
 		await taskLink.click()
 
-		await expect(page.locator('.task-view .action-buttons, .task-view .details').filter({hasText: 'Urgent'}))
+		await expect(page.locator('.task-view .task-property-chips .property-chip-button').filter({hasText: 'Urgent'}))
 			.toBeVisible({timeout: 10000})
 	})
 })
