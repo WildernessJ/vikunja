@@ -152,3 +152,87 @@ Halt, record the reason in the Execution Log, commit and stop if any of these oc
   where the #114 item 2 script becomes relevant; the plan session decides).
 
 ## Execution Log
+
+### Build session 1 (2026-10-02, Opus)
+
+**Result:** all 54 group A tests pass. The full run has 0 failures. No stop criterion was hit.
+
+**Commits:**
+
+- `559d140c6`: the `data-chip` attributes, the unit test, and the #114 items 4 and 6.
+- `352991611`: `task/task.spec.ts` (executor dispatch 1, 29 tests).
+- `1f5b55a88`: the other 11 files (executor dispatch 2, 25 tests).
+
+**Red-first evidence:**
+
+- Unit test "marks each chip with a unique data-chip key" failed before the attributes
+  (`project: expected [] to have a length of 1`), and passes after them.
+- E2E "Can set a priority for a task" failed before the port. It timed out on
+  `.task-view .action-buttons .button` "Set Priority". It passes after the port.
+
+**Deleted tests:** none.
+
+**Renamed titles:** one. `task/bucket-select.spec.ts`: "Keeps action buttons visible after
+changing the bucket" became "the property chips stay visible after the bucket changes". The
+test asserts that `[data-chip="labels"]` and `.task-detail-menu .button--mark-done` are visible.
+
+**Fixmes added:** none. No issues were opened. The one skip in `bucket-select.spec.ts` is a
+`test.fixme` from before this cycle.
+
+**Helpers:** no helper was added to `commands.ts`. Three helpers in `task.spec.ts` changed:
+`addLabelToTaskAndVerify` (uses the labels chip popup), `uploadAttachmentAndVerify` (uses the
+always-visible "Upload attachment" button in `.content.attachments`), and `dateChip` (selects
+`[data-chip="<kind>"]`, not a position). In `time-tracking.spec.ts`, `openTaskTimeTracking`
+no longer clicks `[data-cy="taskTrackTimeAction"]`. The section is always visible.
+
+**Deviations and changed assertions. The reviewer should read these first:**
+
+1. **POST body checks became PATCH response checks** in four files: `deadline.spec.ts`,
+   `duration.spec.ts` (two tests), `recurrence.spec.ts` ("weekly Mon+Fri"), and
+   `recurring-reminder.spec.ts` ("weekly reminder"). The fork saves a task with a v2 PATCH
+   (`application/json-patch+json`). Playwright reports `postData() === null` for that request,
+   because the client sends a `Request` object. The tests now wait for the PATCH and read the
+   saved task from `response.json()`. The duration "garbage input" test's no-save listener now
+   watches PATCH. Before, it watched POST, so it passed even when a save happened.
+2. **`assignee-search-narrow-column.spec.ts`:** when the test opens the assignees chip and
+   clicks the input, the popup does not preload the project members. The executor reports this
+   cause: in `EditAssignees.vue`, `@focus="preloadUsers"` falls through to the Multiselect root
+   div, and a focus on the inner input does not reach it. The driver did not confirm this cause.
+   The test now gives the three users the usernames `narrowcolumn1..3`, types `narrowcolumn`,
+   and asserts exactly 3 results. The layout assertions did not change. **Possible product
+   regression, not filed:** on the fork, the assignees chip shows no member list until the user
+   types. No fixme was added, because the test intent (the #3709 layout) has a working
+   counterpart. Jason decides whether to open an issue.
+3. **`related-tasks-quick-add-magic.spec.ts`:** a click on a related task opens that task in a
+   modal over the parent task. Two `.task-view` elements then exist. The label and priority
+   assertions now use the scope `.task-detail-view-modal .task-view`.
+4. **"Can open due date with keyboard shortcut in task detail"** (`task.spec.ts`): the due chip
+   is always visible, so the assertion "the due date column appears" is gone. The test now
+   asserts that the popup is closed, then calls `openDueDatePopupWithShortcut`.
+5. **Tests that open a chip popup to see its content:** "Can add an assignee" (it reopens the
+   chip after a reload), "Can remove a label", "Can remove an assignee", the repeat and reminder
+   tests, and the duration "clear button" test. The duration "clear button" test now asserts
+   `[data-chip="duration"]` has `is-unset` and the input is `''`.
+6. **`linkShare.spec.ts`:** the false comment from #114 item 1 is removed. The label setup and
+   the unused `LabelFactory` and `LabelTaskFactory` imports are removed too, because the test
+   now opens the labels chip.
+7. `registration.spec.ts`: the dead fallback became `process.env.MAILER_API_URL!`. The
+   `test.skip` above it makes sure that the variable is set.
+
+**Verification (worktree root, HEAD `1f5b55a88`):**
+
+- Targeted runs: `task.spec.ts` 75 passed (two runs). The other 11 files: 82 passed, 1 skipped
+  (the fixme from before this cycle).
+- Full run 1: 434 passed, **1 failed**, 4 skipped, 0 responses of 429. The failure was
+  `editor/image-alt-text.spec.ts` › "sets alt text on a selected image via the image bubble
+  menu" (group B to E, a file that this branch does not change). That file then ran with
+  `--repeat-each=3`: 12 of 12 passed. Recorded as flaky under full-suite load. It did not fail
+  again.
+- Full run 2: **435 passed, 0 failed, 4 skipped, 0 responses of 429.**
+- `pnpm lint` 0, `pnpm typecheck` 0, `pnpm test:unit --run` 214 files / 2573 tests, and
+  `mage test:feature` 0.
+
+**Out of scope, not fixed:** ESLint reports 16 errors in the changed test files. All of them
+were there before this cycle (unused imports and variables: 7 in `task.spec.ts`, 5 in
+`project-view-kanban.spec.ts`, 4 in `linkShare.spec.ts`). `pnpm lint` does not cover `tests/`.
+This gap is residue in #115.
