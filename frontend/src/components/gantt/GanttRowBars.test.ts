@@ -71,3 +71,22 @@ describe('GanttRowBars resize preview', () => {
 		expect(geometry(mountBars('start', 1))).toEqual([8, 2])
 	})
 })
+
+// #101: tests run in America/Los_Angeles, where 2026-11-01 is 25 hours long.
+describe('GanttRowBars across a DST fall-back day', () => {
+	const dstBar = {
+		...bar,
+		start: new Date(2026, 9, 30, 0, 0, 0, 0),
+		end: new Date(2026, 10, 5, 23, 59, 59, 999),
+	}
+
+	it('draws a bar spanning Nov 1 seven days wide', () => {
+		// Oct 30 is day 59 after Sep 1
+		expect(geometry(mountBars(undefined, 0, dstBar))).toEqual([59, 7])
+	})
+
+	it.each([1, 2, 3])('keeps the right edge fixed when the start edge moves %i days', (days) => {
+		const [x, width] = geometry(mountBars('start', days, dstBar))
+		expect(x + width).toBe(66)
+	})
+})

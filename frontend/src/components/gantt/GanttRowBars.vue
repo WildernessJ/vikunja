@@ -214,7 +214,7 @@ import {useI18n} from 'vue-i18n'
 
 import type {GanttBarModel} from '@/composables/useGanttBar'
 import {getTextColor, LIGHT} from '@/helpers/color/getTextColor'
-import {MILLISECONDS_A_DAY} from '@/constants/date'
+import {daySpan} from '@/helpers/time/daySpan'
 import {roundToNaturalDayBoundary} from '@/helpers/time/roundToNaturalDayBoundary'
 
 import GanttBarPrimitive from './primitives/GanttBarPrimitive.vue'
@@ -292,10 +292,7 @@ function computeBarX(startDate: Date) {
 }
 
 function getDaysDifference(startDate: Date, endDate: Date): number {
-	return Math.ceil(
-		(roundToNaturalDayBoundary(endDate).getTime() - roundToNaturalDayBoundary(startDate, true).getTime()) /
-MILLISECONDS_A_DAY,
-	)
+	return daySpan(roundToNaturalDayBoundary(startDate, true), roundToNaturalDayBoundary(endDate))
 }
 
 function computeBarWidth(bar: GanttBarModel) {

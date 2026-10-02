@@ -36,12 +36,12 @@ const FILTERS: GanttFilters = {
 	showTasksWithoutDates: false,
 }
 
-function mountChart(isLoading: boolean, tasks = new Map<number, TaskResponse>()) {
+function mountChart(isLoading: boolean, tasks = new Map<number, TaskResponse>(), filters = FILTERS) {
 	return mount(GanttChart, {
 		shallow: true,
 		props: {
 			isLoading,
-			filters: FILTERS,
+			filters,
 			tasks,
 			defaultTaskStartDate: FILTERS.dateFrom,
 			defaultTaskEndDate: FILTERS.dateTo,
@@ -55,6 +55,12 @@ function mountChart(isLoading: boolean, tasks = new Map<number, TaskResponse>())
 type ChartVm = {
 	updateGanttTask: (id: string, newStart: Date, newEnd: Date) => void
 	ganttBars: {start: Date, end: Date}[][]
+}
+
+type DstVm = {
+	totalWidth: number
+	dayWidthPixels: number
+	barPositions: Map<number, {x: number, width: number}>
 }
 
 function mountWithTask(task: Task) {
@@ -187,5 +193,35 @@ describe('GanttChart.vue date-only writes', () => {
 		expect(vm.ganttBars[0][0].end.getHours()).toBe(23)
 		expect(vm.ganttBars[0][0].end.getMilliseconds()).toBe(999)
 		expect(vm.ganttBars[0][0].start.getHours()).toBe(0)
+	})
+})
+
+// #101: tests run in America/Los_Angeles, where 2026-11-01 is 25 hours long.
+describe('GanttChart.vue across a DST fall-back day', () => {
+	const filters = {...FILTERS, dateFrom: new Date(2026, 9, 1).toISOString(), dateTo: new Date(2026, 10, 30).toISOString()}
+
+	// The day width is measured only once the chart replaces the loading state.
+	async function mountMeasured(tasks = new Map<number, TaskResponse>()) {
+		const wrapper = mountChart(true, tasks, filters)
+		await wrapper.setProps({isLoading: false})
+		return wrapper.vm as unknown as DstVm
+	}
+
+	it('sizes the timeline to its day count', async () => {
+		const vm = await mountMeasured()
+		// Oct 1 through Nov 30
+		expect(vm.totalWidth / vm.dayWidthPixels).toBe(61)
+	})
+
+	it('places the arrow anchor of a bar after Nov 1 at the same day as the bar', async () => {
+		const task = normalizeTask({
+			id: 1,
+			start_date: new Date(2026, 10, 2, 0, 0).toISOString(),
+			end_date: new Date(2026, 10, 4, 23, 59, 59, 999).toISOString(),
+		} as Task)
+		const vm = await mountMeasured(new Map([[task.id, task]]))
+		const position = vm.barPositions.get(1)!
+		// Nov 2 is day 32 after Oct 1; the bar spans Nov 2, 3 and 4
+		expect([position.x / vm.dayWidthPixels, position.width / vm.dayWidthPixels]).toEqual([32, 3])
 	})
 })
