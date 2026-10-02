@@ -224,4 +224,14 @@ describe('GanttChart.vue across a DST fall-back day', () => {
 		// Nov 2 is day 32 after Oct 1; the bar spans Nov 2, 3 and 4
 		expect([position.x / vm.dayWidthPixels, position.width / vm.dayWidthPixels]).toEqual([32, 3])
 	})
+
+	it('sizes the arrow anchor of a bar spanning Nov 1 to its day count', async () => {
+		const task = normalizeTask({
+			id: 1,
+			start_date: new Date(2026, 9, 30, 0, 0).toISOString(),
+			end_date: new Date(2026, 10, 5, 23, 59, 59, 999).toISOString(),
+		} as Task)
+		const vm = await mountMeasured(new Map([[task.id, task]]))
+		expect(vm.barPositions.get(1)!.width / vm.dayWidthPixels).toBe(7)
+	})
 })

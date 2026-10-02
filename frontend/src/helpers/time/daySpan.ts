@@ -1,7 +1,8 @@
 import dayjs from 'dayjs'
 
-// Whole calendar days from start to end, a partial day counting as one.
-// dayjs's diff corrects for UTC-offset changes, so a 25-hour DST fall-back day counts as one day.
+// Whole days between two day boundaries (start or end of a day), as the timeline counts them.
+// dayjs's diff removes UTC-offset changes, and rounding absorbs the hour a DST change moves a
+// boundary by, e.g. a day whose midnight does not exist and starts at 01:00.
 export function daySpan(start: Date, end: Date): number {
-	return Math.ceil(dayjs(end).diff(start, 'day', true))
+	return Math.round(dayjs(end).diff(start, 'day', true))
 }
