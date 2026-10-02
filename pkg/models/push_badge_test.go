@@ -228,23 +228,38 @@ func TestGetUserBadgeCount(t *testing.T) {
 	baselineLA, err := getUserBadgeCount(s, badgeCountUser)
 	require.NoError(t, err)
 
-	utcBoundary := startOfTomorrowAt(time.Now(), time.UTC)
-	mustInsertStatsTask(t, s, project.ID, 1, 1, false, time.Time{}, utcBoundary.Add(-time.Hour))
-	mustInsertStatsTask(t, s, project.ID, 2, 1, false, time.Time{}, utcBoundary.Add(time.Hour))
+	// Which boundary comes first depends on the wall clock: from about 00:00 to
+	// 07:00 UTC, Los Angeles is still on the previous date, so its
+	// start-of-tomorrow is before the UTC one. One task is due before both
+	// boundaries and one between them, so it counts only for the later one.
+	la, err := time.LoadLocation("America/Los_Angeles")
+	require.NoError(t, err)
+	now := time.Now()
+	utcBoundary := startOfTomorrowAt(now, time.UTC)
+	laBoundary := startOfTomorrowAt(now, la)
+	early, late := utcBoundary, laBoundary
+	if late.Before(early) {
+		early, late = late, early
+	}
+	mustInsertStatsTask(t, s, project.ID, 1, 1, false, time.Time{}, early.Add(-time.Hour))
+	mustInsertStatsTask(t, s, project.ID, 2, 1, false, time.Time{}, early.Add(late.Sub(early)/2))
+
+	wantUTC, wantLA := baselineUTC+1, baselineLA+1
+	if late.Equal(laBoundary) {
+		wantLA++
+	} else {
+		wantUTC++
+	}
 
 	retimeBadgeCountUser(t, s, "UTC")
 	afterUTC, err := getUserBadgeCount(s, badgeCountUser)
 	require.NoError(t, err)
-	assert.Equal(t, baselineUTC+1, afterUTC,
-		"for a UTC user only the task due before start-of-tomorrow UTC counts")
+	assert.Equal(t, wantUTC, afterUTC, "UTC user: tasks due before start-of-tomorrow UTC")
 
-	// America/Los_Angeles runs 7-8h behind UTC, so its start-of-tomorrow lands
-	// hours after the UTC one and both tasks fall inside the window.
 	retimeBadgeCountUser(t, s, "America/Los_Angeles")
 	afterLA, err := getUserBadgeCount(s, badgeCountUser)
 	require.NoError(t, err)
-	assert.Equal(t, baselineLA+2, afterLA,
-		"for a user behind UTC both tasks are still due before their start-of-tomorrow")
+	assert.Equal(t, wantLA, afterLA, "Los Angeles user: tasks due before start-of-tomorrow there")
 }
 
 func TestBuildBadgePayload(t *testing.T) {

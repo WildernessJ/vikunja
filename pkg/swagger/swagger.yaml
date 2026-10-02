@@ -565,6 +565,11 @@ definitions:
           a separate parent project. This value depends on the user making the call
           to the api.
         type: boolean
+      is_template:
+        description: Whether this project is a template. Templates are hidden from
+          normal project listings and task collections; they are managed through the
+          template endpoints.
+        type: boolean
       max_permission:
         $ref: '#/definitions/models.Permission'
       owner:
@@ -659,6 +664,18 @@ definitions:
         description: The ID of the bucket where new tasks without a bucket are added
           to. By default, this is the leftmost bucket in a view.
         type: integer
+      default_order_by:
+        description: The order for each default_sort_by field, either asc or desc.
+          Parallel to default_sort_by.
+        items:
+          type: string
+        type: array
+      default_sort_by:
+        description: The default sort fields applied on load in List and Table views
+          when the client sends no explicit sort. Mirrors the sort_by query contract.
+        items:
+          type: string
+        type: array
       done_bucket_id:
         description: If tasks are moved to the done bucket, they are marked as done.
           If they are marked as done individually, they are moved into the done bucket.
@@ -688,12 +705,14 @@ definitions:
           value.
         type: string
       view_kind:
-        description: The kind of this view. Can be `list`, `gantt`, `table` or `kanban`.
+        description: The kind of this view. Can be `list`, `gantt`, `table`, `kanban`
+          or `calendar`.
         enum:
         - list
         - gantt
         - table
         - kanban
+        - calendar
         type: string
     type: object
   models.ProjectViewBucketConfiguration:
@@ -764,11 +783,13 @@ definitions:
     - due_date
     - start_date
     - end_date
+    - deadline
     type: string
     x-enum-varnames:
     - ReminderRelationDueDate
     - ReminderRelationStartDate
     - ReminderRelationEndDate
+    - ReminderRelationDeadline
   models.RouteDetail:
     properties:
       method:
@@ -890,6 +911,11 @@ definitions:
         allOf:
         - $ref: '#/definitions/user.User'
         description: The user who initially created the task.
+      deadline:
+        description: A hard cutoff distinct from due_date ("when it must be done"
+          vs "when I plan to work on it"). Independent of due_date, start_date and
+          end_date.
+        type: string
       deleted_at:
         description: |-
           A timestamp when this task was deleted. Soft-deleted tasks are kept for 30 days before they are removed permanently.
@@ -911,6 +937,10 @@ definitions:
       end_date:
         description: When this task ends.
         type: string
+      estimated_duration:
+        description: A pure estimate in seconds, independent of time-tracking entries
+          and dates. 0 = unset, max 90 days.
+        type: integer
       hex_color:
         description: The task color in hex
         maxLength: 7
@@ -976,13 +1006,22 @@ definitions:
           when marking the task as done, it will mark itself as "undone" and then
           increase all remindes and the due date by its amount.
         type: integer
+      repeat_from_completion:
+        description: When true and repeat_mode is 3, the next occurrence is evaluated
+          from the completion timestamp rather than the previous due date.
+        type: boolean
       repeat_mode:
         allOf:
         - $ref: '#/definitions/models.TaskRepeatMode'
-        description: 'Can have three possible values which will trigger when the task
+        description: 'Can have four possible values which will trigger when the task
           is marked as done: 0 = repeats after the amount specified in repeat_after,
-          1 = repeats all dates each months (ignoring repeat_after), 3 = repeats from
-          the current date rather than the last set date.'
+          1 = repeats all dates each months (ignoring repeat_after), 2 = repeats from
+          the current date rather than the last set date, 3 = repeats on the calendar
+          pattern in repeat_rrule.'
+      repeat_rrule:
+        description: An RFC 5545 RRULE string used when repeat_mode is 3 (calendar-pattern
+          recurrence, e.g. "every 3rd Friday").
+        type: string
       start_date:
         description: When this task starts.
         type: string
@@ -1046,12 +1085,23 @@ definitions:
     type: object
   models.TaskCollection:
     properties:
+      excluded_project_ids:
+        description: |-
+          ExcludedProjectIDs is only meaningful together with IncludeChildProjects. Each listed id is
+          dropped from the resolved descendant set; a still-included child of an excluded project is
+          kept (per-project exclusion, not subtree exclusion). The parent project itself is never
+          excludable. Ids that aren't accessible descendants of the parent are silently ignored.
+        items:
+          type: integer
+        type: array
       filter:
         description: The filter query to match tasks by. Check out https://vikunja.io/docs/filters
           for a full explanation.
         type: string
       filter_include_nulls:
         description: If set to true, the result will also include null values
+        type: boolean
+      include_child_projects:
         type: boolean
       order_by:
         description: The query parameter to order the items by. This can be either
@@ -1148,17 +1198,26 @@ definitions:
       reminder:
         description: The absolute time when the user wants to be reminded of the task.
         type: string
+      repeat_rrule:
+        description: |-
+          An RFC 5545 RRULE string. When set, the reminder re-arms to the rule's next
+          occurrence after firing instead of being one-shot. Absolute reminders only —
+          RelativeTo must be empty. Canonical "no rule" is the empty string; NULL and ""
+          are equivalent on read.
+        type: string
     type: object
   models.TaskRepeatMode:
     enum:
     - 0
     - 1
     - 2
+    - 3
     type: integer
     x-enum-varnames:
     - TaskRepeatModeDefault
     - TaskRepeatModeMonth
     - TaskRepeatModeFromCurrentDate
+    - TaskRepeatModeRRule
   models.TaskUnreadStatus:
     properties:
       taskID:
@@ -5048,11 +5107,11 @@ paths:
         name: projectID
         required: true
         type: integer
-      - description: User ID
+      - description: Username
         in: path
         name: userID
         required: true
-        type: integer
+        type: string
       produces:
       - application/json
       responses:
@@ -5088,11 +5147,11 @@ paths:
         name: projectID
         required: true
         type: integer
-      - description: User ID
+      - description: Username
         in: path
         name: userID
         required: true
-        type: integer
+        type: string
       - description: The user you want to update.
         in: body
         name: project
@@ -6712,11 +6771,11 @@ paths:
         name: id
         required: true
         type: integer
-      - description: User ID
+      - description: Username
         in: path
         name: userID
         required: true
-        type: integer
+        type: string
       produces:
       - application/json
       responses:
@@ -6748,7 +6807,7 @@ paths:
         in: path
         name: username
         required: true
-        type: integer
+        type: string
       produces:
       - application/json
       responses:
