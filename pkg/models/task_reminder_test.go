@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"code.vikunja.io/api/pkg/config"
 	"code.vikunja.io/api/pkg/db"
 	"code.vikunja.io/api/pkg/user"
 
@@ -91,6 +92,35 @@ func TestReminderCronDoesNotStrandSameMinuteReminders(t *testing.T) {
 		}
 	}
 	assert.Equal(t, 2, count, "both same-minute reminders must be returned, not deduped by task")
+}
+
+// Reminders are stored in UTC, but `now` arrives in service.timezone, so the
+// -12h/+14h query window must be formatted in UTC. Formatted in a UTC+14
+// service zone, the window starts 2h in the future and skips a due reminder.
+func TestReminderWindowIgnoresServiceTimeZone(t *testing.T) {
+	orig := config.ServiceTimeZone.GetString()
+	config.ServiceTimeZone.Set("Pacific/Kiritimati") // UTC+14
+	defer config.ServiceTimeZone.Set(orig)
+
+	db.LoadAndAssertFixtures(t)
+	s := db.NewSession()
+	defer s.Close()
+
+	_, err := s.ID(1).Cols("email_reminders_enabled").Update(&user.User{EmailRemindersEnabled: true})
+	require.NoError(t, err)
+
+	due := time.Date(2035, 1, 2, 9, 0, 0, 0, time.UTC)
+	task := &Task{Title: "reminder at UTC+14", ProjectID: 1, Reminders: []*TaskReminder{{Reminder: due}}}
+	require.NoError(t, task.Create(s, &user.User{ID: 1}))
+
+	notifications, err := getTasksWithRemindersDueAndTheirUsers(s, due, builder.Eq{"users.email_reminders_enabled": true})
+	require.NoError(t, err)
+
+	found := false
+	for _, n := range notifications {
+		found = found || n.Task.ID == task.ID
+	}
+	assert.True(t, found, "a reminder due now must be found when service.timezone is UTC+14")
 }
 
 func TestReminderRepeatRRuleValidation(t *testing.T) {
