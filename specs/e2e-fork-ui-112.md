@@ -231,3 +231,24 @@ above. 27 titles from the #112 list now pass. No other test that passed in the b
 No product bugs found; no `test.fixme` markers.
 
 **Not done:** `flowlib set suite_green=true` is not recorded, because the gate is not green.
+
+### Build session 2 (2026-10-02) — green
+
+**Item 5 done.** `magefile.go` has `"VIKUNJA_RATELIMIT_TOKENREFRESHLIMIT=1000",` on the line after
+`"VIKUNJA_RATELIMIT_NOAUTHLIMIT=1000",`. No other change in `magefile.go`.
+
+**Red-first check.** The `vikunja` binary was started with the `apiCmd` environment from mage,
+and 61 `POST /api/v1/user/token/refresh` requests were sent without a token. Without the new
+variable: 60 responses of 401 and 1 of 429. With the new variable: 61 responses of 401.
+
+**Targeted run** (Verification command 1): 108 passed, 2 skipped (OpenID, registration
+"confirmation notice"), 0 failed.
+
+**Full run** (`mage test:e2e "--reporter=line"`, 32.3 min): 54 failed, 381 passed, 4 skipped.
+All 54 failing titles are group A titles from the #112 list (compared by title). No group B–E
+title fails. The API log has 0 responses of 429. The three rate-limit tests from build session 1
+pass. No test that passed in the baseline fails.
+
+`pnpm lint` 0 (18 warnings, all pre-existing in `src/`); `pnpm typecheck` 0.
+
+No new deviations. Deviations 1–5 from build session 1 stand for the reviewer.

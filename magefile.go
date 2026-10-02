@@ -566,6 +566,7 @@ func (Test) E2E(ctx context.Context, args string) error {
 		"VIKUNJA_MAILER_ENABLED=false",
 		"VIKUNJA_REDIS_ENABLED=false",
 		"VIKUNJA_RATELIMIT_NOAUTHLIMIT=1000",
+		"VIKUNJA_RATELIMIT_TOKENREFRESHLIMIT=1000",
 	)
 	apiCmd.Stdout = os.Stdout
 	apiCmd.Stderr = os.Stderr
