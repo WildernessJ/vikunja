@@ -114,7 +114,7 @@ import GanttTimelineHeader from '@/components/gantt/GanttTimelineHeader.vue'
 import GanttRelationArrows from '@/components/gantt/GanttRelationArrows.vue'
 import Loading from '@/components/misc/Loading.vue'
 
-import {MILLISECONDS_A_DAY} from '@/constants/date'
+import {daySpan} from '@/helpers/time/daySpan'
 import {roundToNaturalDayBoundary} from '@/helpers/time/roundToNaturalDayBoundary'
 import {useDateOnly} from '@/composables/useDateOnly'
 
@@ -170,7 +170,7 @@ const dateFromDate = computed(() => dayjs(filters.value.dateFrom).startOf('day')
 const dateToDate = computed(() => dayjs(filters.value.dateTo).endOf('day').toDate())
 
 const totalWidth = computed(() => {
-	const dateDiff = Math.ceil((dateToDate.value.valueOf() - dateFromDate.value.valueOf()) / MILLISECONDS_A_DAY)
+	const dateDiff = daySpan(dateFromDate.value, dateToDate.value)
 	return dateDiff * dayWidthPixels.value
 })
 
@@ -328,9 +328,7 @@ function updateDayWidthPixels() {
 	// max width without overflow
 	const maxWidth = rect.width - marginLeft - marginRight
 
-	const dayCount = Math.ceil(
-		(dateToDate.value.valueOf() - dateFromDate.value.valueOf()) / MILLISECONDS_A_DAY,
-	)
+	const dayCount = daySpan(dateFromDate.value, dateToDate.value)
 
 	dayWidthPixels.value = Math.max(
 		maxWidth / dayCount,
@@ -461,18 +459,12 @@ const barPositions = computed(() => {
 })
 
 function computeBarX(date: Date): number {
-	const diff = Math.ceil(
-		(roundToNaturalDayBoundary(date, true).getTime() - dateFromDate.value.getTime()) /
-		MILLISECONDS_A_DAY,
-	)
+	const diff = daySpan(dateFromDate.value, roundToNaturalDayBoundary(date, true))
 	return diff * dayWidthPixels.value
 }
 
 function computeBarWidth(bar: GanttBarModel): number {
-	const diff = Math.ceil(
-		(roundToNaturalDayBoundary(bar.end).getTime() - roundToNaturalDayBoundary(bar.start, true).getTime()) /
-		MILLISECONDS_A_DAY,
-	)
+	const diff = daySpan(roundToNaturalDayBoundary(bar.start, true), roundToNaturalDayBoundary(bar.end))
 	return diff * dayWidthPixels.value
 }
 
