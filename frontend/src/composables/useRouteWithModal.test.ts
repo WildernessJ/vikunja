@@ -5,7 +5,6 @@ import {createRouter, createWebHistory} from 'vue-router'
 
 const baseStore = vi.hoisted(() => ({currentProjectId: 0}))
 vi.mock('@/stores/base', () => ({useBaseStore: () => baseStore}))
-vi.mock('@/composables/useProjects', () => ({useProjects: () => ({projects: {}})}))
 
 import {useRouteWithModal} from './useRouteWithModal'
 
@@ -63,7 +62,7 @@ describe('useRouteWithModal closeModal', () => {
 		const {closeModal, push, back} = await setup({
 			navigation: ['/projects/5/10', '/tasks/1'],
 			currentProjectId: 7,
-			state: {backdropView: '/projects/5/10?dateFrom=2026-10-01'},
+			state: {backdropView: '/projects/5/99?dateFrom=2026-10-01'},
 		})
 
 		closeModal()
