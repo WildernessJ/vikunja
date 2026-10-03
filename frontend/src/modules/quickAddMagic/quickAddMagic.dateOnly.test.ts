@@ -2,6 +2,8 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 import {setActivePinia, createPinia} from 'pinia'
 
 import {parseTaskText, PrefixMode} from '.'
+import {useAuthStore} from '@/stores/auth'
+import type {IFrontendSettings} from '@/modelTypes/IUserSettings'
 
 const NOW = new Date('2024-03-05T09:00:00')
 
@@ -29,6 +31,13 @@ describe('parseTaskText with dateOnly', () => {
 	})
 
 	it('leaves a ~ reminder on its default time — a reminder is an alarm', () => {
+		// The store setting is on, so only the reminder parser's explicit false keeps the time.
+		const authStore = useAuthStore()
+		authStore.setUserSettings({
+			...authStore.settings,
+			frontendSettings: {...(authStore.settings.frontendSettings as IFrontendSettings), dateOnly: true},
+		})
+
 		const withFlag = parseTaskText('call bob ~tomorrow', PrefixMode.Default, new Date(NOW), true)
 		const withoutFlag = parseTaskText('call bob ~tomorrow', PrefixMode.Default, new Date(NOW), false)
 
