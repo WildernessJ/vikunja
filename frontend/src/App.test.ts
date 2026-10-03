@@ -43,7 +43,7 @@ async function mountApp(path: string) {
 		history: createMemoryHistory(),
 		routes: [
 			{path: '/labels', name: 'labels.index', component: AppRoute},
-			{path: '/login', name: 'user.login', component: LoginRoute},
+			{path: '/login', name: 'user.login', component: LoginRoute, meta: {authPage: true}},
 		],
 	})
 	await router.push(path)
@@ -98,5 +98,26 @@ describe('App layout', () => {
 
 		expect(wrapper!.find('.no-auth').exists()).toBe(true)
 		expect(wrapper!.find('.app-route').exists()).toBe(false)
+	})
+
+	// The logged-out shell renders a route only when it carries `meta.authPage`.
+	it('renders an auth page in the logged out shell', async () => {
+		await mountApp('/login')
+
+		expect(wrapper!.find('.no-auth .login-route').exists()).toBe(true)
+		expect(wrapper!.findComponent({name: 'ContentAuth'}).exists()).toBe(false)
+	})
+
+	// An authenticated user on an auth page gets the logged-out shell too: the auth page is
+	// not an app route.
+	it('does not render the app shell on an auth page for an authenticated user', async () => {
+		const authStore = useAuthStore()
+		authStore.setAuthenticated(true)
+		authStore.setUser({id: 1, username: 'user1', type: AUTH_TYPES.USER} as never)
+
+		await mountApp('/login')
+
+		expect(wrapper!.findComponent({name: 'ContentAuth'}).exists()).toBe(false)
+		expect(wrapper!.find('.no-auth .login-route').exists()).toBe(true)
 	})
 })

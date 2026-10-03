@@ -68,7 +68,6 @@ import {useBodyClass} from '@/composables/useBodyClass'
 import QuickAddOverlay from '@/components/quick-actions/QuickAddOverlay.vue'
 import AddToHomeScreen from '@/components/home/AddToHomeScreen.vue'
 import DemoMode from '@/components/home/DemoMode.vue'
-import {AUTH_ROUTE_NAMES} from '@/constants/authRouteNames'
 import {useQuickAddMode} from '@/composables/useQuickAddMode'
 import {useAppBadge} from '@/composables/useAppBadge'
 
@@ -94,13 +93,13 @@ if (isQuickAddMode) {
 
 const route = useRoute()
 
-const showAuthLayout = computed(() => authStore.authUser && typeof route.name === 'string' && !AUTH_ROUTE_NAMES.has(route.name))
+const showAuthLayout = computed(() => authStore.authUser && typeof route.name === 'string' && !route.meta.authPage)
 
 // The router guard bounces every other route to /login while logged out, so anything
 // else reaching the logged-out shell means the auth state was cleared mid-navigation
 // (logout, expired session) while the old route is still current. Mounting it there
 // would run app components against a null `authStore.info`.
-const showNoAuthRoute = computed(() => typeof route.name === 'string' && AUTH_ROUTE_NAMES.has(route.name))
+const showNoAuthRoute = computed(() => typeof route.name === 'string' && route.meta.authPage === true)
 
 useBodyClass('is-touch', isTouchDevice())
 useAppBadge()

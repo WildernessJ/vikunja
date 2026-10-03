@@ -9,7 +9,6 @@ import {getNextWeekDate} from '@/helpers/time/getNextWeekDate'
 import {getStartOfTomorrowInTimezone} from '@/helpers/time/startOfTomorrow'
 import {LINK_SHARE_HASH_PREFIX} from '@/constants/linkShareHash'
 import {REDIRECT_HASH_PREFIX} from '@/constants/redirectHash'
-import {AUTH_ROUTE_NAMES} from '@/constants/authRouteNames'
 import {PRO_FEATURE} from '@/constants/proFeatures'
 import {error, success, translate} from '@/message'
 
@@ -76,6 +75,7 @@ const router = createRouter({
 			meta: {
 				title: 'user.auth.login',
 				returnability: 'no',
+				authPage: true,
 			},
 		},
 		{
@@ -85,6 +85,7 @@ const router = createRouter({
 			meta: {
 				title: 'user.auth.resetPassword',
 				returnability: 'no',
+				authPage: true,
 			},
 		},
 		{
@@ -94,6 +95,7 @@ const router = createRouter({
 			meta: {
 				title: 'user.auth.resetPassword',
 				returnability: 'no',
+				authPage: true,
 			},
 		},
 		{
@@ -105,6 +107,7 @@ const router = createRouter({
 			meta: {
 				title: 'user.auth.createAccount',
 				returnability: 'no',
+				authPage: true,
 			},
 		},
 		{
@@ -241,6 +244,7 @@ const router = createRouter({
 			component: LinkSharingAuth,
 			meta: {
 				returnability: 'no',
+				authPage: true,
 			},
 		},
 		{
@@ -496,6 +500,7 @@ const router = createRouter({
 			component: OpenIdAuth,
 			meta: {
 				returnability: 'no',
+				authPage: true,
 			},
 		},
 		{
@@ -671,9 +676,9 @@ export async function getAuthForRoute(to: RouteLocation, authStore: ReturnType<t
 		saveLastVisited(to.name as string, to.params, to.query)
 	}
 
-	// Which routes bounce an unauthenticated visitor to login is deliberately *not*
-	// tied to returnability: a 404 or a migration callback still needs the login gate.
-	if (!AUTH_ROUTE_NAMES.has(to.name as string) && !hasEmailConfirmToken) {
+	// Which routes bounce an unauthenticated visitor to login is `meta.authPage`, deliberately
+	// *not* returnability: a 404 or a migration callback still needs the login gate.
+	if (!to.meta.authPage && !hasEmailConfirmToken) {
 		return {name: 'user.login'}
 	}
 	
