@@ -361,6 +361,7 @@ import DropdownItem from '@/components/misc/DropdownItem.vue'
 
 import {getProjectTitle} from '@/helpers/getProjectTitle'
 import {canReturnTo} from '@/helpers/returnability'
+import {resolveBackRoute} from '@/helpers/backRoute'
 import {scrollIntoView} from '@/helpers/scrollIntoView'
 import {TASK_REPEAT_MODES} from '@/types/IRepeatMode'
 import {REMINDER_PERIOD_RELATIVE_TO_TYPES} from '@/types/IReminderPeriodRelativeTo'
@@ -490,22 +491,11 @@ const taskNotFound = ref(false)
 const taskTitle = computed(() => task.value.title ?? '')
 useTitle(taskTitle)
 
-// Every caller resolves history state when it acts, never ahead of time: the state is not
-// reactive and this instance is reused across task -> task navigation, so anything cached
-// (a computed, a render-time branch) keeps answering for the task we were on before.
-function resolveBackRoute() {
-	const backPath = router.options.history.state?.back
-
-	return typeof backPath === 'string' && backPath !== ''
-		? router.resolve(backPath)
-		: null
-}
-
 // Going back to a one-shot auth URL re-fires it: a consumed OIDC code errors out, /login bounces
 // straight back. Those routes carry a `meta.returnability`, as do the 404s - the router's catch-all
 // makes resolve() match everything, so a garbage or stale back path lands on the not-found page.
 function goBack() {
-	const backRoute = resolveBackRoute()
+	const backRoute = resolveBackRoute(router)
 
 	if (backRoute && canReturnTo(backRoute)) {
 		router.back()
@@ -523,7 +513,7 @@ function projectIdOf(backRoute: ReturnType<typeof router.resolve> | null): numbe
 }
 
 function lastProject(): ProjectResponse | null {
-	const projectId = projectIdOf(resolveBackRoute())
+	const projectId = projectIdOf(resolveBackRoute(router))
 
 	return projectId === null
 		? null
@@ -557,7 +547,7 @@ function isPlainClick(event: MouseEvent) {
 // Popping the history entry keeps the previous view's scroll position and state, so prefer it
 // over pushing whenever it is equivalent to following the link.
 function onBreadcrumbClick(event: MouseEvent, projectId: number, navigate: (event: MouseEvent) => void) {
-	const backRoute = resolveBackRoute()
+	const backRoute = resolveBackRoute(router)
 	const popIsEquivalent = PROJECT_CONTENT_ROUTE_NAMES.has(backRoute?.name as string)
 		&& projectIdOf(backRoute) === projectId
 
