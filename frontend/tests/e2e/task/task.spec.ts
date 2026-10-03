@@ -596,7 +596,7 @@ test.describe('Task', () => {
 			await input.pressSequentially(userToAssign.username.substring(0, 10), {delay: 20})
 			// Wait for search results (200ms debounce + API request time)
 			await expect(assigneesPopup.locator('.multiselect .search-results')).toBeVisible({timeout: 5000})
-			// Focus preloads every project member, so pick the matching result rather than the first.
+			// Pick the matching result rather than the first: the search can return other users.
 			const result = assigneesPopup.locator('.multiselect .search-result-button').filter({hasText: userToAssign.username})
 			await expect(result).toBeVisible()
 			await result.click()

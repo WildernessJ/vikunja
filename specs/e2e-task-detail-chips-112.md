@@ -236,3 +236,12 @@ no longer clicks `[data-cy="taskTrackTimeAction"]`. The section is always visibl
 were there before this cycle (unused imports and variables: 7 in `task.spec.ts`, 5 in
 `project-view-kanban.spec.ts`, 4 in `linkShare.spec.ts`). `pnpm lint` does not cover `tests/`.
 This gap is residue in #115.
+
+### Review session (2026-10-02, `/flow review --auto`)
+
+**Renamed titles:** one more. `task/assignee-search-narrow-column.spec.ts`: the describe
+"Assignee search results in a narrow column" became "Assignee search results in the assignees
+chip popup", and the test "Shows the avatar and name of every result when the assignees column
+is narrow" became "Shows the avatar and name of every result in the assignees chip popup". The
+fork has no detail columns; the chip popup has a fixed width. The setup comment and a stale
+comment in `task.spec.ts` ("Focus preloads every project member") were corrected.

@@ -4,8 +4,8 @@ import {TaskFactory} from '../../factories/task'
 import {UserFactory} from '../../factories/user'
 import {UserProjectFactory} from '../../factories/users_project'
 
-test.describe('Assignee search results in a narrow column', () => {
-	test('Shows the avatar and name of every result when the assignees column is narrow', async ({authenticatedPage: page}) => {
+test.describe('Assignee search results in the assignees chip popup', () => {
+	test('Shows the avatar and name of every result in the assignees chip popup', async ({authenticatedPage: page}) => {
 		await page.setViewportSize({width: 1280, height: 800})
 
 		// Don't truncate, and start at 100, to keep the fixture's logged-in user (ID 1)
@@ -14,8 +14,8 @@ test.describe('Assignee search results in a narrow column', () => {
 			username: (i: number) => `narrowcolumn${i}`,
 		}, false)
 		const projects = await ProjectFactory.create(1)
-		// The detail columns split the row evenly, so every extra attribute
-		// squeezes the assignees column further (#3709).
+		// Upstream's #3709 squeezed the assignees column with these attributes.
+		// The fork's chip popup has a fixed width; the setup stays as a regression guard.
 		const tasks = await TaskFactory.create(1, {
 			id: 1,
 			project_id: projects[0].id,
