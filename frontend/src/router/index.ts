@@ -301,91 +301,58 @@ const router = createRouter({
 			path: '/projects/new',
 			name: 'project.create',
 			component: () => import('@/views/project/NewProject.vue'),
-			meta: {
-				showAsModal: true,
-			},
 		},
 		{
 			path: '/projects/:parentProjectId/new',
 			name: 'project.createFromParent',
 			component: () => import('@/views/project/NewProject.vue'),
 			props: route => ({ parentProjectId: Number(route.params.parentProjectId as string) }),
-			meta: {
-				showAsModal: true,
-			},
 		},
 		{
 			path: '/projects/:projectId(\\d+)/settings/edit',
 			name: 'project.settings.edit',
 			component: () => import('@/views/project/settings/ProjectSettingsEdit.vue'),
 			props: route => ({ projectId: Number(route.params.projectId as string) }),
-			meta: {
-				showAsModal: true,
-			},
 		},
 		{
 			path: '/projects/:projectId/settings/background',
 			name: 'project.settings.background',
 			component: () => import('@/views/project/settings/ProjectSettingsBackground.vue'),
-			meta: {
-				showAsModal: true,
-			},
 		},
 		{
 			path: '/projects/:projectId/settings/duplicate',
 			name: 'project.settings.duplicate',
 			component: () => import('@/views/project/settings/ProjectSettingsDuplicate.vue'),
-			meta: {
-				showAsModal: true,
-			},
 		},
 		{
 			path: '/projects/:projectId/settings/save-template',
 			name: 'project.settings.saveTemplate',
 			component: () => import('@/views/project/settings/ProjectSettingsSaveTemplate.vue'),
-			meta: {
-				showAsModal: true,
-			},
 		},
 		{
 			path: '/projects/:projectId/settings/share',
 			name: 'project.settings.share',
 			component: () => import('@/views/project/settings/ProjectSettingsShare.vue'),
-			meta: {
-				showAsModal: true,
-			},
 		},
 		{
 			path: '/projects/:projectId/settings/webhooks',
 			name: 'project.settings.webhooks',
 			component: () => import('@/views/project/settings/ProjectSettingsWebhooks.vue'),
-			meta: {
-				showAsModal: true,
-			},
 		},
 		{
 			path: '/projects/:projectId(\\d+)/settings/delete',
 			name: 'project.settings.delete',
 			component: () => import('@/views/project/settings/ProjectSettingsDelete.vue'),
-			meta: {
-				showAsModal: true,
-			},
 		},
 		{
 			path: '/projects/:projectId/settings/archive',
 			name: 'project.settings.archive',
 			component: () => import('@/views/project/settings/ProjectSettingsArchive.vue'),
-			meta: {
-				showAsModal: true,
-			},
 		},
 		{
 			path: '/projects/:projectId/settings/views',
 			name: 'project.settings.views',
 			component: () =>  import('@/views/project/settings/ProjectSettingsViews.vue'),
-			meta: {
-				showAsModal: true,
-			},
 			props: route => ({ projectId: Number(route.params.projectId as string) }),
 		},
 		{
@@ -393,27 +360,18 @@ const router = createRouter({
 			path: '/projects/:projectId(-[2-9]\\d*|-1\\d+)/settings/edit',
 			name: 'filter.settings.edit',
 			component: () => import('@/views/filters/FilterEdit.vue'),
-			meta: {
-				showAsModal: true,
-			},
 			props: route => ({ projectId: Number(route.params.projectId as string) }),
 		},
 		{
 			path: '/projects/:projectId(-[2-9]\\d*|-1\\d+)/settings/delete',
 			name: 'filter.settings.delete',
 			component: () => import('@/views/filters/FilterDelete.vue'),
-			meta: {
-				showAsModal: true,
-			},
 			props: route => ({ projectId: Number(route.params.projectId as string) }),
 		},
 		{
 			path: '/projects/:projectId/info',
 			name: 'project.info',
 			component: () => import('@/views/project/ProjectInfo.vue')			,
-			meta: {
-				showAsModal: true,
-			},
 			props: route => ({ projectId: Number(route.params.projectId as string) }),
 		},
 		{
@@ -459,9 +417,6 @@ const router = createRouter({
 			path: '/teams/new',
 			name: 'teams.create',
 			component: () =>  import('@/views/teams/NewTeam.vue'),
-			meta: {
-				showAsModal: true,
-			},
 		},
 		{
 			path: '/teams/:id/edit',
@@ -482,17 +437,11 @@ const router = createRouter({
 			path: '/labels/new',
 			name: 'labels.create',
 			component: () => import('@/views/labels/NewLabel.vue'),
-			meta: {
-				showAsModal: true,
-			},
 		},
 		{
 			path: '/filters/new',
 			name: 'filters.create',
 			component: () => import('@/views/filters/FilterNew.vue'),
-			meta: {
-				showAsModal: true,
-			},
 		},
 		{
 			path: '/auth/openid/:provider',
@@ -530,7 +479,6 @@ const router = createRouter({
 			component: () => import('@/views/admin/AdminShell.vue'),
 			meta: {
 				requiresAdminPanel: true,
-				adminMode: true,
 			},
 			children: [
 				{
