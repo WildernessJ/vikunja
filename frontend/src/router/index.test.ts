@@ -103,6 +103,9 @@ describe('returnability route meta', () => {
 	})
 })
 
+// Both of these sit under `/projects/:projectId/...` and would be swallowed by the
+// `/projects/:projectId/:viewId` catch-all if route order ever changed - the task detail
+// breadcrumb reads `parentProjectId` off the first one to know which project it belongs to.
 describe('route ranking below /projects/:projectId', () => {
 	it('resolves the project create form ahead of the view route', () => {
 		expect(resolve('/projects/5/new').name).toBe('project.createFromParent')
