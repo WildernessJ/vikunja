@@ -862,7 +862,7 @@ test.describe('Task', () => {
 			return popup
 		}
 
-		test('Tabs into the due date quick-select options after clicking the action button', async ({authenticatedPage: page}) => {
+		test('Tabs into the due date quick-select options after clicking the due date chip', async ({authenticatedPage: page}) => {
 			const tasks = await TaskFactory.create(1, {
 				id: 1,
 				done: false,

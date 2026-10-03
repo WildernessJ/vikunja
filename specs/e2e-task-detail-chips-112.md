@@ -245,3 +245,9 @@ chip popup", and the test "Shows the avatar and name of every result when the as
 is narrow" became "Shows the avatar and name of every result in the assignees chip popup". The
 fork has no detail columns; the chip popup has a fixed width. The setup comment and a stale
 comment in `task.spec.ts` ("Focus preloads every project member") were corrected.
+
+The cold `/session-audit` found two more items, fixed in the same commit:
+- `task.spec.ts`: "Tabs into the due date quick-select options after clicking the action button" became
+  "Tabs into the due date quick-select options after clicking the due date chip".
+- The assignee-preload gap (Deviation 2 of build session 1) is filed as #116, as the product-bug rule
+  requires. The test comment links it. No fixme: the test's layout intent still has a working counterpart.

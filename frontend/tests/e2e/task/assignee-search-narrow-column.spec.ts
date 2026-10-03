@@ -33,8 +33,8 @@ test.describe('Assignee search results in the assignees chip popup', () => {
 		await page.locator('.task-view [data-chip="assignees"] .property-chip-button').click()
 
 		const multiselect = page.locator('.task-view [data-chip="assignees"] .property-chip-popup .multiselect')
-		// Focusing the chip popup's input does not preload the members; a shared
-		// username prefix makes one query return all three.
+		// Focusing the chip popup's input does not preload the members (#116); a
+		// shared username prefix makes one query return all three.
 		await multiselect.locator('input').click()
 		await multiselect.locator('input').pressSequentially('narrowcolumn', {delay: 20})
 		await expect(multiselect.locator('.search-results')).toBeVisible({timeout: 5000})
