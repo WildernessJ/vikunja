@@ -50,7 +50,8 @@ export const parseDate = (text: string, now: Date = new Date(), dateOnly = false
 		return addTimeToDate(text, getDateFromInterval(calculateDayInterval('today'), dateOnly), 'today', dateOnly)
 	}
 	if (matchesDateExpr(text, 'tonight')) {
-		const taskDate = getDateFromInterval(calculateDayInterval('today'), dateOnly)
+		// "tonight" is a time of day, so dateOnly does not apply.
+		const taskDate = getDateFromInterval(calculateDayInterval('today'), false)
 		taskDate.setHours(21, 0, 0, 0)
 		return addTimeToDate(text, taskDate, 'tonight')
 	}
