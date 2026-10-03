@@ -169,4 +169,42 @@ Halt, record the reason in the Execution Log, commit and stop if any of these oc
 
 ## Execution Log
 
-_Empty. The build phase appends here._
+### Build, 2026-10-03 (Opus 5.5)
+
+Commits, in order: `4684cf5cd` characterization tests (green on the old code), `75ab0e1e1`
+`resolveBackRoute` helper + `closeModal`, `f8d258af8` `meta.authPage` (#80), `2f08fd2d6` dead meta.
+The order differs from Execution routing in one way: Tests item 3 was written red before
+Implementation item 4, in the same commit.
+
+Results (all from the worktree root):
+
+- `pnpm vitest run --dir ./src`: 215 files, 2583 tests passed. `main` (`1b07d1fa4`): 214 files,
+  2573 tests. +10 = 8 characterization tests + 2 `App.test.ts` tests; the router test replaced one
+  test with one.
+- `pnpm typecheck` 0. `pnpm lint` 0 errors, 24 warnings, all in files this change does not touch.
+- `mage test:feature` exit 0.
+- Targeted E2E (Verification item 3): 53 passed, 1 skipped, 0 failed.
+- The Done grep over `frontend/src` returns nothing. `useRouteWithModal.ts` has no `RegExp`.
+
+Deviations and points for the reviewer:
+
+1. **`App.test.ts` was extended** (Tests item 4: it exists). Its `/login` test route now carries
+   `meta: {authPage: true}`, because the gate no longer keys on the route name. Two new tests:
+   an auth page renders in the logged-out shell, for an anonymous and for an authenticated user.
+   Both fail when the flag is removed from the test route (checked by hand).
+   `App.test.ts` is not in the Done file list; Tests item 4 asks for the change.
+2. **`showNoAuthRoute` uses `route.meta.authPage === true`**, not bare `route.meta.authPage`.
+   The computed is typed `boolean` that way. `showAuthLayout` uses `!route.meta.authPage`.
+3. **The `closeModal` condition is anchored, the old regex was not.** The regex matched
+   `/projects/\d+/\d+` anywhere in the back path. No route path has a further segment after
+   `/projects/:projectId/:viewId` with a numeric view id, so for every path the app produces the
+   match set is the same. A back path that holds that text only in its query string would have
+   matched before and does not now.
+4. **`closeModal` dropped `useProjects()`**: its only reader was the deleted fallback.
+5. **ADR-0011 still names `AUTH_ROUTE_NAMES`** (`docs/adr/ADR-0011-route-meta-returnability.md`,
+   six lines). It is a decision record, not a reader, so the stop criterion on files outside the
+   Done list did not fire. Whether to add a "superseded in part by #80" note is a review call.
+6. The characterization tests mock `@/stores/base` and `@/composables/useProjects`. The
+   `useProjects` mock is now dead after the refactor; it was kept so the file is the same on
+   both commits.
+
