@@ -16,8 +16,8 @@ test.describe('Task recurrence', () => {
 		}, false)
 		await page.goto(`/tasks/${task.id}`)
 
-		// Reveal the RepeatAfter component (hidden until the user activates it)
-		await page.getByRole('button', {name: 'Set Repeating Interval'}).click()
+		// Open the repeat chip's popup, which holds the RepeatAfter component
+		await page.locator('.task-view [data-chip="repeat"] .property-chip-button').click()
 
 		const save = page.waitForResponse(r =>
 			new URL(r.url()).pathname.endsWith(`/tasks/${task.id}`) && r.request().method() === 'PATCH',
@@ -44,7 +44,7 @@ test.describe('Task recurrence', () => {
 		const completed = page.waitForResponse(r =>
 			new URL(r.url()).pathname.endsWith(`/tasks/${task.id}`) && r.request().method() === 'PATCH',
 		)
-		await page.locator('.task-view .action-buttons .button').filter({hasText: 'Mark task done!'}).click()
+		await page.locator('.task-view .task-detail-menu .button--mark-done').click()
 		await completed
 
 		// Fetch fresh state from the API to verify the backend regenerated the task.
@@ -66,8 +66,8 @@ test.describe('Task recurrence', () => {
 		const [task] = await TaskFactory.create(1, {id: 1, project_id: 1}, false)
 		await page.goto(`/tasks/${task.id}`)
 
-		// Reveal the RepeatAfter component (hidden until the user activates it)
-		await page.getByRole('button', {name: 'Set Repeating Interval'}).click()
+		// Open the repeat chip's popup, which holds the RepeatAfter component
+		await page.locator('.task-view [data-chip="repeat"] .property-chip-button').click()
 
 		await expect(page.locator('#repeatMode')).toBeVisible()
 		// Amount input is visible in the default repeat mode
@@ -86,25 +86,27 @@ test.describe('Task recurrence', () => {
 		}, false)
 		await page.goto(`/tasks/${task.id}`)
 
-		await page.getByRole('button', {name: 'Set Repeating Interval'}).click()
+		await page.locator('.task-view [data-chip="repeat"] .property-chip-button').click()
 		await page.locator('#repeatMode').selectOption({label: 'Custom pattern'})
 
 		await page.locator('.weekday-option').filter({hasText: 'Mon'}).locator('input').check()
 
-		const save = page.waitForResponse(r =>
+		// The v2 client sends a Request object, so Playwright sees no request body; read the saved task.
+		const save = page.waitForResponse(async r =>
 			r.url().includes(`/tasks/${task.id}`) &&
-			r.request().method() === 'POST' &&
-			(r.request().postDataJSON()?.repeat_rrule ?? '').includes('MO,FR'),
+			r.request().method() === 'PATCH' &&
+			((await r.json())?.repeat_rrule ?? '').includes('MO,FR'),
 		)
 		await page.locator('.weekday-option').filter({hasText: 'Fri'}).locator('input').check()
 		const r = await save
-		const body = r.request().postDataJSON()
+		const body = await r.json()
 		expect(body.repeat_mode).toBe(3)
 		expect(body.repeat_rrule).toBe('FREQ=WEEKLY;BYDAY=MO,FR')
 
-		// Reload: an RRULE-mode task auto-expands the repeat editor, which parses
-		// the stored rule back into checked weekday boxes.
+		// Reload: reopening the repeat chip's editor parses the stored rule back
+		// into checked weekday boxes.
 		await page.goto(`/tasks/${task.id}`)
+		await page.locator('.task-view [data-chip="repeat"] .property-chip-button').click()
 		const monInput = page.locator('.weekday-option').filter({hasText: 'Mon'}).locator('input')
 		const friInput = page.locator('.weekday-option').filter({hasText: 'Fri'}).locator('input')
 		await expect(monInput).toBeChecked()

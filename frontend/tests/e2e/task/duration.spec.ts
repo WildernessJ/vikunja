@@ -13,25 +13,27 @@ test.describe('Task estimated duration', () => {
 		await page.goto(`/tasks/${task.id}`)
 		await page.waitForLoadState('networkidle')
 
-		const setButton = page.locator('.task-view .action-buttons .button').filter({hasText: 'Set Estimated Duration'})
-		await expect(setButton).toBeVisible({timeout: 10000})
-		await setButton.click()
+		const durationChip = page.locator('.task-view [data-chip="duration"] .property-chip-button')
+		await expect(durationChip).toBeVisible({timeout: 10000})
+		await durationChip.click()
 
 		const input = page.locator('[data-cy="taskDetail.estimatedDuration"]')
 		await expect(input).toBeVisible()
 
 		const save = page.waitForResponse(r =>
-			r.url().includes(`/tasks/${task.id}`) && r.request().method() === 'POST',
+			r.url().includes(`/tasks/${task.id}`) && r.request().method() === 'PATCH',
 		)
 		await input.fill('1h30m')
 		await input.blur()
 
+		// The v2 client sends a Request object, so Playwright sees no request body; read the saved task.
 		const r = await save
-		expect(r.request().postDataJSON().estimated_duration).toBe(5400)
+		expect((await r.json()).estimated_duration).toBe(5400)
 		await expect(page.locator('.global-notification')).toContainText('Success')
 
 		await page.reload()
 		await page.waitForLoadState('networkidle')
+		await durationChip.click()
 		await expect(page.locator('[data-cy="taskDetail.estimatedDuration"]')).toHaveValue('1h 30m')
 	})
 
@@ -40,16 +42,16 @@ test.describe('Task estimated duration', () => {
 		await page.goto(`/tasks/${task.id}`)
 		await page.waitForLoadState('networkidle')
 
-		const setButton = page.locator('.task-view .action-buttons .button').filter({hasText: 'Set Estimated Duration'})
-		await expect(setButton).toBeVisible({timeout: 10000})
-		await setButton.click()
+		const durationChip = page.locator('.task-view [data-chip="duration"] .property-chip-button')
+		await expect(durationChip).toBeVisible({timeout: 10000})
+		await durationChip.click()
 
 		const input = page.locator('[data-cy="taskDetail.estimatedDuration"]')
 		await expect(input).toBeVisible()
 
 		let sawSave = false
 		page.on('request', req => {
-			if (req.url().includes(`/tasks/${task.id}`) && req.method() === 'POST') {
+			if (req.url().includes(`/tasks/${task.id}`) && req.method() === 'PATCH') {
 				sawSave = true
 			}
 		})
@@ -66,26 +68,30 @@ test.describe('Task estimated duration', () => {
 		await page.goto(`/tasks/${task.id}`)
 		await page.waitForLoadState('networkidle')
 
+		const durationChip = page.locator('.task-view [data-chip="duration"]')
+		await expect(durationChip).toBeVisible({timeout: 10000})
+		await durationChip.locator('.property-chip-button').click()
 		const input = page.locator('[data-cy="taskDetail.estimatedDuration"]')
-		await expect(input).toBeVisible({timeout: 10000})
+		await expect(input).toBeVisible()
 		await expect(input).toHaveValue('1h')
 
 		const save = page.waitForResponse(r =>
-			r.url().includes(`/tasks/${task.id}`) && r.request().method() === 'POST',
+			r.url().includes(`/tasks/${task.id}`) && r.request().method() === 'PATCH',
 		)
 		await page.locator('[data-cy="taskDetail.estimatedDurationClear"]').click()
 
 		const r = await save
-		expect(r.request().postDataJSON().estimated_duration).toBe(0)
+		expect((await r.json()).estimated_duration ?? 0).toBe(0)
 		await expect(input).toHaveValue('')
 
-		// After a reload the stored value is 0, so the field collapses back to
-		// inactive (like deadline / progress) and the "Set" action reappears —
-		// proof the duration was actually persisted as cleared.
+		// After a reload the stored value is 0, so the duration chip renders as
+		// unset again and its editor is empty — proof the duration was actually
+		// persisted as cleared.
 		await page.reload()
 		await page.waitForLoadState('networkidle')
-		await expect(page.locator('.task-view .action-buttons .button').filter({hasText: 'Set Estimated Duration'})).toBeVisible({timeout: 10000})
-		await expect(page.locator('[data-cy="taskDetail.estimatedDuration"]')).toHaveCount(0)
+		await expect(durationChip).toHaveClass(/is-unset/, {timeout: 10000})
+		await durationChip.locator('.property-chip-button').click()
+		await expect(input).toHaveValue('')
 	})
 
 	test('renders a duration chip on the list view when set', async ({authenticatedPage: page}) => {

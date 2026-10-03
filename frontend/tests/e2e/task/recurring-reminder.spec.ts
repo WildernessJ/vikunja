@@ -11,8 +11,8 @@ test.describe('Recurring reminders', () => {
 		const [task] = await TaskFactory.create(1, {id: 1, project_id: 1, done: false}, false)
 		await page.goto(`/tasks/${task.id}`)
 
-		await page.locator('.task-view .action-buttons .button').filter({hasText: 'Set Reminders'}).click()
-		await page.locator('.task-view .columns.details .column button').filter({hasText: 'Add a reminder'}).click()
+		await page.locator('.task-view [data-chip="reminders"] .property-chip-button').click()
+		await page.locator('.task-view [data-chip="reminders"] .property-chip-popup button').filter({hasText: 'Add a reminder'}).click()
 
 		// The task has no due/start/end date, so the reminder editor opens directly
 		// in absolute mode. The recurrence picker is only offered for absolute reminders.
@@ -27,20 +27,22 @@ test.describe('Recurring reminders', () => {
 
 		const save = page.waitForResponse(r =>
 			r.url().includes(`/tasks/${task.id}`) &&
-			r.request().method() === 'POST',
+			r.request().method() === 'PATCH',
 		)
 		await openPopup.locator('button').filter({hasText: 'Confirm'}).click()
+		// The v2 client sends a Request object, so Playwright sees no request body; read the saved task.
 		const response = await save
-		const body = response.request().postDataJSON()
+		const body = await response.json()
 		expect(body.reminders).toHaveLength(1)
 		expect(body.reminders[0].repeat_rrule).toBe('FREQ=WEEKLY;BYDAY=TU')
 
 		await expect(page.locator('.reminder-options-popup.is-open')).not.toBeVisible()
 
 		// Reload and confirm the stored rule survives the round-trip: the reminder
-		// button flags the recurrence, and reopening the editor shows Tuesday checked.
+		// button in the reminders chip flags the recurrence, and reopening the editor shows Tuesday checked.
 		await page.goto(`/tasks/${task.id}`)
-		const reminderButton = page.locator('.task-view .columns.details .column button').filter({hasText: '(repeats)'})
+		await page.locator('.task-view [data-chip="reminders"] .property-chip-button').click()
+		const reminderButton = page.locator('.task-view [data-chip="reminders"] .property-chip-popup button').filter({hasText: '(repeats)'})
 		await expect(reminderButton).toBeVisible()
 
 		await reminderButton.click()
@@ -58,8 +60,8 @@ test.describe('Recurring reminders', () => {
 		}, false)
 		await page.goto(`/tasks/${task.id}`)
 
-		await page.locator('.task-view .action-buttons .button').filter({hasText: 'Set Reminders'}).click()
-		await page.locator('.task-view .columns.details .column button').filter({hasText: 'Add a reminder'}).click()
+		await page.locator('.task-view [data-chip="reminders"] .property-chip-button').click()
+		await page.locator('.task-view [data-chip="reminders"] .property-chip-popup button').filter({hasText: 'Add a reminder'}).click()
 
 		const openPopup = page.locator('.reminder-options-popup.is-open')
 		await openPopup.locator('.option-button').filter({hasText: 'Custom'}).click()

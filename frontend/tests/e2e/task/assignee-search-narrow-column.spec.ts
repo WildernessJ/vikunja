@@ -4,17 +4,18 @@ import {TaskFactory} from '../../factories/task'
 import {UserFactory} from '../../factories/user'
 import {UserProjectFactory} from '../../factories/users_project'
 
-test.describe('Assignee search results in a narrow column', () => {
-	test('Shows the avatar and name of every result when the assignees column is narrow', async ({authenticatedPage: page}) => {
+test.describe('Assignee search results in the assignees chip popup', () => {
+	test('Shows the avatar and name of every result in the assignees chip popup', async ({authenticatedPage: page}) => {
 		await page.setViewportSize({width: 1280, height: 800})
 
 		// Don't truncate, and start at 100, to keep the fixture's logged-in user (ID 1)
 		const users = await UserFactory.create(3, {
 			id: (i: number) => 100 + i,
+			username: (i: number) => `narrowcolumn${i}`,
 		}, false)
 		const projects = await ProjectFactory.create(1)
-		// The detail columns split the row evenly, so every extra attribute
-		// squeezes the assignees column further (#3709).
+		// Upstream's #3709 squeezed the assignees column with these attributes.
+		// The fork's chip popup has a fixed width; the setup stays as a regression guard.
 		const tasks = await TaskFactory.create(1, {
 			id: 1,
 			project_id: projects[0].id,
@@ -29,14 +30,17 @@ test.describe('Assignee search results in a narrow column', () => {
 		})
 
 		await page.goto(`/tasks/${tasks[0].id}`)
-		await page.locator('[data-cy="taskDetail.assign"]').click()
+		await page.locator('.task-view [data-chip="assignees"] .property-chip-button').click()
 
-		const multiselect = page.locator('.task-view .column.assignees .multiselect')
+		const multiselect = page.locator('.task-view [data-chip="assignees"] .property-chip-popup .multiselect')
+		// Focusing the chip popup's input does not preload the members (#116); a
+		// shared username prefix makes one query return all three.
 		await multiselect.locator('input').click()
+		await multiselect.locator('input').pressSequentially('narrowcolumn', {delay: 20})
 		await expect(multiselect.locator('.search-results')).toBeVisible({timeout: 5000})
 
 		const results = multiselect.locator('.search-result-button')
-		await expect(results.first()).toBeVisible()
+		await expect(results).toHaveCount(users.length)
 
 		for (const result of await results.all()) {
 			// `.user` is what the row clips: when it collapses to zero the row

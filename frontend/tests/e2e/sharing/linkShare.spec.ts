@@ -1,6 +1,4 @@
 import {test, expect} from '../../support/fixtures'
-import {LabelFactory} from '../../factories/labels'
-import {LabelTaskFactory} from '../../factories/label_task'
 import {BucketFactory} from '../../factories/bucket'
 import {LinkShareFactory} from '../../factories/link_sharing'
 import {TaskBucketFactory} from '../../factories/task_buckets'
@@ -107,7 +105,7 @@ test.describe('Link shares', () => {
 
 		await page.goto(`/tasks/${tasks[0].id}#share-auth-token=${share.hash}`)
 
-		await expect(page.locator('h1.title.input')).toContainText(tasks[0].title)
+		await expect(page.locator('.task-view .task-title-field textarea.title')).toHaveValue(tasks[0].title)
 	})
 
 	// Regression test for #2546: a logged-in user opening a public link share URL
@@ -166,12 +164,6 @@ test.describe('Link share: label picker', () => {
 		const [task] = await TaskFactory.create(1, {
 			project_id: projects[0].id,
 		})
-		// A label on the task makes the labels field render without clicking "Add Labels" first.
-		const [label] = await LabelFactory.create(1)
-		await LabelTaskFactory.create(1, {
-			task_id: task.id,
-			label_id: label.id,
-		})
 		const [share] = await LinkShareFactory.create(1, {
 			project_id: projects[0].id,
 			permission: 1,
@@ -179,11 +171,12 @@ test.describe('Link share: label picker', () => {
 
 		await page.goto(`/tasks/${task.id}#share-auth-token=${share.hash}`)
 
-		const labelInput = page.locator('.task-view .details.labels-list .multiselect input')
+		await page.locator('.task-view [data-chip="labels"] .property-chip-button').click()
+		const labelInput = page.locator('.task-view [data-chip="labels"] .property-chip-popup .multiselect input')
 		await expect(labelInput).toBeVisible()
 		await labelInput.fill('label-that-does-not-exist')
 
-		const searchResults = page.locator('.task-view .details.labels-list .multiselect .search-results')
+		const searchResults = page.locator('.task-view [data-chip="labels"] .property-chip-popup .multiselect .search-results')
 		await expect(searchResults.locator('.search-result-hint')).toContainText('New labels can\'t be created from a shared link')
 		await expect(searchResults.locator('.is-create-option')).toHaveCount(0)
 	})

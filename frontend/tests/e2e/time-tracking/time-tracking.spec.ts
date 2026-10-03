@@ -27,10 +27,9 @@ async function selectTask(form: Locator, title: string) {
 	await form.locator('.search-result-button').filter({hasText: title}).first().click()
 }
 
-// Open the time-tracking section on a task detail page.
+// Open a task detail page; the fork shows its time-tracking section without a button.
 async function openTaskTimeTracking(page: Page, taskId: number): Promise<Locator> {
 	await page.goto(`/tasks/${taskId}`)
-	await page.locator('[data-cy="taskTrackTimeAction"]').click()
 	const section = page.locator('.task-time-tracking')
 	await expect(section).toBeVisible()
 	return section

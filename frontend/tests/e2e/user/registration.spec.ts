@@ -34,7 +34,7 @@ test.describe('Registration', () => {
 		// starts both; `mage test:e2e` starts neither.
 		test.skip(!process.env.MAILER_API_URL, 'needs a mailer-enabled API and Mailpit')
 		const publicUrl = new URL('/', baseURL).href
-		const apiUrl = (process.env.MAILER_API_URL || 'http://127.0.0.1:3457/api/v1').replace(/\/$/, '')
+		const apiUrl = process.env.MAILER_API_URL!.replace(/\/$/, '')
 		const mailpitUrl = process.env.MAILPIT_URL || 'http://127.0.0.1:8025'
 		const username = `unconfirmed-${randomBytes(8).toString('hex')}`
 		const email = `${username}@example.com`
