@@ -1,14 +1,13 @@
 import {computed, defineAsyncComponent, h, shallowRef, type AsyncComponentLoader, type VNode, watchEffect} from 'vue'
 import {useRoute, useRouter, type RouteComponent, type RouteLocationNormalizedGeneric} from 'vue-router'
 import {useBaseStore} from '@/stores/base'
-import {useProjects} from '@/composables/useProjects'
+import {resolveBackRoute} from '@/helpers/backRoute'
 
 export function useRouteWithModal() {
 	const router = useRouter()
 	const route = useRoute()
 	const backdropView = computed(() => route.fullPath ? window.history.state?.backdropView : undefined)
 	const baseStore = useBaseStore()
-	const projectList = useProjects()
 
 	const routeWithModal = computed(() => {
 		return backdropView.value
@@ -66,35 +65,26 @@ export function useRouteWithModal() {
 	function closeModal() {
 		// If the current project was changed because the user moved the currently opened task while coming from kanban,
 		// we need to reflect that change in the route when they close the task modal.
-		// The last route is only available as resolved string, therefore we need to use a regex for matching here
-		const routeMatch = new RegExp('\\/projects\\/\\d+\\/(\\d+)', 'g')
-		const match = historyState.value?.back
-			? routeMatch.exec(historyState.value.back)
-			: null
-		if (match !== null && baseStore.currentProjectId !== 0) {
-			let viewId: string | number | undefined = match[1]
-
-			if (!viewId) {
-				const project = projectList.projects[baseStore.currentProjectId]
-				viewId = project?.views?.[0]?.id
-			}
-
-			// Only navigate if we have a valid project and view
-			if (viewId) {
-				// Preserve query parameters (e.g., date range) from the backdrop view
-				const backdropRoute = historyState.value?.backdropView && router.resolve(historyState.value.backdropView)
-				const newRoute = {
-					name: 'project.view',
-					params: {
-						projectId: baseStore.currentProjectId,
-						viewId,
-					},
-					query: backdropRoute?.query || {},
-				}
-
-				router.push(newRoute)
-				return
-			}
+		// Only numeric project and view ids qualify: a saved filter (negative id) goes back instead.
+		const backRoute = resolveBackRoute(router)
+		const isNumericId = (param: unknown) => typeof param === 'string' && /^\d+$/.test(param)
+		if (
+			backRoute?.name === 'project.view'
+			&& isNumericId(backRoute.params.projectId)
+			&& isNumericId(backRoute.params.viewId)
+			&& baseStore.currentProjectId !== 0
+		) {
+			// Preserve query parameters (e.g., date range) from the backdrop view
+			const backdropRoute = historyState.value?.backdropView && router.resolve(historyState.value.backdropView)
+			router.push({
+				name: 'project.view',
+				params: {
+					projectId: baseStore.currentProjectId,
+					viewId: backRoute.params.viewId,
+				},
+				query: backdropRoute?.query || {},
+			})
+			return
 		}
 
 		// Try browser history first

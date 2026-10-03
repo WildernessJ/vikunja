@@ -3,7 +3,6 @@ import type {RouteLocation} from 'vue-router'
 
 import router, {getAuthForRoute} from './index'
 import {getLastVisited} from '@/helpers/saveLastVisited'
-import {AUTH_ROUTE_NAMES} from '@/constants/authRouteNames'
 import type {useAuthStore} from '@/stores/auth'
 
 const {success, error} = vi.hoisted(() => ({
@@ -83,13 +82,21 @@ describe('returnability route meta', () => {
 		expect(resolve(path).meta.returnability).toBeUndefined()
 	})
 
-	// A route can drop out of AUTH_ROUTE_NAMES' twin set only by hand, and the failure is
-	// silent: redirectIfSaved() would restore an authenticated user onto an auth page,
-	// rendered in the wrong shell.
-	it('flags every auth route', () => {
-		const authRoutes = router.getRoutes().filter(route => AUTH_ROUTE_NAMES.has(route.name as string))
+	// `authPage` is set by hand on each auth route, and a missed one fails silently: the route
+	// renders in the wrong shell and bounces an anonymous visitor to login. Pin the exact set,
+	// and keep every member out of redirectIfSaved(), which would restore an authenticated
+	// user onto it.
+	it('flags exactly the auth routes as authPage, and none as returnable', () => {
+		const authRoutes = router.getRoutes().filter(route => route.meta.authPage === true)
 
-		expect(authRoutes).toHaveLength(AUTH_ROUTE_NAMES.size)
+		expect(authRoutes.map(route => route.name).sort()).toEqual([
+			'link-share.auth',
+			'openid.auth',
+			'user.login',
+			'user.password-reset.request',
+			'user.password-reset.reset',
+			'user.register',
+		])
 		authRoutes.forEach(route => {
 			expect(route.meta.returnability, `${String(route.name)} is missing meta.returnability`).toBe('no')
 		})
@@ -150,13 +157,13 @@ describe('getAuthForRoute', () => {
 		expect(await getAuthForRoute(resolve(path), ANONYMOUS)).toEqual({name: 'user.login'})
 	})
 
-	// The save gate (`returnability`) and the login gate (`AUTH_ROUTE_NAMES`) are deliberately two
+	// The save gate (`returnability`) and the login gate (`meta.authPage`) are deliberately two
 	// questions about the same route, and the 404 is where they disagree: never worth restoring
 	// after a login, yet an anonymous visitor who lands on one still has to be bounced. Merging
 	// the two predicates back into one breaks exactly one of the assertions below.
 	it('bounces an unauthenticated visitor from a route it refuses to save', async () => {
 		const to = resolve('/some-garbage-path')
-		expect(AUTH_ROUTE_NAMES.has(to.name as string)).toBe(false)
+		expect(to.meta.authPage).toBeFalsy()
 
 		expect(await getAuthForRoute(to, ANONYMOUS)).toEqual({name: 'user.login'})
 		expect(getLastVisited()).toBeNull()

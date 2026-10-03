@@ -20,6 +20,16 @@ declare module 'vue-router' {
 		returnability?: 'no' | 'no-but-restore'
 
 		/**
+		 * An auth page: it renders in the logged-out shell (`App.vue`), and the
+		 * auth guard does not send an anonymous visitor from it to login.
+		 *
+		 * A separate question from `returnability`: every `authPage` route is
+		 * `returnability: 'no'`, but not the reverse - the 404s, `oauth.authorize`
+		 * and `migrate.service` still need the login gate.
+		 */
+		authPage?: true
+
+		/**
 		 * i18n key for the page title, rendered by AppHeader and NoAuthWrapper.
 		 */
 		title?: string
