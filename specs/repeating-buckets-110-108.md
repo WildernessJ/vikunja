@@ -254,3 +254,10 @@ Deviations and notes for the reviewer:
 
 Verification (from the worktree root): `mage test:feature && mage test:web` 0, `mage lint`
 0 issues, `mage check:all` 0 with no diff. The live browser verify is for the review phase.
+
+### Review, 2026-10-04 (Opus, `/flow review --auto`)
+
+- Verifier: REFUTED with two findings, both verified by running. (1) `deadline` was not in the `Cols` list, so the DB kept the old value. (2) A rule with no next occurrence stayed done but was retargeted to the default bucket, so the limit was checked on the wrong bucket. Low-relevance finding: the rule also ran for a done bucket of a view that is no longer manual Kanban. All three fixed red-first in `989ac3563`.
+- Session audit: SURVIVES, no blockers. Mutation probes found four unpinned guards (manual-bucket condition, start/end date columns, description column, stale default on create). Tests added in `4f95dac23`; each fails when its guard is removed.
+- Divergence: the move path puts a task whose rule has ended, still done, in the default bucket. The create path keeps it in the done bucket. Filed with the move path's missing `deadline`/`description` columns as #120.
+- Browser verify passed at `b9ebd07af` and rechecked at `989ac3563` (evidence in the worktree `.flow-verify/`).
