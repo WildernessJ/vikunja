@@ -763,3 +763,25 @@ func TestProjectView_HealKeepsDefaultDistinctFromDone(t *testing.T) {
 		assertDefaultNotDone(t)
 	})
 }
+
+func TestProjectView_Delete(t *testing.T) {
+	u := &user.User{ID: 1}
+
+	t.Run("deletes the view's buckets", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		require.NoError(t, (&ProjectView{ID: 4, ProjectID: 1}).Delete(s, u))
+		require.NoError(t, s.Commit())
+
+		db.AssertMissing(t, "buckets", map[string]interface{}{
+			"project_view_id": 4,
+		})
+		// Bucket 4 is on view 8 and stays.
+		db.AssertExists(t, "buckets", map[string]interface{}{
+			"id":              4,
+			"project_view_id": 8,
+		}, false)
+	})
+}
