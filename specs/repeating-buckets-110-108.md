@@ -214,4 +214,43 @@ Done looks like this:
 
 ## Execution Log
 
-(empty; the build phase appends)
+### Build, 2026-10-04 (Opus, driver only)
+
+Commits: `91bd15bad` (#110), `c3279e0ed` (orphan buckets), `6cfe48145` (#108 tests).
+
+Red on the old code (`d94eb5420` plus the new tests):
+
+- Test 1 (`TestTask_Create/repeating_task_created_in_the_done_bucket_completes_one_iteration`):
+  `task.Done` true, `BucketID` expected 1 actual 3, due date expected +3600 s actual unchanged;
+  the DB row was the same.
+- Test 2 (`TestHumaTask_CreateInDoneBucket`): case 1 failed as in Test 1. "Full done bucket"
+  returned 412 (`code 10004`) instead of 201. "Full default bucket" returned 201 (task done in
+  bucket 3) instead of 412. The non-repeating case and the foreign bucket case passed on the old
+  code, as expected for pins. The foreign bucket 4 gives 404 with `ErrCodeBucketDoesNotExist`.
+- Test 3 (default == done): `task.Done` true and the DB row `done` true, due date not advanced.
+  **Guard check:** with Implementation 1 in place and the `!t.isRepeating()` guard removed,
+  Test 3 is red (`task.Done` and the DB row are true). Test 3 is therefore the counterpart
+  itself; no extra test was added.
+- Test 7 (`TestProjectView_Delete`): `buckets` rows with `project_view_id = 4` remained.
+
+Tests 4–6 are regression pins and passed on the first run.
+
+Deviations and notes for the reviewer:
+
+- `resolveProvidedBuckets` now runs in three passes: validate each requested bucket (lookup,
+  view, cross-project check), retarget and group by destination, then check the limits. The
+  helper `completeRepeatingTaskInDoneBucket` holds the per-task decision. If the destination
+  bucket was not requested, it is loaded with `getBucketByID`. The destination is always on the
+  same view as the requested done bucket, so the view map lookup is safe.
+- Test 1 and Test 3 use a due date 48 h in the future so that one interval advances it exactly
+  once (`addRepeatIntervalToTime` steps past now).
+- Test 4: I changed the existing "copies rrule recurrence" test instead of adding a sibling. The
+  source due date is now zero and the `Equal` line is gone; the row assertion stays.
+- Test 6 #93: task 1 has attachments, and the webtest env has no file fixtures (404 code 4034).
+  The test uses task 2, as the existing v2 duplicate test does. Task 2 is done; this does not
+  affect the rrule field assertions.
+- Test 5: the `AssertMissing` loops no longer filter on `project_view_id`, so a row for bucket 4
+  on any view fails the test.
+
+Verification (from the worktree root): `mage test:feature && mage test:web` 0, `mage lint`
+0 issues, `mage check:all` 0 with no diff. The live browser verify is for the review phase.
