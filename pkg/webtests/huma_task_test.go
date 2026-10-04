@@ -23,6 +23,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"code.vikunja.io/api/pkg/db"
 	"code.vikunja.io/api/pkg/models"
@@ -208,6 +209,89 @@ func TestHumaTask_Create(t *testing.T) {
 	t.Run("Empty title is rejected", func(t *testing.T) {
 		rec := create("1", `{"title":""}`)
 		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code, "body: %s", rec.Body.String())
+	})
+}
+
+// TestHumaTask_CreateInDoneBucket covers #110: a repeating task created in a
+// done bucket completes one iteration and lands in the default bucket, the same
+// rule as a move into the done bucket. View 4 of project 1: default bucket 1
+// (11 tasks), done bucket 3 (4 tasks). Bucket 4 lives on view 8 (project 2).
+func TestHumaTask_CreateInDoneBucket(t *testing.T) {
+	due := time.Now().Add(48 * time.Hour).UTC().Truncate(time.Second)
+	repeatingBody := func(title string) string {
+		return fmt.Sprintf(`{"title":%q,"repeat_after":3600,"due_date":%q,"bucket_id":3}`, title, due.Format(time.RFC3339))
+	}
+	setup := func(t *testing.T) func(body string) *httptest.ResponseRecorder {
+		e, err := setupTestEnv()
+		require.NoError(t, err)
+		token := humaTokenFor(t, &testuser1)
+		return func(body string) *httptest.ResponseRecorder {
+			return humaRequest(t, e, http.MethodPost, "/api/v2/projects/1/tasks", body, token, "")
+		}
+	}
+
+	t.Run("repeating task completes one iteration in the default bucket", func(t *testing.T) {
+		create := setup(t)
+		rec := create(repeatingBody("repeat into done"))
+		require.Equal(t, http.StatusCreated, rec.Code, "body: %s", rec.Body.String())
+
+		task := &models.Task{}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), task))
+		assert.False(t, task.Done)
+		assert.Equal(t, int64(1), task.BucketID)
+		assert.Equal(t, due.Add(time.Hour).Unix(), task.DueDate.Unix())
+
+		db.AssertExists(t, "tasks", map[string]interface{}{
+			"id":   task.ID,
+			"done": false,
+		}, false)
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":   task.ID,
+			"bucket_id": 1,
+		}, false)
+		db.AssertMissing(t, "task_buckets", map[string]interface{}{
+			"task_id":   task.ID,
+			"bucket_id": 3,
+		})
+	})
+	t.Run("full done bucket does not block the create", func(t *testing.T) {
+		create := setup(t)
+		setBucketLimit(t, 3, 4)
+		rec := create(repeatingBody("repeat into full done"))
+		require.Equal(t, http.StatusCreated, rec.Code, "body: %s", rec.Body.String())
+		assert.Contains(t, rec.Body.String(), `"bucket_id":1`)
+	})
+	t.Run("full default bucket blocks the create", func(t *testing.T) {
+		create := setup(t)
+		setBucketLimit(t, 1, 11)
+		rec := create(repeatingBody("repeat into full default"))
+		require.Equal(t, http.StatusPreconditionFailed, rec.Code, "body: %s", rec.Body.String())
+		assert.Contains(t, rec.Body.String(), fmt.Sprintf(`"code":%d`, models.ErrCodeBucketLimitExceeded))
+		db.AssertMissing(t, "tasks", map[string]interface{}{
+			"title": "repeat into full default",
+		})
+	})
+	t.Run("non-repeating task is done in the done bucket", func(t *testing.T) {
+		create := setup(t)
+		rec := create(`{"title":"plain into done","bucket_id":3}`)
+		require.Equal(t, http.StatusCreated, rec.Code, "body: %s", rec.Body.String())
+
+		task := &models.Task{}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), task))
+		assert.True(t, task.Done)
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":   task.ID,
+			"bucket_id": 3,
+		}, false)
+	})
+	t.Run("bucket of another project is rejected", func(t *testing.T) {
+		create := setup(t)
+		rec := create(`{"title":"foreign bucket","repeat_after":3600,"bucket_id":4}`)
+		require.Equal(t, http.StatusNotFound, rec.Code, "body: %s", rec.Body.String())
+		assert.Contains(t, rec.Body.String(), fmt.Sprintf(`"code":%d`, models.ErrCodeBucketDoesNotExist))
+		db.AssertMissing(t, "tasks", map[string]interface{}{
+			"title": "foreign bucket",
+		})
 	})
 }
 

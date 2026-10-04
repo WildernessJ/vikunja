@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"testing"
 
+	"code.vikunja.io/api/pkg/db"
 	"code.vikunja.io/api/pkg/models"
 
 	"github.com/stretchr/testify/assert"
@@ -90,5 +91,42 @@ func TestTaskDuplicateV2(t *testing.T) {
 
 		rec := humaRequest(t, e, http.MethodPost, "/api/v2/tasks/32/duplicate", `{}`, token, "")
 		require.Equal(t, http.StatusForbidden, rec.Code, "body: %s", rec.Body.String())
+	})
+
+	t.Run("copies rrule recurrence", func(t *testing.T) {
+		e, err := setupTestEnv()
+		require.NoError(t, err)
+		token := humaTokenFor(t, &testuser1)
+
+		// #93: the duplicate keeps the source task's rrule fields.
+		s := db.NewSession()
+		_, err = s.ID(2).Cols("repeat_mode", "repeat_rrule", "repeat_from_completion").Update(&models.Task{
+			RepeatMode:           models.TaskRepeatModeRRule,
+			RepeatRRule:          "FREQ=WEEKLY;BYDAY=MO",
+			RepeatFromCompletion: true,
+		})
+		require.NoError(t, err)
+		require.NoError(t, s.Commit())
+		s.Close()
+
+		rec := humaRequest(t, e, http.MethodPost, "/api/v2/tasks/2/duplicate", ``, token, "")
+		require.Equal(t, http.StatusCreated, rec.Code, "body: %s", rec.Body.String())
+
+		var resp struct {
+			DuplicatedTask models.Task `json:"duplicated_task"`
+		}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+		dup := resp.DuplicatedTask
+		require.NotEqual(t, int64(2), dup.ID)
+		assert.Equal(t, models.TaskRepeatModeRRule, dup.RepeatMode)
+		assert.Equal(t, "FREQ=WEEKLY;BYDAY=MO", dup.RepeatRRule)
+		assert.True(t, dup.RepeatFromCompletion)
+
+		db.AssertExists(t, "tasks", map[string]interface{}{
+			"id":                     dup.ID,
+			"repeat_mode":            models.TaskRepeatModeRRule,
+			"repeat_rrule":           "FREQ=WEEKLY;BYDAY=MO",
+			"repeat_from_completion": true,
+		}, false)
 	})
 }

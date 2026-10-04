@@ -279,6 +279,204 @@ func TestTask_Create(t *testing.T) {
 			"bucket_id": 22, // default bucket of project 6 but with a position of 2
 		}, false)
 	})
+	t.Run("repeating task created in the done bucket completes one iteration", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		// In the future, so one interval advances it exactly once.
+		due := time.Now().Add(48 * time.Hour).Truncate(time.Second)
+		task := &Task{
+			Title:       "repeating into done",
+			ProjectID:   1,
+			RepeatAfter: 3600,
+			DueDate:     due,
+			Deadline:    due,
+			StartDate:   due,
+			EndDate:     due,
+			Description: `<ul data-type="taskList"><li data-checked="true" data-type="taskItem"><p>Item</p></li></ul>`,
+			BucketID:    3, // done bucket of view 4
+		}
+		err := task.Create(s, usr)
+		require.NoError(t, err)
+		require.NoError(t, s.Commit())
+
+		assert.False(t, task.Done)
+		assert.Equal(t, int64(1), task.BucketID)
+		assert.Equal(t, due.Add(time.Hour).Unix(), task.DueDate.Unix())
+
+		s2 := db.NewSession()
+		defer s2.Close()
+		stored := &Task{}
+		_, err = s2.ID(task.ID).Get(stored)
+		require.NoError(t, err)
+		assert.False(t, stored.Done)
+		assert.Equal(t, due.Add(time.Hour).Unix(), stored.DueDate.Unix())
+		assert.Equal(t, due.Add(time.Hour).Unix(), stored.Deadline.Unix())
+		assert.Equal(t, due.Add(time.Hour).Unix(), stored.StartDate.Unix())
+		assert.Equal(t, due.Add(time.Hour).Unix(), stored.EndDate.Unix())
+		assert.Contains(t, stored.Description, `data-checked="false"`)
+
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":         task.ID,
+			"project_view_id": 4,
+			"bucket_id":       1,
+		}, false)
+		db.AssertMissing(t, "task_buckets", map[string]interface{}{
+			"task_id":   task.ID,
+			"bucket_id": 3,
+		})
+	})
+	t.Run("repeating task created in the done bucket that is also the default stays there not done", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		_, err := s.Where("id = ?", 4).
+			Cols("default_bucket_id").
+			Update(&ProjectView{DefaultBucketID: 3})
+		require.NoError(t, err)
+
+		due := time.Now().Add(48 * time.Hour).Truncate(time.Second)
+		task := &Task{
+			Title:       "repeating into done default",
+			ProjectID:   1,
+			RepeatAfter: 3600,
+			DueDate:     due,
+			BucketID:    3,
+		}
+		err = task.Create(s, usr)
+		require.NoError(t, err)
+		require.NoError(t, s.Commit())
+
+		assert.False(t, task.Done)
+		// Advanced once, not twice.
+		assert.Equal(t, due.Add(time.Hour).Unix(), task.DueDate.Unix())
+
+		s2 := db.NewSession()
+		defer s2.Close()
+		stored := &Task{}
+		_, err = s2.ID(task.ID).Get(stored)
+		require.NoError(t, err)
+		assert.False(t, stored.Done)
+		assert.Equal(t, due.Add(time.Hour).Unix(), stored.DueDate.Unix())
+
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":         task.ID,
+			"project_view_id": 4,
+			"bucket_id":       3,
+		}, false)
+	})
+	t.Run("repeating task with no next occurrence created in the done bucket stays done there", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		task := &Task{
+			Title:       "rrule ended into done",
+			ProjectID:   1,
+			RepeatMode:  TaskRepeatModeRRule,
+			RepeatRRule: "FREQ=DAILY;UNTIL=20200102T000000Z",
+			DueDate:     time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+			BucketID:    3,
+		}
+		err := task.Create(s, usr)
+		require.NoError(t, err)
+		require.NoError(t, s.Commit())
+
+		assert.True(t, task.Done)
+		assert.Equal(t, int64(3), task.BucketID)
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":         task.ID,
+			"project_view_id": 4,
+			"bucket_id":       3,
+		}, false)
+	})
+	t.Run("repeating task created with the done bucket of a view that is no longer kanban keeps its dates", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		_, err := s.Where("id = ?", 4).
+			Cols("view_kind").
+			Update(&ProjectView{ViewKind: ProjectViewKindList})
+		require.NoError(t, err)
+
+		due := time.Now().Add(48 * time.Hour).Truncate(time.Second)
+		task := &Task{
+			Title:       "repeating into list view done bucket",
+			ProjectID:   1,
+			RepeatAfter: 3600,
+			DueDate:     due,
+			BucketID:    3,
+		}
+		err = task.Create(s, usr)
+		require.NoError(t, err)
+		require.NoError(t, s.Commit())
+
+		assert.False(t, task.Done)
+		assert.Equal(t, due.Unix(), task.DueDate.Unix())
+		assert.True(t, task.DoneAt.IsZero())
+	})
+	t.Run("repeating task created with the done bucket of a kanban view without manual buckets keeps its dates", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		_, err := s.Where("id = ?", 4).
+			Cols("bucket_configuration_mode").
+			Update(&ProjectView{BucketConfigurationMode: BucketConfigurationModeFilter})
+		require.NoError(t, err)
+
+		due := time.Now().Add(48 * time.Hour).Truncate(time.Second)
+		task := &Task{
+			Title:       "repeating into filter view done bucket",
+			ProjectID:   1,
+			RepeatAfter: 3600,
+			DueDate:     due,
+			BucketID:    3,
+		}
+		err = task.Create(s, usr)
+		require.NoError(t, err)
+		require.NoError(t, s.Commit())
+
+		assert.False(t, task.Done)
+		assert.Equal(t, due.Unix(), task.DueDate.Unix())
+	})
+	t.Run("repeating task created in the done bucket with a stale default bucket goes to the leftmost bucket", func(t *testing.T) {
+		for _, stale := range []int64{9999, 4} { // missing, and a bucket of view 8
+			db.LoadAndAssertFixtures(t)
+			s := db.NewSession()
+
+			_, err := s.Where("id = ?", 4).
+				Cols("default_bucket_id").
+				Update(&ProjectView{DefaultBucketID: stale})
+			require.NoError(t, err)
+
+			task := &Task{
+				Title:       "repeating into done, stale default",
+				ProjectID:   1,
+				RepeatAfter: 3600,
+				DueDate:     time.Now().Add(48 * time.Hour),
+				BucketID:    3,
+			}
+			err = task.Create(s, usr)
+			require.NoError(t, err)
+			require.NoError(t, s.Commit())
+			s.Close()
+
+			assert.Equal(t, int64(1), task.BucketID, "stale default %d", stale)
+			db.AssertExists(t, "task_buckets", map[string]interface{}{
+				"task_id":         task.ID,
+				"project_view_id": 4,
+				"bucket_id":       1,
+			}, false)
+			db.AssertMissing(t, "task_buckets", map[string]interface{}{
+				"task_id":   task.ID,
+				"bucket_id": stale,
+			})
+		}
+	})
 }
 
 func TestTask_Update(t *testing.T) {
@@ -799,49 +997,56 @@ func TestTask_Update(t *testing.T) {
 			"bucket_id":       3,
 		})
 	})
-	t.Run("repeating tasks marked done with a stale default bucket stay in their bucket", func(t *testing.T) {
-		db.LoadAndAssertFixtures(t)
-		s := db.NewSession()
-		defer s.Close()
+	// A kanban→list→kanban kind switch can leave default_bucket_id pointing at
+	// a bucket that no longer exists, or at a bucket on another view (#87).
+	for _, stale := range []struct {
+		name            string
+		defaultBucketID int64
+	}{
+		{"missing", 9999},
+		{"on another view", 4}, // bucket 4 is on view 8
+	} {
+		t.Run("repeating tasks marked done with a stale default bucket stay in their bucket: "+stale.name, func(t *testing.T) {
+			db.LoadAndAssertFixtures(t)
+			s := db.NewSession()
+			defer s.Close()
 
-		// A kanban→list→kanban kind switch can leave default_bucket_id
-		// pointing at a bucket that no longer exists (#87).
-		_, err := s.Where("id = ?", 4).
-			Cols("default_bucket_id").
-			Update(&ProjectView{DefaultBucketID: 9999})
-		require.NoError(t, err)
+			_, err := s.Where("id = ?", 4).
+				Cols("default_bucket_id").
+				Update(&ProjectView{DefaultBucketID: stale.defaultBucketID})
+			require.NoError(t, err)
 
-		_, err = s.Where("task_id = ? AND project_view_id = ?", 28, 4).
-			Cols("bucket_id").
-			Update(&TaskBucket{BucketID: 2})
-		require.NoError(t, err)
+			_, err = s.Where("task_id = ? AND project_view_id = ?", 28, 4).
+				Cols("bucket_id").
+				Update(&TaskBucket{BucketID: 2})
+			require.NoError(t, err)
 
-		task := &Task{
-			ID:          28,
-			Done:        true,
-			RepeatAfter: 3600,
-		}
-		err = task.Update(s, u)
-		require.NoError(t, err)
-		err = s.Commit()
-		require.NoError(t, err)
+			task := &Task{
+				ID:          28,
+				Done:        true,
+				RepeatAfter: 3600,
+			}
+			err = task.Update(s, u)
+			require.NoError(t, err)
+			err = s.Commit()
+			require.NoError(t, err)
 
-		assert.False(t, task.Done)
-		assert.True(t, task.DueDate.After(time.Date(2018, 12, 2, 22, 25, 24, 0, time.UTC)))
+			assert.False(t, task.Done)
+			assert.True(t, task.DueDate.After(time.Date(2018, 12, 2, 22, 25, 24, 0, time.UTC)))
 
-		db.AssertExists(t, "task_buckets", map[string]interface{}{
-			"task_id":         28,
-			"project_view_id": 4,
-			"bucket_id":       2,
-		}, false)
-		for _, bucketID := range []int64{1, 3, 9999} {
-			db.AssertMissing(t, "task_buckets", map[string]interface{}{
+			db.AssertExists(t, "task_buckets", map[string]interface{}{
 				"task_id":         28,
 				"project_view_id": 4,
-				"bucket_id":       bucketID,
-			})
-		}
-	})
+				"bucket_id":       2,
+			}, false)
+			for _, bucketID := range []int64{1, 3, 4, 9999} {
+				db.AssertMissing(t, "task_buckets", map[string]interface{}{
+					"task_id":   28,
+					"bucket_id": bucketID,
+				})
+			}
+		})
+	}
 	t.Run("moving a task between projects should give it a correct index", func(t *testing.T) {
 		db.LoadAndAssertFixtures(t)
 		s := db.NewSession()

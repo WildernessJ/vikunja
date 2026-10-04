@@ -280,6 +280,33 @@ func TestTaskBucketV2RepeatingDoneReroute(t *testing.T) {
 			"bucket_id": 1,
 		}, false)
 	})
+	t.Run("stale default bucket leaves the rerouted task in its bucket", func(t *testing.T) {
+		e, err := setupTestEnv()
+		require.NoError(t, err)
+		token := humaTokenFor(t, &testuser1)
+
+		// #87: default_bucket_id points at a bucket that no longer exists.
+		setViewDefaultAndDoneBucket(t, 4, 9999, 3)
+		moveTaskBucket(t, 28, 4, 2)
+
+		rec := humaRequest(t, e, http.MethodPut, fmt.Sprintf(path, 3), `{"task_id":28}`, token, "")
+		require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
+
+		var resp models.TaskBucket
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+		assert.Equal(t, int64(2), resp.BucketID)
+		require.NotNil(t, resp.Task)
+		assert.False(t, resp.Task.Done)
+
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":   28,
+			"bucket_id": 2,
+		}, false)
+		db.AssertExists(t, "tasks", map[string]interface{}{
+			"id":   28,
+			"done": false,
+		}, false)
+	})
 }
 
 // TestTaskBucketV2RepeatingDoneThroughFullDoneBucket covers issue #26 (1): a

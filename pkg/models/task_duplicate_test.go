@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"code.vikunja.io/api/pkg/config"
 	"code.vikunja.io/api/pkg/db"
 	"code.vikunja.io/api/pkg/files"
 	"code.vikunja.io/api/pkg/user"
@@ -104,12 +105,11 @@ func TestTaskDuplicate(t *testing.T) {
 
 		u := &user.User{ID: 1}
 
-		due := time.Date(2026, 7, 6, 9, 0, 0, 0, time.UTC)
+		// A zero due date makes the create anchor the rule, so the duplicate's due date shows the rrule reached it.
 		_, err := s.ID(1).Cols("repeat_mode", "repeat_rrule", "repeat_from_completion", "due_date").Update(&Task{
 			RepeatMode:           TaskRepeatModeRRule,
 			RepeatRRule:          "FREQ=WEEKLY;BYDAY=MO",
 			RepeatFromCompletion: true,
-			DueDate:              due,
 		})
 		require.NoError(t, err)
 
@@ -123,7 +123,9 @@ func TestTaskDuplicate(t *testing.T) {
 			"repeat_rrule":           "FREQ=WEEKLY;BYDAY=MO",
 			"repeat_from_completion": true,
 		}, false)
-		assert.True(t, due.Equal(td.Task.DueDate), "an rrule duplicate keeps the original due date")
+		require.False(t, td.Task.DueDate.IsZero(), "an rrule duplicate with no due date gets the anchored one")
+		assert.True(t, td.Task.DueDate.After(time.Now()))
+		assert.Equal(t, time.Monday, td.Task.DueDate.In(config.GetTimeZone()).Weekday())
 	})
 
 	t.Run("no permission", func(t *testing.T) {
