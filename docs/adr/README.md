@@ -43,7 +43,7 @@ history lives in `../context/RUN_LOG.md`. Upstream's own decisions don't need AD
 | [ADR-0008](ADR-0008-reminder-magic-trailing-only.md) | Reminder `~` magic-text tokens parse only from the trailing run | Enacted | 2026-07-23 | ADR-0002, ADR-0007 |
 | [ADR-0009](ADR-0009-detail-title-autocomplete-accept-only.md) | Task-detail title parses magic-text on autocomplete-accept only (4 prefix tokens) | Enacted | 2026-07-23 | ADR-0002, ADR-0008 |
 | [ADR-0010](ADR-0010-ios-badge-web-push-badges-only.md) | iOS badge via standard Web Push with visible notifications; badge-only UX from device Settings | Implemented (2026-08-02) | 2026-07-27 | ADR-0001 |
-| [ADR-0011](ADR-0011-route-meta-returnability.md) | "Can the user be sent back here?" declared on the route as one three-valued `meta.returnability` field | Enacted | 2026-08-05 | ADR-0001 |
+| [ADR-0011](ADR-0011-route-meta-returnability.md) | "Can the user be sent back here?" declared on the route as one three-valued `meta.returnability` field | Enacted; amended 2026-10-03 (#80: `AUTH_ROUTE_NAMES` → `meta.authPage`) | 2026-08-05 | ADR-0001 |
 | [ADR-0012](ADR-0012-bucket-invariant-per-site.md) | The `default != done` bucket invariant is enforced per write-site (inductive), not by a DB constraint | Accepted | 2026-08-11 | ADR-0006 |
 | [ADR-0013](ADR-0013-v1-path-params-beat-body.md) | On `/api/v1`, URL path params beat the request body, enforced at the generic handler layer | Accepted | 2026-08-14 | — |
 | [ADR-0014](ADR-0014-date-only-canonical-timestamp.md) | Date-only mode stores a canonical timestamp (23:59 end-of-day), not a backend all-day flag | Accepted | 2026-08-18 | — |

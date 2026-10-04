@@ -1,6 +1,7 @@
 ---
 status: Enacted
 date: 2026-08-05
+amended: 2026-10-03 — #80 replaced the AUTH_ROUTE_NAMES set with a `meta.authPage` flag on the six auth routes; the body's AUTH_ROUTE_NAMES references describe the 2026-08-05 state
 deciders: Jason, Claude
 phase: —
 ---
