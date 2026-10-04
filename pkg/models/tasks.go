@@ -1057,7 +1057,8 @@ func resolveProvidedBuckets(s *xorm.Session, a web.Auth, projectID int64, tasks 
 			continue
 		}
 		view := views[buckets[t.BucketID].ProjectViewID]
-		if t.isRepeating() && !t.Done && t.BucketID == view.DoneBucketID {
+		if t.isRepeating() && !t.Done && t.BucketID == view.DoneBucketID &&
+			view.ViewKind == ProjectViewKindKanban && view.BucketConfigurationMode == BucketConfigurationModeManual {
 			if err := completeRepeatingTaskInDoneBucket(s, t, view); err != nil {
 				return nil, err
 			}
@@ -1110,16 +1111,13 @@ func completeRepeatingTaskInDoneBucket(s *xorm.Session, t *Task, view *ProjectVi
 	t.Done = true
 	updateDone(&oldTask, t)
 	_, err = s.Where("id = ?", t.ID).
-		Cols("done", "due_date", "start_date", "end_date", "done_at", "description").
+		Cols("done", "due_date", "start_date", "end_date", "deadline", "done_at", "description").
 		Update(t)
-	if err != nil {
+	if err != nil || t.Done {
+		// Still done: the rule has no next occurrence, so the task stays in the done bucket.
 		return err
 	}
 
-	t.BucketID, err = existingBucketID(s, view.ID, view.DefaultBucketID)
-	if err != nil || t.BucketID != 0 {
-		return err
-	}
 	t.BucketID, err = getDefaultBucketID(s, view)
 	return err
 }

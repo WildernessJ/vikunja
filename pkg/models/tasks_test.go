@@ -291,6 +291,7 @@ func TestTask_Create(t *testing.T) {
 			ProjectID:   1,
 			RepeatAfter: 3600,
 			DueDate:     due,
+			Deadline:    due,
 			BucketID:    3, // done bucket of view 4
 		}
 		err := task.Create(s, usr)
@@ -308,6 +309,7 @@ func TestTask_Create(t *testing.T) {
 		require.NoError(t, err)
 		assert.False(t, stored.Done)
 		assert.Equal(t, due.Add(time.Hour).Unix(), stored.DueDate.Unix())
+		assert.Equal(t, due.Add(time.Hour).Unix(), stored.Deadline.Unix())
 
 		db.AssertExists(t, "task_buckets", map[string]interface{}{
 			"task_id":         task.ID,
@@ -358,6 +360,57 @@ func TestTask_Create(t *testing.T) {
 			"project_view_id": 4,
 			"bucket_id":       3,
 		}, false)
+	})
+	t.Run("repeating task with no next occurrence created in the done bucket stays done there", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		task := &Task{
+			Title:       "rrule ended into done",
+			ProjectID:   1,
+			RepeatMode:  TaskRepeatModeRRule,
+			RepeatRRule: "FREQ=DAILY;UNTIL=20200102T000000Z",
+			DueDate:     time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+			BucketID:    3,
+		}
+		err := task.Create(s, usr)
+		require.NoError(t, err)
+		require.NoError(t, s.Commit())
+
+		assert.True(t, task.Done)
+		assert.Equal(t, int64(3), task.BucketID)
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":         task.ID,
+			"project_view_id": 4,
+			"bucket_id":       3,
+		}, false)
+	})
+	t.Run("repeating task created with the done bucket of a view that is no longer kanban keeps its dates", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		_, err := s.Where("id = ?", 4).
+			Cols("view_kind").
+			Update(&ProjectView{ViewKind: ProjectViewKindList})
+		require.NoError(t, err)
+
+		due := time.Now().Add(48 * time.Hour).Truncate(time.Second)
+		task := &Task{
+			Title:       "repeating into list view done bucket",
+			ProjectID:   1,
+			RepeatAfter: 3600,
+			DueDate:     due,
+			BucketID:    3,
+		}
+		err = task.Create(s, usr)
+		require.NoError(t, err)
+		require.NoError(t, s.Commit())
+
+		assert.False(t, task.Done)
+		assert.Equal(t, due.Unix(), task.DueDate.Unix())
+		assert.True(t, task.DoneAt.IsZero())
 	})
 }
 
