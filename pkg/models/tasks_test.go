@@ -279,6 +279,86 @@ func TestTask_Create(t *testing.T) {
 			"bucket_id": 22, // default bucket of project 6 but with a position of 2
 		}, false)
 	})
+	t.Run("repeating task created in the done bucket completes one iteration", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		// In the future, so one interval advances it exactly once.
+		due := time.Now().Add(48 * time.Hour).Truncate(time.Second)
+		task := &Task{
+			Title:       "repeating into done",
+			ProjectID:   1,
+			RepeatAfter: 3600,
+			DueDate:     due,
+			BucketID:    3, // done bucket of view 4
+		}
+		err := task.Create(s, usr)
+		require.NoError(t, err)
+		require.NoError(t, s.Commit())
+
+		assert.False(t, task.Done)
+		assert.Equal(t, int64(1), task.BucketID)
+		assert.Equal(t, due.Add(time.Hour).Unix(), task.DueDate.Unix())
+
+		s2 := db.NewSession()
+		defer s2.Close()
+		stored := &Task{}
+		_, err = s2.ID(task.ID).Get(stored)
+		require.NoError(t, err)
+		assert.False(t, stored.Done)
+		assert.Equal(t, due.Add(time.Hour).Unix(), stored.DueDate.Unix())
+
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":         task.ID,
+			"project_view_id": 4,
+			"bucket_id":       1,
+		}, false)
+		db.AssertMissing(t, "task_buckets", map[string]interface{}{
+			"task_id":   task.ID,
+			"bucket_id": 3,
+		})
+	})
+	t.Run("repeating task created in the done bucket that is also the default stays there not done", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		_, err := s.Where("id = ?", 4).
+			Cols("default_bucket_id").
+			Update(&ProjectView{DefaultBucketID: 3})
+		require.NoError(t, err)
+
+		due := time.Now().Add(48 * time.Hour).Truncate(time.Second)
+		task := &Task{
+			Title:       "repeating into done default",
+			ProjectID:   1,
+			RepeatAfter: 3600,
+			DueDate:     due,
+			BucketID:    3,
+		}
+		err = task.Create(s, usr)
+		require.NoError(t, err)
+		require.NoError(t, s.Commit())
+
+		assert.False(t, task.Done)
+		// Advanced once, not twice.
+		assert.Equal(t, due.Add(time.Hour).Unix(), task.DueDate.Unix())
+
+		s2 := db.NewSession()
+		defer s2.Close()
+		stored := &Task{}
+		_, err = s2.ID(task.ID).Get(stored)
+		require.NoError(t, err)
+		assert.False(t, stored.Done)
+		assert.Equal(t, due.Add(time.Hour).Unix(), stored.DueDate.Unix())
+
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":         task.ID,
+			"project_view_id": 4,
+			"bucket_id":       3,
+		}, false)
+	})
 }
 
 func TestTask_Update(t *testing.T) {
