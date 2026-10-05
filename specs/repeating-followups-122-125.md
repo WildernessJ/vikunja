@@ -503,3 +503,15 @@ re-plan (Decision 3) accepts that a create checks the limit of the bucket it ask
    view's done bucket is empty and `limit: 0` means no limit.
 3. The Decision 2 behaviour change (done-bucket limit on every view) is not yet in `FORK-CHANGES.md`. Add it with
    the `FORK-CHANGES.md:22` correction in the merge-time entry.
+
+### Review — 2026-10-05 (`/flow review --auto`, at `c3f5c70d5`): merged
+
+- **Verifier:** SURVIVES on both axes. It reran Tests 16 and 17 red on `7de60a6e3` (3600 s double advance). It reverted the locked read: Test 7 fails. `mage test:feature` 0, `mage lint` 0.
+- **Browser verify (passed, 3/3):** worktree binary and frontend, manual Kanban view.
+  - Ended rule, "Mark task done!": done, in Done, dates unchanged.
+  - Live repeat: not done, +1 day, in To-Do.
+  - Plain task: done in Done, then undone in To-Do.
+  - A view with default == done cannot be made in the GUI, so Test 16 is the evidence.
+- **Cold session audit:** SHIP. The mutations are killed. `mage test:caldav` ok.
+  - Omission: a CalDAV create of an ended-rule VTODO stores `done_at` = now, not the client `COMPLETED`. Filed #129: the fix is a design decision.
+  - Gate gap: the caldavtests skip under `-short`, so `mage test:feature` never runs them. This and the other non-blocking notes are in #130.
