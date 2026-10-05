@@ -236,6 +236,110 @@ committed; the browser checks pass; the Execution Log records each red failure.
 - TOCTOU between `existingBucketID` and `b.upsert`, and no FK on `task_buckets.bucket_id`
   (accepted in #108).
 
+## Re-plan — 2026-10-05 (#126)
+
+The review of `f2d037f43` blocked the merge (#126; findings in the Execution Log, "Review — 2026-10-04").
+This section amends the sections above. Where they disagree, this section wins. The rebuild works on the
+same branch, on top of `7de60a6e3`.
+
+### Decisions (Jason, 2026-10-05)
+
+1. **Blocker: a routing-only move.** Add an unexported field to `TaskBucket` (next to `doneChanged` and
+   `doneAfter`), for example `routeOnly bool`. When it is set, `updateTaskBucket` does not call
+   `completeOneIteration` and does not call `applyDoneBucketMove`. It still checks the destination
+   bucket's limit, moves the row, and sets `b.Task` and `b.Bucket`. The three internal callers set it:
+   - the project-move block of `updateSingleTask` (`tasks.go`, the `updateTaskBucket` call in the views loop);
+   - `moveTaskToDoneBuckets`;
+   - `moveTaskToDefaultBuckets`.
+   `TaskBucket.Update` (a user drag) does not set it and keeps the full behavior.
+   - Why: every internal caller runs after the done state is final and stored (`updateSingleTask` after
+     the main write; the create path after its `done` write). The done-state handling of
+     `updateTaskBucket` is for a drag only. With the flag, a move into a bucket that is also the done
+     bucket cannot complete a second iteration.
+   - With the flag, `completed` is false, so `repeatingTaskPassesThroughDoneBucket` returns false and the
+     limit applies to the real destination.
+   - *Rejected:* `moveTaskToDefaultBuckets` avoids the done bucket. It fixes one of three call sites
+     (the project-move block reaches the done bucket through `getDefaultBucketID`), and it puts a reopened
+     task in a different bucket than a create does (Test 14).
+   - This supersedes the Design statement that `updateTaskBucket` "only moves the row and checks the
+     limit": with the flag, that statement becomes true.
+2. **Done-bucket limit on a done toggle: every view.** A plain task marked done through `Task.Update`
+   checks the done bucket's limit on every manual Kanban view. A full done bucket on any view rejects the
+   toggle with `ErrBucketLimitExceeded`. Before this change, only the first view was checked and the others
+   were synced with no check, so the result depended on view id order. This supersedes the Edge case
+   "same buckets as today on every view" and the Design phrase "loses nothing". Record the behavior change
+   in `FORK-CHANGES.md`. The drag path (`TaskBucket.Update` → `syncTaskIntoOtherDoneBuckets`) still syncs
+   with no limit check: filed as #128, not changed here.
+3. **Test 15: accepted.** A create checks the limit of the bucket it asked for, also when the task then
+   lands in the done bucket. Keep Test 15 as built (limit cleared). Add a pin: the same create with bucket 2
+   full returns `ErrBucketLimitExceeded`. The Execution Log entry that filed Test 15 under "No defect found"
+   is history; the build adds a line that corrects it.
+4. **Position on a done toggle: accepted.** After the routing move, `moveTaskToDoneBuckets` and
+   `moveTaskToDefaultBuckets` compute the position from the stored index. Pin it with a test.
+5. **Separate issue:** `TaskDoneChangedEvent` fires with `Done: false` when a bulk update with a field list
+   that omits `done` runs on a done task (build Deviation 1). Filed as #127; not this cycle.
+
+### Implementation plan (rebuild)
+
+1. `pkg/models/kanban_task_bucket.go`: add the field to `TaskBucket`. In `updateTaskBucket`, compute
+   `completed` only when the field is false, and call `applyDoneBucketMove` only when the field is false
+   (`updateBucket` stays true otherwise). Update the doc comment of `updateTaskBucket` to state the two modes.
+2. `pkg/models/tasks.go`: set the field at the three internal call sites.
+3. Mechanical fixes:
+   - The test title "a create checks the limit of the bucket it was asked for" (`tasks_test.go`): align it
+     with what it asserts (the default bucket the task was rerouted to) and with the
+     `completeRepeatingTasksOnCreate` doc comment.
+   - `FORK-CHANGES.md:22` (CalDAV create keeps the done state as sent): correct it in the merge-time
+     FORK-CHANGES entry, not on the branch. The review session does this.
+
+### Execution routing (rebuild)
+
+- **Driver** does all of it: one field, three call sites, tests. No executor dispatch, no security agent.
+
+### Tests (rebuild)
+
+Red first means: the test fails on `7de60a6e3` and passes after the fix. Record each red failure message.
+
+16. Model, `TestTask_Update`: the #126 repro. A task in project 1 (`RepeatAfter: 3600`, a due date,
+    `BucketID: 1`). Set view 4 `default_bucket_id = 3` (the done bucket) with a direct DB write.
+    `Task.Update` with `Done: true` on a full task struct. Assert: due date advanced by exactly 1h, not
+    done, in bucket 3. Red: 2h.
+17. Model: the same default==done setup on a second project's manual Kanban view. A live repeating task
+    moved to that project with `done: true` in one `Task.Update`. Assert: advanced exactly one iteration,
+    not done, in that view's default (== done) bucket. Red or pin: record which.
+18. Model, pin (Decision 2): a plain task, two manual Kanban views, the second view's done bucket full.
+    `Task.Update` with `done: true` returns `ErrBucketLimitExceeded`. Expected red-free on `7de60a6e3`.
+19. Model, pin (Decision 3): Test 15's create with bucket 2 full returns `ErrBucketLimitExceeded`.
+20. Model, pin (Decision 4): a plain task marked done through `Task.Update` with a manual Kanban view.
+    Assert the stored `task_positions` row for that view equals `calculateDefaultPosition` of the stored
+    index.
+21. Model: an ended-rule repeating task in done bucket 3, `Task.Update` with `done: false`. Assert: not
+    done, in the default bucket, dates unchanged.
+22. Model: an ended-rule repeating task, two manual Kanban views, the second view's done bucket full.
+    `Task.Update` with `done: true` returns `ErrBucketLimitExceeded`.
+23. Model: an ended-rule repeating task moved to another project (manual Kanban view with a done bucket)
+    with `done: true` in one `Task.Update`. Assert: done, in the new view's done bucket, dates unchanged.
+24. CalDAV (`pkg/caldavtests/done_repeating_test.go`): PUT a completed VTODO whose `RRULE` has an `UNTIL`
+    in the past to a new URL. Assert: done, dates unchanged.
+25. Model: `addOneMonthToDate` with the service zone set to a non-GMT zone (set it in the test and
+    restore it). Assert the wall clock in the service zone is kept for a date sent in a third zone.
+
+Tests 21–25 are gap tests: record for each whether it was a pin or found a defect.
+
+### Verification (rebuild)
+
+As in Verification above (suite, `mage lint`, `mage check:all`), plus the browser verify: add a check
+with a view whose default bucket is the done bucket only if the GUI can create one (`createProjectView`
+and `Update` forbid it; if not, Test 16 is the evidence).
+
+### Stop criteria (rebuild)
+
+- If the routing-only flag changes the status code, error, or bucket of any existing test other than the
+  ones Decision 2 names, stop.
+- If a gap test (21–25) finds a defect, stop and record it. Fixing it is new scope.
+- If Test 16 is not red on `7de60a6e3`, stop: the review repro did not hold.
+- Bounded fix: two attempts per failing item, then halt and log.
+
 ## Execution Log
 
 ### Build — 2026-10-04 (Opus, driver session)
