@@ -1002,8 +1002,9 @@ func (t *Task) Create(s *xorm.Session, a web.Auth) (err error) {
 	return createTask(s, t, a, true, true, true)
 }
 
-// CreateTaskForCalDAV is Task.Create without the #119 rule: CalDAV clients own their recurrence,
-// so a repeating task uploaded as done is stored done.
+// CreateTaskForCalDAV is Task.Create without the #119 rule: a repeating task uploaded as done is stored
+// done, because a client can upload a completed instance as history. A CalDAV update of a done repeating
+// task still goes through Task.Update and completes one iteration.
 func CreateTaskForCalDAV(s *xorm.Session, t *Task, a web.Auth) error {
 	return createTask(s, t, a, true, true, false)
 }
