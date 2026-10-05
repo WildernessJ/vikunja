@@ -3,9 +3,7 @@
 This file is the primary source of fork guidance. `AGENTS.md` is upstream's file, imported
 verbatim below — never edit it on this fork, so upstream security fixes that touch it
 cherry-pick clean (syncs stopped: ADR-0017). Put fork guidance
-here. Codex CLI gets this file from the SessionStart hook in `.codex/hooks.json` (local-only).
-Codex skips an untrusted hook without a warning — after any edit to `hooks.json`, trust it
-again with `/hooks`.
+here.
 
 @./AGENTS.md
 
@@ -48,8 +46,7 @@ again with `/hooks`.
 The doctrine itself is one canonical doc in `jason-claude-skills`, imported below.
 `docs/coding-workflow.md` is a **gitignored symlink** created by that repo's `install.sh` — so in
 a fresh clone of this public fork the import silently resolves to nothing, which is fine: it
-carries no repo-specific instruction. Edit doctrine there, never here. Codex does not get the
-doctrine: it names Claude role agents and models, and `/flow` dispatches Claude subagents.
+carries no repo-specific instruction. Edit doctrine there, never here.
 
 @./docs/coding-workflow.md
 
