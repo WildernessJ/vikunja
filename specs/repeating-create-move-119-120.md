@@ -300,3 +300,28 @@ Commits: `0075fa89e` (code and tests), `0bb4d809a` (yaegi regeneration, unchange
 
 No stop criterion was hit. The order change for the bucket validation changed no status code
 in any existing test.
+
+### Review — 2026-10-04 (`/flow review --auto`, Opus)
+
+**Verifier:** SURVIVES on both axes. No blocker. Suspected: the #120 symptom on the `Task.Update`
+path. Reproduced on the dev API (task 38: done, in To-Do), filed #122. The month-mode zone bug in
+Execution Log deviation 1 is filed as #123.
+
+**Browser verify** (worktree binary and frontend, dev user `flowtest`, project 2, Kanban view 12). The
+synthetic Kanban drag does nothing, so each move used the task-detail bucket select, which sends the
+same move request:
+
+- A live repeating task with a deadline and a checked checklist item, moved into Done: after a reload
+  it is in To-Do, not done, due and deadline one day later, checklist unchecked.
+- A task with an ended rrule, moved into Done: done, in Done, before and after a reload.
+- API create with `done: true`: the response and the DB show it not done, due one day later, in To-Do.
+
+Before a reload, the task-detail modal showed the old due date after the move. This is frontend state
+and is recorded in the `flow-review` issue. Evidence is in the worktree `.flow-verify/`.
+
+**Cold `/session-audit`:** SHIP. In-diff fix: the `CreateTaskForCalDAV` comment now states that a
+CalDAV update still completes an iteration (`736e8dcf2`). The behavior question is #124. The other
+omissions (done_at outlier, the default-bucket limit on create, the unlocked move write, caller
+mutation before a failure, test gaps) are in the `flow-review` issue.
+
+**Gate after the fix:** `mage test:feature` 0, `mage test:web` 0.
