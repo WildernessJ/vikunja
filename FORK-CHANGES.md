@@ -19,6 +19,10 @@ Types: `fix`, `feat`, `chore`, `docs`.
 
 ## Changes
 
+`2026-10-04` — **fix** — a repeating task created with `done: true` through the API (single or bulk create) now completes one iteration instead of being stored done (#119). Its dates advance by one interval and it is not done. Import, project duplicate and CalDAV create keep the done state as sent. A request with both `done: true` and the done bucket advances once. ([0075fa89e](https://github.com/WildernessJ/vikunja/commit/0075fa89e))
+
+`2026-10-04` — **fix** — moving a repeating task into a Kanban done bucket (#120): a task whose repeat rule has no next occurrence now stays done in the done bucket, and that bucket's limit applies. Before, it stayed done but went to the default bucket. The move also saves the advanced deadline and the reset checklist, which before were only in the response. Red-first model tests and webtests; live-verified in the browser. ([0075fa89e](https://github.com/WildernessJ/vikunja/commit/0075fa89e))
+
 `2026-10-04` — **fix** — a repeating task created directly in a Kanban view's done bucket now completes one iteration (#110), as a move into the done bucket does. The dates advance by one interval, the checklist resets, the task is not done, and it goes to the view's default bucket. Bucket limits apply to the default bucket, not the done bucket. A task whose repeat rule has no next occurrence stays done in the done bucket. The rule applies only to manual Kanban views. Red-first model tests and webtests; live-verified in the browser. ([989ac3563](https://github.com/WildernessJ/vikunja/commit/989ac3563), [91bd15bad](https://github.com/WildernessJ/vikunja/commit/91bd15bad))
 
 `2026-10-04` — **fix** — deleting a project view also deletes its buckets. Before, the `buckets` rows stayed behind as orphans. Red-first test; live-verified. ([c3279e0ed](https://github.com/WildernessJ/vikunja/commit/c3279e0ed))
