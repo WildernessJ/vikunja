@@ -292,3 +292,72 @@ ran them there. The CalDAV test and the webtest ran red in this worktree before 
    so `calculateNewPositionForTask` reads the stored index, not the request's.
 6. **Removed comment.** `TestTask_Create_CompletesOneIteration` said `addOneMonthToDate` keeps
    the wall clock of a date sent in another zone. #123 fixed that, so the comment is removed.
+
+### Review — 2026-10-04 (`/flow review --auto`, at `f2d037f43`): BLOCKED, back to a plan session
+
+Not merged. The verifier and the cold audit (pass 1) both returned SURVIVES. The review session then confirmed a
+cold-audit finding by running it. That finding is a regression, and its fix is a design question (Stop criteria:
+a change to `moveTaskToDefaultBuckets` or to the routing contract). The browser verify (Verification step 4)
+passed: all three checks.
+
+**Blocker: double advance on a view whose default bucket is also its done bucket (verified by running).**
+
+- Repro, as a model test: create a task in project 1 (`RepeatAfter: 3600`, a due date, `BucketID: 1`). Set view 4
+  `default_bucket_id = 3` (the done bucket). Then call `Task.Update` with `Done: true` on a full task struct.
+  - On `07c688abb`, the due date advances by 1h.
+  - On `f2d037f43`, it advances by 2h.
+- Cause:
+  1. `updateDone` advances the task and reopens it, and the main write stores that.
+  2. `moveTaskToDefaultBuckets` then calls `updateTaskBucket` with the default bucket. In this view that is the
+     done bucket.
+  3. `updateTaskBucket` reads the stored, open, repeating task. It sets `completed` (`kanban_task_bucket.go`,
+     "A repeating task moved into the done bucket completes one iteration") and writes a second advance.
+  4. Before this change, the main write ran after the move and overwrote the move's dates.
+- Reachable: `healBucketIDs` clears a default==done row only when the view is edited. Persisted rows can exist,
+  and Test 14 treats the configuration as live.
+- A missed design consequence: after the routing move, `updateTaskBucket` is not only "move the row and check the
+  limit". It still runs its own iteration completion when the target is a done bucket.
+- Directions for the plan session (not decided here):
+  - A routing-only mode for the `updateSingleTask` moves, so that they skip `completeOneIteration` and
+    `applyDoneBucketMove`.
+  - Or `moveTaskToDefaultBuckets` never targets the done bucket, so it falls back as `getDefaultBucketID` does.
+  - Either way, add a red-first test for `Task.Update` with default == done.
+
+**Other findings for the same plan session:**
+
+1. **Behaviour change for plain tasks (verified by reading, verifier C1).**
+   - Old: `Task.Update` with `done: true` routed the task on the first view. `syncTaskIntoOtherDoneBuckets`
+     (`kanban_task_bucket.go:138`) then upserted it into the done buckets of the other views with no limit check,
+     so the result depended on view id order.
+   - New: every view goes through `updateTaskBucket` → `checkBucketLimit`. A full done bucket on a second manual
+     Kanban view now rejects the toggle with `ErrBucketLimitExceeded`.
+   - This is stricter and consistent. It contradicts the Edge cases ("same buckets as today on every view") and
+     the Design ("loses nothing").
+   - The drag path (`TaskBucket.Update`) still syncs into other views with no limit check.
+   - Decide which rule to keep, and pin it.
+2. **Position on a done toggle (verified by reading, both reviews).**
+   - `moveTaskToDoneBuckets` and `moveTaskToDefaultBuckets` also run after `*t = ot` now.
+     `calculateDefaultPosition(t.Index, …)` reads the stored index (position `index*65536`) instead of the
+     request's (usually 0, which triggered `RecalculateTaskPositions`).
+   - Deviation 5 names only the project-move block. Probably benign, but no test pins it.
+3. **Test 15 (verified by reading, verifier S1).**
+   - A create that asks for full bucket 2 is rejected, although the task lands in done bucket 3. The behaviour is
+     the same for plain tasks, so it is probably pre-existing.
+   - The build cleared the limit instead of stopping. The log files Test 15 under "No defect found", and
+     Deviation 2 contradicts that. Decide whether this is accepted behaviour, and pin it either way.
+4. **Test title (verified by reading, cold audit).**
+   - "a create checks the limit of the bucket it was asked for" (`tasks_test.go`) asserts the limit of the
+     default bucket the task was rerouted to. Align the title with the doc comment.
+5. **`FORK-CHANGES.md:22`** still says CalDAV create keeps the done state as sent. Correct it at merge.
+6. **Missing tests (cold audit):**
+   - Ended rule reopened (`done: false`) out of the done bucket through `Task.Update`.
+   - Ended rule with a full done bucket on a second view.
+   - Project move plus `done: true` on an ended rule.
+   - An ended-rule VTODO on CalDAV create.
+   - `addOneMonthToDate` with a non-GMT service zone.
+7. **Theoretical, record only:**
+   - `oldTaskBucket` is read before the new `FOR UPDATE` task read (adjacent to the accepted #108 TOCTOU).
+   - The row lock itself is not tested (SQLite has no row lock).
+   - The `subscription` field is dropped from the move response. `mergeTask` keeps the cached value.
+
+The session audit stopped after pass 1, because the merge is blocked and the next review runs a full audit.
