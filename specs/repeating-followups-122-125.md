@@ -465,3 +465,41 @@ passed: all three checks.
    - The `subscription` field is dropped from the move response. `mergeTask` keeps the cached value.
 
 The session audit stopped after pass 1, because the merge is blocked and the next review runs a full audit.
+
+### Rebuild — 2026-10-05 (Opus, driver session)
+
+Commit: `44f8f6b59` (code and tests), then this log commit.
+
+**Gate (on `44f8f6b59`):** `mage test:feature` 0, `mage test:web` 0, `mage lint` 0 issues, `mage check:all` 0.
+No exported symbol changed, so the yaegi symbols and swagger are not regenerated. The browser verify belongs to
+the review.
+
+**Change.** `TaskBucket.routeOnly` (unexported). When it is set, `updateTaskBucket` does not compute `completed`
+and does not call `applyDoneBucketMove`. The project-move block of `updateSingleTask`, `moveTaskToDoneBuckets`
+and `moveTaskToDefaultBuckets` set it. The doc comment of `updateTaskBucket` states the two modes.
+`moveTaskToDoneBuckets` is also called by the create path (`tasks.go`, plain task created in the done bucket),
+after its `done` write; the flag applies there too, as the re-plan states.
+
+**Red-first evidence (run on the tree at `7de60a6e3` plus the new tests, before the fix):**
+
+- Test 16: `expected: 1791378166, actual: 1791381766` (7200 s, two iterations).
+- Test 17: **red**, the same message. The project-move block reaches the done bucket through
+  `getDefaultBucketID` and completed a second iteration.
+
+**Pins and gap tests (green before and after the fix):**
+
+- Tests 18, 19, 20: pins, as planned.
+- Tests 21, 22, 23 (`TestTask_Update_DoneRouting`), 24 (`TestCalDAVCreateCompletedEndedRuleStaysDone`),
+  25 (`TestAddOneMonthToDate_ServiceZone`, service zone `Pacific/Auckland`): pins. No defect found.
+
+**Correction to the first build's log.** It filed Test 15 under "No defect found" with its limit cleared. The
+re-plan (Decision 3) accepts that a create checks the limit of the bucket it asked for. Test 19 pins it.
+
+**Notes for the reviewer:**
+
+1. Test title renamed: "a create asked for the done bucket checks the limit of the default bucket it is
+   rerouted to".
+2. Tests 18 and 22 fill the second view's done bucket with an upsert of task 2 and `fillBucket`, because a new
+   view's done bucket is empty and `limit: 0` means no limit.
+3. The Decision 2 behaviour change (done-bucket limit on every view) is not yet in `FORK-CHANGES.md`. Add it with
+   the `FORK-CHANGES.md:22` correction in the merge-time entry.
