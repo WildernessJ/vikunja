@@ -50,6 +50,9 @@ type TaskBucket struct {
 	// transition; the internal task-flow callers ignore these.
 	doneChanged bool
 	doneAfter   bool
+	// routeOnly marks a move by the task flow after the done state is final and stored.
+	// updateTaskBucket then only checks the limit and moves the row.
+	routeOnly bool
 }
 
 func (b *TaskBucket) TableName() string {
@@ -266,7 +269,11 @@ func applyDoneBucketMove(s *xorm.Session, view *ProjectView, b *TaskBucket, task
 	return updateBucket, nil
 }
 
-// updateTaskBucket is internally used to actually do the update.
+// updateTaskBucket is internally used to actually do the update. It has two modes:
+//   - A drag (TaskBucket.Update): a move into or out of the done bucket changes the done
+//     state, and a repeating task moved into the done bucket completes one iteration.
+//   - A routing-only move (b.routeOnly, set by the task flow after the done state is
+//     stored): it checks the destination bucket's limit and moves the row, nothing else.
 func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 	oldTaskBucket := &TaskBucket{}
 	_, err = s.
@@ -314,7 +321,7 @@ func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 	// A repeating task moved into the done bucket completes one iteration. This
 	// runs before the limit check because the result decides whether the task
 	// occupies a done slot. It writes nothing, so a failed limit check leaves no trace.
-	completed := view.DoneBucketID != 0 && view.DoneBucketID == b.BucketID && !task.Done && task.isRepeating()
+	completed := !b.routeOnly && view.DoneBucketID != 0 && view.DoneBucketID == b.BucketID && !task.Done && task.isRepeating()
 	if completed {
 		completeOneIteration(task)
 	}
@@ -329,9 +336,12 @@ func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 		bucket.Count = taskCount
 	}
 
-	updateBucket, err := applyDoneBucketMove(s, view, b, task, oldTaskBucket.BucketID, completed)
-	if err != nil {
-		return err
+	updateBucket := true
+	if !b.routeOnly {
+		updateBucket, err = applyDoneBucketMove(s, view, b, task, oldTaskBucket.BucketID, completed)
+		if err != nil {
+			return err
+		}
 	}
 
 	// The done-state handling above can reroute a repeating task to the view's

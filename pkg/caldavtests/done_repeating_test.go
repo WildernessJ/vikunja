@@ -62,3 +62,27 @@ func TestCalDAVCompletedRepeatingTaskCompletesOneIteration(t *testing.T) {
 	assert.False(t, updated.Done)
 	assert.Equal(t, due.AddDate(0, 0, 2).Unix(), updated.DueDate.Unix())
 }
+
+// A completed VTODO whose rule has no next occurrence stays done with its dates on create.
+func TestCalDAVCreateCompletedEndedRuleStaysDone(t *testing.T) {
+	e := setupTestEnv(t)
+	due := time.Date(2020, 1, 1, 9, 0, 0, 0, time.UTC)
+	vtodo := NewVTodo("completed-ended", "Completed Ended").
+		Due(due).
+		Rrule("FREQ=DAILY;UNTIL=20200102T000000Z").
+		Status("COMPLETED").
+		Completed(time.Date(2020, 1, 1, 10, 0, 0, 0, time.UTC)).
+		Build()
+
+	rec := caldavPUT(t, e, "/dav/projects/36/completed-ended.ics", vtodo)
+	require.True(t, rec.Code >= 200 && rec.Code < 300, "create PUT failed with status %d. Body:\n%s", rec.Code, rec.Body.String())
+
+	s := db.NewSession()
+	defer s.Close()
+	task := &models.Task{}
+	has, err := s.Where("uid = ?", "completed-ended").Get(task)
+	require.NoError(t, err)
+	require.True(t, has)
+	assert.True(t, task.Done)
+	assert.Equal(t, due.Unix(), task.DueDate.Unix())
+}

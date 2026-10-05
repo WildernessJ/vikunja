@@ -1823,6 +1823,7 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 				TaskID:        t.ID,
 				ProjectViewID: view.ID,
 				ProjectID:     t.ProjectID,
+				routeOnly:     true,
 			}
 			err = updateTaskBucket(s, a, tb)
 			if err != nil {
@@ -1960,6 +1961,7 @@ func (t *Task) moveTaskToDoneBuckets(s *xorm.Session, a web.Auth, views []*Proje
 			TaskID:        t.ID,
 			ProjectViewID: view.ID,
 			ProjectID:     t.ProjectID,
+			routeOnly:     true,
 		}
 		err = updateTaskBucket(s, a, tb)
 		if err != nil {
@@ -1998,6 +2000,7 @@ func (t *Task) moveTaskToDefaultBuckets(s *xorm.Session, a web.Auth, views []*Pr
 				TaskID:        t.ID,
 				ProjectViewID: view.ID,
 				ProjectID:     t.ProjectID,
+				routeOnly:     true,
 			}
 			if err := updateTaskBucket(s, a, tb); err != nil {
 				return err
