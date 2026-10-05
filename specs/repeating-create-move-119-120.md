@@ -239,3 +239,64 @@ Done looks like this:
   (accepted in #108).
 
 ## Execution Log
+
+### Build — 2026-10-04 (Opus, driver session)
+
+Commits: `0075fa89e` (code and tests), `0bb4d809a` (yaegi regeneration, unchanged output).
+
+**Gate (on `0bb4d809a`):** `mage test:feature` 0, `mage test:web` 0, `mage lint` 0 issues,
+`mage check:all` 0.
+
+**Red-first evidence.** I copied the new test files onto `b0aee96bf` in a temporary worktree and ran them there:
+
+- Test 1: `assert.False(t, task.Done)` failed (stored done).
+- Test 2: failed (stored done, not advanced). Double-advance variant **checked**: a mutant that
+  applies #119 and then runs the #110 completion again fails Test 2 with the due date one extra
+  hour (`expected 1791334877, actual 1791338477`).
+- Test 3: **pin**. It passes on the old code (stays done, in bucket 3), as the spec allowed.
+- Test 4: failed (the repeating task stored done).
+- Test 5: pins. Import, project duplicate (`TestProjectDuplicate_KeepsDoneRepeatingTask`) and
+  CalDAV (`TestCalDAVCreateCompletedRepeatingTaskStaysDone`, `pkg/caldavtests`) are green before
+  and after. The foreign-bucket rejection test (`bucket_id: 4`) is unchanged and green.
+- Test 6: `done` true, due date not advanced (`expected …844, actual …244`).
+- Test 7: `expected: 3, actual: 1` (task routed to the default bucket).
+- Test 8: view 4 row `bucket_id: 3` missing.
+- Test 9: `An error is expected but got nil` (done bucket limit skipped).
+- Test 10: deadline `1543789524` (old value), checklist still `data-checked="true"`.
+- Test 11: green on the old code in all four modes (pin).
+- Test 12: red in all four modes (stored done).
+- Test 13: `expected: 3, actual: 1`.
+
+**Deviations and decisions the reviewer should check first:**
+
+1. **Pre-existing month-mode bug on the create path.** It is not fixed here.
+   `addOneMonthToDate` (`pkg/models/tasks.go`) builds the new date from the wall-clock fields of
+   `d`, in `config.GetTimeZone()`. The update path loads `d` from the DB in that zone, so the
+   update path is correct. The create path keeps the client's zone. Test 11, with a due date in
+   the test process's local zone (UTC-4), stored the done-bucket month case 4h earlier than
+   `Task.Update` did. This affects #110 today and #119 now: a month-repeat task created done,
+   with a due date sent in a zone other than the service zone, gets a shifted due date. The
+   frontend sends UTC, so this occurs only when the service zone is not UTC. Test 11 now sets
+   the due date in the service zone. A likely one-line fix is `d = d.In(config.GetTimeZone())`
+   at the start of `addOneMonthToDate`, but it needs its own repro test. Out of scope here;
+   recommend a separate issue.
+2. **`//nolint:gocyclo` on `updateTaskBucket`.** The completion step took it from 30 or less
+   to 36. `updateSingleTask` already uses the same suppression. Another option is to extract
+   the done-state block into a function. I did not do that, because it would grow the diff.
+3. **Test placement.** Tests 11 and 12 are one table (`TestTask_Create_CompletesOneIteration`)
+   that compares each trigger with a reference task completed through `Task.Update`. Tests 7–10
+   are in the new `TestTaskBucket_Update_RepeatingIntoDoneBucket`. The model tests share the
+   helper `storedTaskWithReminders` (`tasks_test.go`). It reads in a closed fresh session,
+   because an unclosed session locked the SQLite tables for the next subtest.
+4. **The `b.doneAfter` semantics did not change.** A completion that reopens the task still
+   dispatches `TaskDoneChangedEvent{Done: true}`, as before.
+5. **Verification step 4.** No task-row `Update` remains between the insert loop and
+   `setTasksInBucketInViews`. One older non-repeating write is still inside
+   `setTasksInBucketInViews` (`Cols("done")`, the non-repeating done-bucket case). The spec
+   says that code does not change.
+6. **The other CalDAV create** (`listStorageProvider.go`, the `DUMMY-UID-` placeholder for a
+   missing related task) still calls `Task.Create`. The placeholder is never done and never
+   repeating, so the rule cannot trigger there.
+
+No stop criterion was hit. The order change for the bucket validation changed no status code
+in any existing test.
