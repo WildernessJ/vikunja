@@ -27,9 +27,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// A CalDAV client owns its recurrence: a completed repeating VTODO is stored
-// done with its dates, not advanced (#119 applies to user creates only).
-func TestCalDAVCreateCompletedRepeatingTaskStaysDone(t *testing.T) {
+// A completed repeating VTODO completes one iteration on create, as on update
+// and as a Task.Create through the API does (#119, #124).
+func TestCalDAVCompletedRepeatingTaskCompletesOneIteration(t *testing.T) {
 	e := setupTestEnv(t)
 	due := time.Date(2030, 6, 1, 9, 0, 0, 0, time.UTC)
 	vtodo := NewVTodo("completed-repeating", "Completed Repeating").
@@ -39,16 +39,50 @@ func TestCalDAVCreateCompletedRepeatingTaskStaysDone(t *testing.T) {
 		Completed(time.Date(2030, 5, 31, 9, 0, 0, 0, time.UTC)).
 		Build()
 
+	stored := func() *models.Task {
+		s := db.NewSession()
+		defer s.Close()
+		task := &models.Task{}
+		has, err := s.Where("uid = ?", "completed-repeating").Get(task)
+		require.NoError(t, err)
+		require.True(t, has)
+		return task
+	}
+
 	rec := caldavPUT(t, e, "/dav/projects/36/completed-repeating.ics", vtodo)
-	require.True(t, rec.Code >= 200 && rec.Code < 300, "PUT failed with status %d. Body:\n%s", rec.Code, rec.Body.String())
+	require.True(t, rec.Code >= 200 && rec.Code < 300, "create PUT failed with status %d. Body:\n%s", rec.Code, rec.Body.String())
+	created := stored()
+	assert.Equal(t, models.TaskRepeatModeRRule, created.RepeatMode)
+	assert.False(t, created.Done)
+	assert.Equal(t, due.AddDate(0, 0, 1).Unix(), created.DueDate.Unix())
+
+	rec = caldavPUT(t, e, "/dav/projects/36/completed-repeating.ics", vtodo)
+	require.True(t, rec.Code >= 200 && rec.Code < 300, "update PUT failed with status %d. Body:\n%s", rec.Code, rec.Body.String())
+	updated := stored()
+	assert.False(t, updated.Done)
+	assert.Equal(t, due.AddDate(0, 0, 2).Unix(), updated.DueDate.Unix())
+}
+
+// A completed VTODO whose rule has no next occurrence stays done with its dates on create.
+func TestCalDAVCreateCompletedEndedRuleStaysDone(t *testing.T) {
+	e := setupTestEnv(t)
+	due := time.Date(2020, 1, 1, 9, 0, 0, 0, time.UTC)
+	vtodo := NewVTodo("completed-ended", "Completed Ended").
+		Due(due).
+		Rrule("FREQ=DAILY;UNTIL=20200102T000000Z").
+		Status("COMPLETED").
+		Completed(time.Date(2020, 1, 1, 10, 0, 0, 0, time.UTC)).
+		Build()
+
+	rec := caldavPUT(t, e, "/dav/projects/36/completed-ended.ics", vtodo)
+	require.True(t, rec.Code >= 200 && rec.Code < 300, "create PUT failed with status %d. Body:\n%s", rec.Code, rec.Body.String())
 
 	s := db.NewSession()
 	defer s.Close()
-	stored := &models.Task{}
-	has, err := s.Where("uid = ?", "completed-repeating").Get(stored)
+	task := &models.Task{}
+	has, err := s.Where("uid = ?", "completed-ended").Get(task)
 	require.NoError(t, err)
 	require.True(t, has)
-	assert.Equal(t, models.TaskRepeatModeRRule, stored.RepeatMode)
-	assert.True(t, stored.Done)
-	assert.Equal(t, due.Unix(), stored.DueDate.Unix())
+	assert.True(t, task.Done)
+	assert.Equal(t, due.Unix(), task.DueDate.Unix())
 }

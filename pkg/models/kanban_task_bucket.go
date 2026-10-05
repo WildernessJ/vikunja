@@ -50,6 +50,9 @@ type TaskBucket struct {
 	// transition; the internal task-flow callers ignore these.
 	doneChanged bool
 	doneAfter   bool
+	// routeOnly marks a move by the task flow after the done state is final and stored.
+	// updateTaskBucket then only checks the limit and moves the row.
+	routeOnly bool
 }
 
 func (b *TaskBucket) TableName() string {
@@ -192,9 +195,85 @@ func rerouteDoneRepeatingTask(s *xorm.Session, view *ProjectView, fallback int64
 	return fallback, nil
 }
 
-// updateTaskBucket is internally used to actually do the update.
-//
-//nolint:gocyclo
+// applyDoneBucketMove sets and stores the done state of a task moved into or out of the view's done
+// bucket. It reports whether the task_buckets row must still move: a reopened repeating task rerouted
+// to the bucket it already sits in stays where it is.
+func applyDoneBucketMove(s *xorm.Session, view *ProjectView, b *TaskBucket, task *Task, oldBucketID int64, completed bool) (updateBucket bool, err error) {
+	updateBucket = true
+	if view.DoneBucketID == 0 {
+		return updateBucket, nil
+	}
+
+	// Only change the done state if the task's done value actually changes
+	var doneChanged bool
+	if view.DoneBucketID == b.BucketID && (completed || !task.Done) {
+		doneChanged = true
+		// Set even when the completed iteration reopened the task;
+		// drives TaskDoneChangedEvent dispatched in Update.
+		b.doneChanged = true
+		b.doneAfter = true
+		if !completed {
+			task.Done = true
+		} else if !task.Done {
+			// A reopened repeating task doesn't stay in the done bucket;
+			// route it back to the view's default bucket so the user sees
+			// the next iteration waiting in the "To-Do" column. A task
+			// whose rule has no next occurrence stays done, in the done bucket.
+			b.BucketID, err = rerouteDoneRepeatingTask(s, view, oldBucketID)
+			if err != nil {
+				return false, err
+			}
+			// The task is already in the correct bucket, so there is
+			// nothing to move and no count to bump.
+			if b.BucketID == oldBucketID {
+				updateBucket = false
+			}
+		}
+	}
+
+	if oldBucketID == view.DoneBucketID && task.Done && b.BucketID != view.DoneBucketID {
+		doneChanged = true
+		b.doneChanged = true
+		b.doneAfter = false
+		task.Done = false
+	}
+
+	if !doneChanged {
+		return updateBucket, nil
+	}
+
+	// A completed iteration counts as done even when it reopened, as in updateDone.
+	if b.doneAfter {
+		task.DoneAt = time.Now()
+	} else {
+		task.DoneAt = time.Time{}
+	}
+	_, err = s.Where("id = ?", task.ID).
+		Cols(repeatingIterationCols...).
+		Update(task)
+	if err != nil {
+		return false, err
+	}
+
+	err = task.updateReminders(s, task)
+	if err != nil {
+		return false, err
+	}
+
+	// Since the done state of the task was changed, we need to move the task into all done buckets everywhere
+	if task.Done {
+		if err = syncTaskIntoOtherDoneBuckets(s, view, task); err != nil {
+			return false, err
+		}
+	}
+	return updateBucket, nil
+}
+
+// updateTaskBucket is internally used to actually do the update. It has two modes:
+//   - A drag (TaskBucket.Update): a move into or out of the done bucket changes the done
+//     state, and a repeating task moved into the done bucket completes one iteration.
+//   - A routing-only move (b.routeOnly, set by the task flow after the done state is
+//     stored): it checks the destination bucket's limit and moves the row, nothing else.
 func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 	oldTaskBucket := &TaskBucket{}
 	_, err = s.
@@ -227,8 +306,14 @@ func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 		}
 	}
 
-	task := &Task{ID: b.TaskID}
-	err = task.ReadOne(s, a)
+	// Row lock, and past the session memo: ReadOne can return the copy the permission check read before
+	// any lock, and the done-state write below would then overwrite a change made since.
+	stored, err := GetTaskSimple(lockingSession(s), &Task{ID: b.TaskID})
+	if err != nil {
+		return err
+	}
+	task := &stored
+	err = addMoreInfoToTasks(s, map[int64]*Task{task.ID: task}, a, nil, nil)
 	if err != nil {
 		return err
 	}
@@ -236,7 +321,7 @@ func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 	// A repeating task moved into the done bucket completes one iteration. This
 	// runs before the limit check because the result decides whether the task
 	// occupies a done slot. It writes nothing, so a failed limit check leaves no trace.
-	completed := view.DoneBucketID != 0 && view.DoneBucketID == b.BucketID && !task.Done && task.isRepeating()
+	completed := !b.routeOnly && view.DoneBucketID != 0 && view.DoneBucketID == b.BucketID && !task.Done && task.isRepeating()
 	if completed {
 		completeOneIteration(task)
 	}
@@ -251,68 +336,11 @@ func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 		bucket.Count = taskCount
 	}
 
-	var updateBucket = true
-
-	// mark task done if moved into or out of the done bucket
-	// Only change the done state if the task's done value actually changes
-	var doneChanged bool
-	if view.DoneBucketID != 0 {
-		if view.DoneBucketID == b.BucketID && (completed || !task.Done) {
-			doneChanged = true
-			// Set even when the completed iteration reopened the task;
-			// drives TaskDoneChangedEvent dispatched in Update.
-			b.doneChanged = true
-			b.doneAfter = true
-			if !completed {
-				task.Done = true
-			} else if !task.Done {
-				// A reopened repeating task doesn't stay in the done bucket;
-				// route it back to the view's default bucket so the user sees
-				// the next iteration waiting in the "To-Do" column. A task
-				// whose rule has no next occurrence stays done, in the done bucket.
-				b.BucketID, err = rerouteDoneRepeatingTask(s, view, oldTaskBucket.BucketID)
-				if err != nil {
-					return err
-				}
-				// The task is already in the correct bucket, so there is
-				// nothing to move and no count to bump.
-				if b.BucketID == oldTaskBucket.BucketID {
-					updateBucket = false
-				}
-			}
-		}
-
-		if oldTaskBucket.BucketID == view.DoneBucketID && task.Done && b.BucketID != view.DoneBucketID {
-			doneChanged = true
-			b.doneChanged = true
-			b.doneAfter = false
-			task.Done = false
-		}
-	}
-
-	if doneChanged {
-		if task.Done {
-			task.DoneAt = time.Now()
-		} else {
-			task.DoneAt = time.Time{}
-		}
-		_, err = s.Where("id = ?", task.ID).
-			Cols(repeatingIterationCols...).
-			Update(task)
+	updateBucket := true
+	if !b.routeOnly {
+		updateBucket, err = applyDoneBucketMove(s, view, b, task, oldTaskBucket.BucketID, completed)
 		if err != nil {
-			return
-		}
-
-		err = task.updateReminders(s, task)
-		if err != nil {
-			return
-		}
-
-		// Since the done state of the task was changed, we need to move the task into all done buckets everywhere
-		if task.Done {
-			if err = syncTaskIntoOtherDoneBuckets(s, view, task); err != nil {
-				return err
-			}
+			return err
 		}
 	}
 

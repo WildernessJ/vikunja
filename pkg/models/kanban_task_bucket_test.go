@@ -694,3 +694,64 @@ func TestTaskBucket_Update_RepeatingIntoDoneBucket(t *testing.T) {
 		assert.NotContains(t, stored.Description, `data-checked="true"`)
 	})
 }
+
+// #125: the move path of a repeating task.
+func TestTaskBucket_Update_RepeatingMoveFollowups(t *testing.T) {
+	u := &user.User{ID: 1}
+
+	t.Run("a live repeating task moved into the done bucket stores done_at", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+		_, err := s.Where("task_id = ? AND project_view_id = ?", 28, 4).
+			Cols("bucket_id").
+			Update(&TaskBucket{BucketID: 2})
+		require.NoError(t, err)
+
+		tb := &TaskBucket{TaskID: 28, BucketID: 3, ProjectViewID: 4, ProjectID: 1}
+		require.NoError(t, tb.Update(s, u))
+		require.NoError(t, s.Commit())
+
+		stored, _ := storedTaskWithReminders(t, 28)
+		assert.False(t, stored.Done)
+		assert.False(t, stored.DoneAt.IsZero())
+	})
+	t.Run("a plain task moved out of the done bucket clears done_at", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		// Fixture task 2 is done in done bucket 3.
+		tb := &TaskBucket{TaskID: 2, BucketID: 1, ProjectViewID: 4, ProjectID: 1}
+		require.NoError(t, tb.Update(s, u))
+		require.NoError(t, s.Commit())
+
+		stored, _ := storedTaskWithReminders(t, 2)
+		assert.False(t, stored.Done)
+		assert.True(t, stored.DoneAt.IsZero())
+	})
+	t.Run("a move does not write back a task read before another session changed it", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		// Autocommit: a read in a shared-cache SQLite transaction would block the second session.
+		s := db.NewAutocommitSession()
+		defer s.Close()
+
+		// The permission check reads the task through the session memo.
+		_, err := GetTaskByIDSimple(s, 28)
+		require.NoError(t, err)
+
+		changed := `<ul data-type="taskList"><li data-checked="true" data-type="taskItem"><p>changed elsewhere</p></li></ul>`
+		s2 := db.NewSession()
+		_, err = s2.ID(28).Cols("description").Update(&Task{Description: changed})
+		require.NoError(t, err)
+		require.NoError(t, s2.Commit())
+		s2.Close()
+
+		tb := &TaskBucket{TaskID: 28, BucketID: 3, ProjectViewID: 4, ProjectID: 1}
+		require.NoError(t, updateTaskBucket(s, u, tb))
+
+		stored, _ := storedTaskWithReminders(t, 28)
+		assert.Contains(t, stored.Description, "changed elsewhere")
+		assert.Contains(t, stored.Description, `data-checked="false"`)
+	})
+}
