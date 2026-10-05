@@ -999,16 +999,24 @@ func setNewTaskIndexes(s *xorm.Session, projectID int64, tasks []*Task) error {
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /projects/{id}/tasks [put]
 func (t *Task) Create(s *xorm.Session, a web.Auth) (err error) {
-	return createTask(s, t, a, true, true)
+	return createTask(s, t, a, true, true, true)
 }
 
-func createTask(s *xorm.Session, t *Task, a web.Auth, updateAssignees bool, setBucket bool) (err error) {
-	return unwrapBulkCreateError(createTasks(s, t.ProjectID, []*Task{t}, a, updateAssignees, setBucket, false))
+// CreateTaskForCalDAV is Task.Create without the #119 rule: a repeating task uploaded as done is stored
+// done, because a client can upload a completed instance as history. A CalDAV update of a done repeating
+// task still goes through Task.Update and completes one iteration.
+func CreateTaskForCalDAV(s *xorm.Session, t *Task, a web.Auth) error {
+	return createTask(s, t, a, true, true, false)
+}
+
+func createTask(s *xorm.Session, t *Task, a web.Auth, updateAssignees, setBucket, completeDoneRepeating bool) (err error) {
+	return unwrapBulkCreateError(createTasks(s, t.ProjectID, []*Task{t}, a, updateAssignees, setBucket, false, completeDoneRepeating))
 }
 
 // CreateTasksForImport preserves preset indexes across the whole imported batch.
+// An imported done repeating task is history, so it is stored done.
 func CreateTasksForImport(s *xorm.Session, projectID int64, tasks []*Task, a web.Auth) error {
-	return unwrapBulkCreateError(createTasks(s, projectID, tasks, a, true, true, true))
+	return unwrapBulkCreateError(createTasks(s, projectID, tasks, a, true, true, true, false))
 }
 
 // unwrapBulkCreateError returns the raw error type callers of a single logical create expect, not the batch wrapper.
@@ -1020,9 +1028,9 @@ func unwrapBulkCreateError(err error) error {
 	return err
 }
 
-// resolveProvidedBuckets maps task id → explicitly requested bucket, checking each bucket's limit once with the batch's own members added since their rows are inserted later.
-func resolveProvidedBuckets(s *xorm.Session, a web.Auth, projectID int64, tasks []*Task) (map[int64]*Bucket, error) {
-	// Validate every requested bucket before the #110 retarget, so a foreign done bucket fails as before.
+// resolveRequestedBuckets validates every requested bucket and returns the buckets and their views by id.
+// A bucket of another project, or of a deleted view, is ErrBucketDoesNotExist.
+func resolveRequestedBuckets(s *xorm.Session, projectID int64, tasks []*Task) (map[int64]*Bucket, map[int64]*ProjectView, error) {
 	buckets := make(map[int64]*Bucket)
 	views := make(map[int64]*ProjectView)
 	for _, t := range tasks {
@@ -1031,44 +1039,77 @@ func resolveProvidedBuckets(s *xorm.Session, a web.Auth, projectID int64, tasks 
 		}
 		bucket, err := getBucketByID(s, t.BucketID)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		view, err := GetProjectViewByID(s, bucket.ProjectViewID)
 		if err != nil {
 			// Deleted views leave orphaned buckets behind; reporting the missing view would disclose they exist.
 			if IsErrProjectViewDoesNotExist(err) {
-				return nil, ErrBucketDoesNotExist{BucketID: t.BucketID}
+				return nil, nil, ErrBucketDoesNotExist{BucketID: t.BucketID}
 			}
-			return nil, err
+			return nil, nil, err
 		}
 		if view.ProjectID != projectID {
-			return nil, ErrBucketDoesNotExist{BucketID: t.BucketID}
+			return nil, nil, ErrBucketDoesNotExist{BucketID: t.BucketID}
 		}
 		buckets[bucket.ID] = bucket
 		views[view.ID] = view
 	}
+	return buckets, views, nil
+}
 
+// completeRepeatingTasksOnCreate completes one iteration of a repeating task before its insert when it
+// is sent done (#119, only if completeDoneRepeating) or requested in the done bucket of a manual Kanban
+// view (#110). Both triggers together still complete one iteration. A task that reopens leaves the
+// requested done bucket for the view's default bucket; the create has no old bucket, so
+// getDefaultBucketID falls back to the leftmost bucket.
+func completeRepeatingTasksOnCreate(s *xorm.Session, tasks []*Task, buckets map[int64]*Bucket, views map[int64]*ProjectView, completeDoneRepeating bool) error {
+	for _, t := range tasks {
+		if !t.isRepeating() {
+			continue
+		}
+		var view *ProjectView
+		if t.BucketID != 0 {
+			view = views[buckets[t.BucketID].ProjectViewID]
+		}
+		inDoneBucket := view != nil && t.BucketID == view.DoneBucketID &&
+			view.ViewKind == ProjectViewKindKanban && view.BucketConfigurationMode == BucketConfigurationModeManual
+		completes := (t.Done && completeDoneRepeating) || (!t.Done && inDoneBucket)
+		if !completes {
+			continue
+		}
+
+		if completeOneIteration(t) || !inDoneBucket {
+			// Still done: the rule has no next occurrence, so the task stays done.
+			continue
+		}
+
+		var err error
+		t.BucketID, err = getDefaultBucketID(s, view)
+		if err != nil {
+			return err
+		}
+		if buckets[t.BucketID] == nil {
+			bucket, err := getBucketByID(s, t.BucketID)
+			if err != nil {
+				return err
+			}
+			buckets[bucket.ID] = bucket
+		}
+	}
+	return nil
+}
+
+// checkRequestedBucketLimits maps task id → requested bucket, checking each bucket's limit once with the
+// batch's own members added since their rows are inserted later.
+func checkRequestedBucketLimits(s *xorm.Session, a web.Auth, tasks []*Task, buckets map[int64]*Bucket, views map[int64]*ProjectView) (map[int64]*Bucket, error) {
 	bucketOrder := make([]int64, 0, len(tasks))
 	// bucket id → payload indexes of the tasks targeting it, in payload order.
 	batches := make(map[int64][]int)
 	for i, t := range tasks {
 		if t.BucketID == 0 {
 			continue
-		}
-		view := views[buckets[t.BucketID].ProjectViewID]
-		if t.isRepeating() && !t.Done && t.BucketID == view.DoneBucketID &&
-			view.ViewKind == ProjectViewKindKanban && view.BucketConfigurationMode == BucketConfigurationModeManual {
-			if err := completeRepeatingTaskInDoneBucket(s, t, view); err != nil {
-				return nil, err
-			}
-			if buckets[t.BucketID] == nil {
-				bucket, err := getBucketByID(s, t.BucketID)
-				if err != nil {
-					return nil, err
-				}
-				buckets[bucket.ID] = bucket
-			}
 		}
 		if _, has := batches[t.BucketID]; !has {
 			bucketOrder = append(bucketOrder, t.BucketID)
@@ -1103,25 +1144,6 @@ func resolveProvidedBuckets(s *xorm.Session, a web.Auth, projectID int64, tasks 
 	return taskProvidedBucket, nil
 }
 
-// completeRepeatingTaskInDoneBucket applies the move rule (#2573) to a create (#110): one iteration
-// completes and the task goes to the view's default bucket. The create has no old bucket, so the
-// leftmost bucket replaces rerouteDoneRepeatingTask's fallback. The row is already inserted.
-func completeRepeatingTaskInDoneBucket(s *xorm.Session, t *Task, view *ProjectView) (err error) {
-	oldTask := *t
-	t.Done = true
-	updateDone(&oldTask, t)
-	_, err = s.Where("id = ?", t.ID).
-		Cols("done", "due_date", "start_date", "end_date", "deadline", "done_at", "description").
-		Update(t)
-	if err != nil || t.Done {
-		// Still done: the rule has no next occurrence, so the task stays in the done bucket.
-		return err
-	}
-
-	t.BucketID, err = getDefaultBucketID(s, view)
-	return err
-}
-
 func prepareTasksForCreation(projectID int64, tasks []*Task, preserveIndexes bool) error {
 	for i, t := range tasks {
 		if err := validateTaskForCreation(t); err != nil {
@@ -1145,7 +1167,7 @@ func prepareTasksForCreation(projectID int64, tasks []*Task, preserveIndexes boo
 }
 
 // createTasks inserts row by row because multi-row inserts don't reliably return autoincrement ids on all supported databases.
-func createTasks(s *xorm.Session, projectID int64, tasks []*Task, a web.Auth, updateAssignees bool, setBucket, preserveIndexes bool) (err error) {
+func createTasks(s *xorm.Session, projectID int64, tasks []*Task, a web.Auth, updateAssignees, setBucket, preserveIndexes, completeDoneRepeating bool) (err error) {
 	if len(tasks) == 0 {
 		return nil
 	}
@@ -1170,6 +1192,15 @@ func createTasks(s *xorm.Session, projectID int64, tasks []*Task, a web.Auth, up
 		return err
 	}
 
+	// Decided before the insert, so the insert writes the final values.
+	buckets, bucketViews, err := resolveRequestedBuckets(s, projectID, tasks)
+	if err != nil {
+		return err
+	}
+	if err := completeRepeatingTasksOnCreate(s, tasks, buckets, bucketViews, completeDoneRepeating); err != nil {
+		return err
+	}
+
 	for _, t := range tasks {
 		t.CreatedByID = createdBy.ID
 
@@ -1186,7 +1217,7 @@ func createTasks(s *xorm.Session, projectID int64, tasks []*Task, a web.Auth, up
 		}
 	}
 
-	taskProvidedBucket, err := resolveProvidedBuckets(s, a, projectID, tasks)
+	taskProvidedBucket, err := checkRequestedBucketLimits(s, a, tasks, buckets, bucketViews)
 	if err != nil {
 		return err
 	}
@@ -2305,6 +2336,20 @@ func resetDescriptionChecklist(description string) string {
 	description = checklistTiptapCheckedRegex.ReplaceAllString(description, "${1}false${2}")
 	description = checklistInputCheckedRegex.ReplaceAllString(description, "$1")
 	return description
+}
+
+// repeatingIterationCols are the task columns completeOneIteration can change.
+var repeatingIterationCols = []string{"done", "due_date", "start_date", "end_date", "deadline", "done_at", "description"}
+
+// completeOneIteration marks a not-done task done and applies the repeat rule (#2573). A repeating task
+// with a next occurrence reopens with advanced dates; it stays done when its rule has none. It reports
+// whether the task is still done. It does not write; the caller stores repeatingIterationCols.
+func completeOneIteration(t *Task) (stillDone bool) {
+	oldTask := *t
+	oldTask.Done = false
+	t.Done = true
+	updateDone(&oldTask, t)
+	return t.Done
 }
 
 // This helper function updates the reminders, doneAt, start, end and due dates of the *old* task

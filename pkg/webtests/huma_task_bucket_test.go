@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"code.vikunja.io/api/pkg/db"
 	"code.vikunja.io/api/pkg/models"
@@ -417,4 +418,45 @@ func TestTaskBucketV2DefaultEqualsDoneBucketLimit(t *testing.T) {
 			"bucket_id": 3,
 		})
 	})
+}
+
+// TestTaskBucketV2RepeatingRuleEnded covers #120: a repeating task whose rule has
+// no next occurrence stays done and stays in the done bucket.
+func TestTaskBucketV2RepeatingRuleEnded(t *testing.T) {
+	e, err := setupTestEnv()
+	require.NoError(t, err)
+	token := humaTokenFor(t, &testuser1)
+
+	s := db.NewSession()
+	_, err = s.Where("id = ?", 28).
+		Cols("repeat_mode", "repeat_rrule", "repeat_after", "due_date").
+		Update(&models.Task{
+			RepeatMode:  models.TaskRepeatModeRRule,
+			RepeatRRule: "FREQ=DAILY;UNTIL=20200102T000000Z",
+			DueDate:     time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+		})
+	require.NoError(t, err)
+	require.NoError(t, s.Commit())
+	s.Close()
+	moveTaskBucket(t, 28, 4, 2)
+
+	rec := humaRequest(t, e, http.MethodPut, "/api/v2/projects/1/views/4/buckets/3/tasks", `{"task_id":28}`, token, "")
+	require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
+
+	var resp models.TaskBucket
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.NotNil(t, resp.Task)
+	assert.True(t, resp.Task.Done)
+	require.NotNil(t, resp.Bucket)
+	assert.Equal(t, int64(3), resp.Bucket.ID)
+
+	db.AssertExists(t, "tasks", map[string]interface{}{
+		"id":   28,
+		"done": true,
+	}, false)
+	db.AssertExists(t, "task_buckets", map[string]interface{}{
+		"task_id":         28,
+		"project_view_id": 4,
+		"bucket_id":       3,
+	}, false)
 }

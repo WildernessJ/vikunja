@@ -609,7 +609,7 @@ func (vcls *VikunjaCaldavProjectStorage) CreateResource(rpath, content string) (
 	}
 
 	// Create the task
-	err = vTask.Create(s, vcls.user)
+	err = models.CreateTaskForCalDAV(s, vTask, vcls.user)
 	if err != nil {
 		log.Errorf("[CALDAV] Failed to create task in CreateResource: %v, task: %+v", err, vTask)
 		_ = s.Rollback()

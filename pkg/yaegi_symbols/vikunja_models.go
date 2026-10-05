@@ -41,6 +41,7 @@ func init() {
 		"CreateOAuthCode":                                  reflect.ValueOf(models.CreateOAuthCode),
 		"CreateProject":                                    reflect.ValueOf(models.CreateProject),
 		"CreateSession":                                    reflect.ValueOf(models.CreateSession),
+		"CreateTaskForCalDAV":                              reflect.ValueOf(models.CreateTaskForCalDAV),
 		"CreateTasksForImport":                             reflect.ValueOf(models.CreateTasksForImport),
 		"CreateUserAsAdmin":                                reflect.ValueOf(models.CreateUserAsAdmin),
 		"DefaultUserStatsWindowWeeks":                      reflect.ValueOf(constant.MakeFromLiteral("12", token.INT, 0)),

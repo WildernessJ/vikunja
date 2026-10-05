@@ -112,6 +112,33 @@ func TestProjectDuplicate(t *testing.T) {
 	})
 }
 
+// A duplicate keeps a done repeating task done with its dates (#119 applies to user creates only).
+func TestProjectDuplicate_KeepsDoneRepeatingTask(t *testing.T) {
+	files.InitTestFileFixtures(t)
+	db.LoadAndAssertFixtures(t)
+	s := db.NewSession()
+	defer s.Close()
+
+	due := time.Date(2030, 1, 1, 12, 0, 0, 0, time.UTC)
+	_, err := s.Insert(&Task{Title: "done repeating", ProjectID: 4, Index: 50, CreatedByID: 3, UID: "duplicate-done-repeating",
+		Done: true, RepeatAfter: 3600, DueDate: due})
+	require.NoError(t, err)
+
+	usr := &user.User{ID: 3}
+	duplicate := &ProjectDuplicate{ProjectID: 4}
+	can, err := duplicate.CanCreate(s, usr)
+	require.NoError(t, err)
+	require.True(t, can)
+	require.NoError(t, duplicate.Create(s, usr))
+
+	copied := &Task{}
+	has, err := s.Where("project_id = ? AND title = ?", duplicate.Project.ID, "done repeating").Get(copied)
+	require.NoError(t, err)
+	require.True(t, has)
+	assert.True(t, copied.Done)
+	assert.Equal(t, due.Unix(), copied.DueDate.Unix())
+}
+
 // TestProjectDuplicate_ViewOrderIsDeterministic guards against the copied views
 // landing in a random order. Project 2's views carry no explicit position, so the
 // copy relies on calculateDefaultPosition's ID-based fallback. If the source views

@@ -24,6 +24,7 @@ import (
 	"code.vikunja.io/api/pkg/user"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"xorm.io/xorm"
 )
 
 func TestTaskBucket_Update(t *testing.T) {
@@ -567,5 +568,129 @@ func TestTaskBucket_Update(t *testing.T) {
 			assert.True(t, task.Done)
 			assert.WithinDuration(t, doneAt, task.DoneAt, time.Second)
 		}()
+	})
+}
+
+// endedRRuleTask28 turns task 28 into a rule with no next occurrence and places it in bucket 2 of view 4.
+func endedRRuleTask28(t *testing.T, s *xorm.Session) time.Time {
+	due := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	_, err := s.Where("id = ?", 28).
+		Cols("repeat_mode", "repeat_rrule", "repeat_after", "due_date").
+		Update(&Task{RepeatMode: TaskRepeatModeRRule, RepeatRRule: "FREQ=DAILY;UNTIL=20200102T000000Z", DueDate: due})
+	require.NoError(t, err)
+	_, err = s.Where("task_id = ? AND project_view_id = ?", 28, 4).
+		Cols("bucket_id").
+		Update(&TaskBucket{BucketID: 2})
+	require.NoError(t, err)
+	return due
+}
+
+// #120: a repeating task moved into the done bucket.
+func TestTaskBucket_Update_RepeatingIntoDoneBucket(t *testing.T) {
+	u := &user.User{ID: 1}
+
+	t.Run("a rule with no next occurrence stays done in the done bucket", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+		due := endedRRuleTask28(t, s)
+
+		tb := &TaskBucket{TaskID: 28, BucketID: 3, ProjectViewID: 4, ProjectID: 1}
+		require.NoError(t, tb.Update(s, u))
+		require.NoError(t, s.Commit())
+
+		assert.True(t, tb.Task.Done)
+		assert.Equal(t, int64(3), tb.BucketID)
+		assert.Equal(t, int64(3), tb.Bucket.ID)
+		stored, _ := storedTaskWithReminders(t, 28)
+		assert.True(t, stored.Done)
+		assert.Equal(t, due.Unix(), stored.DueDate.Unix())
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":         28,
+			"project_view_id": 4,
+			"bucket_id":       3,
+		}, false)
+	})
+	t.Run("a rule with no next occurrence lands in the done bucket of every view", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+		secondView := &ProjectView{
+			Title:                   "Second Kanban",
+			ProjectID:               1,
+			ViewKind:                ProjectViewKindKanban,
+			BucketConfigurationMode: BucketConfigurationModeManual,
+		}
+		require.NoError(t, secondView.Create(s, u))
+		require.NotZero(t, secondView.DoneBucketID)
+		endedRRuleTask28(t, s)
+
+		tb := &TaskBucket{TaskID: 28, BucketID: 3, ProjectViewID: 4, ProjectID: 1}
+		require.NoError(t, tb.Update(s, u))
+		require.NoError(t, s.Commit())
+
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":         28,
+			"project_view_id": 4,
+			"bucket_id":       3,
+		}, false)
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":         28,
+			"project_view_id": secondView.ID,
+			"bucket_id":       secondView.DoneBucketID,
+		}, false)
+	})
+	t.Run("a rule with no next occurrence respects the done bucket's limit", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+		due := endedRRuleTask28(t, s)
+		// Bucket 3 holds 4 tasks (2, 6, 7, 8).
+		_, err := s.Where("id = ?", 3).Cols("limit").Update(&Bucket{Limit: 4})
+		require.NoError(t, err)
+
+		tb := &TaskBucket{TaskID: 28, BucketID: 3, ProjectViewID: 4, ProjectID: 1}
+		err = tb.Update(s, u)
+		require.Error(t, err)
+		assert.True(t, IsErrBucketLimitExceeded(err))
+
+		stored := &Task{}
+		_, err = s.ID(28).Get(stored)
+		require.NoError(t, err)
+		assert.False(t, stored.Done)
+		assert.Equal(t, due.Unix(), stored.DueDate.Unix())
+		current := &TaskBucket{}
+		_, err = s.Where("task_id = ? AND project_view_id = ?", 28, 4).Get(current)
+		require.NoError(t, err)
+		assert.Equal(t, int64(2), current.BucketID)
+	})
+	t.Run("a live rule stores the advanced deadline and the reset checklist", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+		oldDue := time.Date(2018, 12, 2, 22, 25, 24, 0, time.UTC)
+		_, err := s.Where("id = ?", 28).
+			Cols("deadline", "description").
+			Update(&Task{
+				Deadline:    oldDue,
+				Description: `<ul data-type="taskList"><li data-checked="true" data-type="taskItem"><p>Item</p></li></ul>`,
+			})
+		require.NoError(t, err)
+		_, err = s.Where("task_id = ? AND project_view_id = ?", 28, 4).
+			Cols("bucket_id").
+			Update(&TaskBucket{BucketID: 2})
+		require.NoError(t, err)
+
+		tb := &TaskBucket{TaskID: 28, BucketID: 3, ProjectViewID: 4, ProjectID: 1}
+		require.NoError(t, tb.Update(s, u))
+		require.NoError(t, s.Commit())
+
+		stored, _ := storedTaskWithReminders(t, 28)
+		assert.False(t, stored.Done)
+		assert.True(t, stored.Deadline.After(oldDue))
+		// Deadline and due date started equal and advance by the same intervals.
+		assert.Equal(t, stored.DueDate.Unix(), stored.Deadline.Unix())
+		assert.Contains(t, stored.Description, `data-checked="false"`)
+		assert.NotContains(t, stored.Description, `data-checked="true"`)
 	})
 }
