@@ -275,8 +275,17 @@ func applyDoneBucketMove(s *xorm.Session, view *ProjectView, b *TaskBucket, task
 //   - A routing-only move (b.routeOnly, set by the task flow after the done state is
 //     stored): it checks the destination bucket's limit and moves the row, nothing else.
 func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
+	// Row lock first, and past the session memo: ReadOne can return the copy the permission check read before
+	// any lock, and the done-state write below would then overwrite a change made since. The old bucket is read
+	// after the lock with a locking read, so a concurrent move that committed while this one waited is seen
+	// (a plain read can return an older snapshot on MySQL).
+	stored, err := GetTaskSimple(lockingSession(s), &Task{ID: b.TaskID})
+	if err != nil {
+		return err
+	}
+
 	oldTaskBucket := &TaskBucket{}
-	_, err = s.
+	_, err = lockingSession(s).
 		Where("task_id = ? AND project_view_id = ?", b.TaskID, b.ProjectViewID).
 		Get(oldTaskBucket)
 	if err != nil {
@@ -306,12 +315,6 @@ func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 		}
 	}
 
-	// Row lock, and past the session memo: ReadOne can return the copy the permission check read before
-	// any lock, and the done-state write below would then overwrite a change made since.
-	stored, err := GetTaskSimple(lockingSession(s), &Task{ID: b.TaskID})
-	if err != nil {
-		return err
-	}
 	task := &stored
 	err = addMoreInfoToTasks(s, map[int64]*Task{task.ID: task}, a, nil, nil)
 	if err != nil {
