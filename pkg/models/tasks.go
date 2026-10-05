@@ -1002,13 +1002,6 @@ func (t *Task) Create(s *xorm.Session, a web.Auth) (err error) {
 	return createTask(s, t, a, true, true, true)
 }
 
-// CreateTaskForCalDAV is Task.Create without the #119 rule: a repeating task uploaded as done is stored
-// done, because a client can upload a completed instance as history. A CalDAV update of a done repeating
-// task still goes through Task.Update and completes one iteration.
-func CreateTaskForCalDAV(s *xorm.Session, t *Task, a web.Auth) error {
-	return createTask(s, t, a, true, true, false)
-}
-
 func createTask(s *xorm.Session, t *Task, a web.Auth, updateAssignees, setBucket, completeDoneRepeating bool) (err error) {
 	return unwrapBulkCreateError(createTasks(s, t.ProjectID, []*Task{t}, a, updateAssignees, setBucket, false, completeDoneRepeating))
 }
@@ -1063,7 +1056,8 @@ func resolveRequestedBuckets(s *xorm.Session, projectID int64, tasks []*Task) (m
 // is sent done (#119, only if completeDoneRepeating) or requested in the done bucket of a manual Kanban
 // view (#110). Both triggers together still complete one iteration. A task that reopens leaves the
 // requested done bucket for the view's default bucket; the create has no old bucket, so
-// getDefaultBucketID falls back to the leftmost bucket.
+// getDefaultBucketID falls back to the leftmost bucket. A create checks the limit of a bucket it was asked
+// for: after the reroute that is the default bucket, as on a move. A create without a bucket checks no limit.
 func completeRepeatingTasksOnCreate(s *xorm.Session, tasks []*Task, buckets map[int64]*Bucket, views map[int64]*ProjectView, completeDoneRepeating bool) error {
 	for _, t := range tasks {
 		if !t.isRepeating() {
@@ -1167,6 +1161,8 @@ func prepareTasksForCreation(projectID int64, tasks []*Task, preserveIndexes boo
 }
 
 // createTasks inserts row by row because multi-row inserts don't reliably return autoincrement ids on all supported databases.
+// It changes the caller's tasks before it can fail (id, index, project, dates of a completed iteration). On error,
+// a caller must not retry with the same tasks.
 func createTasks(s *xorm.Session, projectID int64, tasks []*Task, a web.Auth, updateAssignees, setBucket, preserveIndexes, completeDoneRepeating bool) (err error) {
 	if len(tasks) == 0 {
 		return nil
@@ -1623,67 +1619,11 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 		}
 	}
 
-	// When a task was moved between projects, ensure it is in the correct bucket
-	if t.ProjectID != ot.ProjectID {
-		_, err = s.Where("task_id = ?", t.ID).Delete(&TaskBucket{})
-		if err != nil {
-			return err
-		}
-		_, err = s.Where("task_id = ?", t.ID).Delete(&TaskPosition{})
-		if err != nil {
-			return err
-		}
-
-		for _, view := range views {
-			var bucketID int64
-			bucketID, err = existingBucketID(s, view.ID, view.DoneBucketID)
-			if err != nil {
-				return err
-			}
-			if bucketID == 0 || !t.Done {
-				bucketID, err = getDefaultBucketID(s, view)
-				if err != nil {
-					return err
-				}
-			}
-
-			tb := &TaskBucket{
-				BucketID:      bucketID,
-				TaskID:        t.ID,
-				ProjectViewID: view.ID,
-				ProjectID:     t.ProjectID,
-			}
-			err = updateTaskBucket(s, a, tb)
-			if err != nil {
-				return err
-			}
-
-			tp, err := calculateNewPositionForTask(s, a, t, view)
-			if err != nil {
-				return err
-			}
-
-			err = updateTaskPosition(s, a, tp)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	// When a task changed its done status, make sure it is in the correct bucket
-	if t.ProjectID == ot.ProjectID && t.Done != ot.Done {
-		if t.isRepeating() && t.Done {
-			// Repeating tasks don't stay in the done bucket — route them back
-			// to the default bucket so the next iteration shows up in the
-			// "To-Do" column. See #2573.
-			err = t.moveTaskToDefaultBuckets(s, a, views)
-		} else {
-			err = t.moveTaskToDoneBuckets(s, a, views)
-		}
-		if err != nil {
-			return
-		}
-	}
+	// The bucket routing runs after the main write, on the stored done state: updateDone can
+	// reopen a repeating task or leave it done when its rule has no next occurrence (#122).
+	projectMoved := t.ProjectID != ot.ProjectID
+	doneToggled := t.Done != ot.Done
+	markedDone := t.Done
 
 	preRepeatDueDate, preRepeatStartDate, preRepeatEndDate := t.DueDate, t.StartDate, t.EndDate
 	preRepeatDescription := t.Description
@@ -1854,6 +1794,67 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 		return err
 	}
 
+	// When a task was moved between projects, ensure it is in the correct bucket
+	if projectMoved {
+		_, err = s.Where("task_id = ?", t.ID).Delete(&TaskBucket{})
+		if err != nil {
+			return err
+		}
+		_, err = s.Where("task_id = ?", t.ID).Delete(&TaskPosition{})
+		if err != nil {
+			return err
+		}
+
+		for _, view := range views {
+			var bucketID int64
+			bucketID, err = existingBucketID(s, view.ID, view.DoneBucketID)
+			if err != nil {
+				return err
+			}
+			if bucketID == 0 || !t.Done {
+				bucketID, err = getDefaultBucketID(s, view)
+				if err != nil {
+					return err
+				}
+			}
+
+			tb := &TaskBucket{
+				BucketID:      bucketID,
+				TaskID:        t.ID,
+				ProjectViewID: view.ID,
+				ProjectID:     t.ProjectID,
+			}
+			err = updateTaskBucket(s, a, tb)
+			if err != nil {
+				return err
+			}
+
+			tp, err := calculateNewPositionForTask(s, a, t, view)
+			if err != nil {
+				return err
+			}
+
+			err = updateTaskPosition(s, a, tp)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	// When a task changed its done status, make sure it is in the correct bucket
+	if !projectMoved && doneToggled {
+		if markedDone && !t.Done {
+			// A repeating task marked done reopened for its next iteration; route it
+			// to the default bucket so it shows up in the "To-Do" column. See #2573.
+			err = t.moveTaskToDefaultBuckets(s, a, views)
+		} else {
+			err = t.moveTaskToDoneBuckets(s, a, views)
+		}
+		if err != nil {
+			return
+		}
+	}
+
 	// Get the task updated timestamp in a new struct - if we'd just try to put it into t which we already have, it
 	// would still contain the old updated date.
 	nt := &Task{}
@@ -2015,7 +2016,9 @@ func (t *Task) moveTaskToDefaultBuckets(s *xorm.Session, a web.Auth, views []*Pr
 	return nil
 }
 
+// addOneMonthToDate keeps the wall clock of d in the service time zone, whatever zone d carries (#123).
 func addOneMonthToDate(d time.Time) time.Time {
+	d = d.In(config.GetTimeZone())
 	return time.Date(d.Year(), d.Month()+1, d.Day(), d.Hour(), d.Minute(), d.Second(), d.Nanosecond(), config.GetTimeZone())
 }
 

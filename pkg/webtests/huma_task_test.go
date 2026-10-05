@@ -548,3 +548,34 @@ func TestHumaTask_ETagReturns304(t *testing.T) {
 	e.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusNotModified, rec.Code, "body: %s", rec.Body.String())
 }
+
+// TestHumaTask_UpdateEndedRuleDone covers #122: marking a repeating task done
+// whose rule has no next occurrence routes it into the done bucket, so the done
+// bucket's limit applies. The check runs after the task row is written; the
+// request's rollback must leave the row open.
+func TestHumaTask_UpdateEndedRuleDone(t *testing.T) {
+	e, err := setupTestEnv()
+	require.NoError(t, err)
+	token := humaTokenFor(t, &testuser1)
+
+	s := db.NewSession()
+	_, err = s.Where("id = ?", 28).
+		Cols("repeat_mode", "repeat_rrule", "repeat_after", "due_date").
+		Update(&models.Task{RepeatMode: models.TaskRepeatModeRRule, RepeatRRule: "FREQ=DAILY;UNTIL=20200102T000000Z", DueDate: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)})
+	require.NoError(t, err)
+	_, err = s.Where("task_id = ? AND project_view_id = ?", 28, 4).
+		Cols("bucket_id").
+		Update(&models.TaskBucket{BucketID: 2})
+	require.NoError(t, err)
+	require.NoError(t, s.Commit())
+	s.Close()
+	// Bucket 3 holds 4 tasks.
+	setBucketLimit(t, 3, 4)
+
+	body := `{"title":"ended rule","done":true,"repeat_mode":3,"repeat_rrule":"FREQ=DAILY;UNTIL=20200102T000000Z","due_date":"2020-01-01T00:00:00Z"}`
+	rec := humaRequest(t, e, http.MethodPut, "/api/v2/tasks/28", body, token, "")
+	require.Equal(t, http.StatusPreconditionFailed, rec.Code, "body: %s", rec.Body.String())
+	assert.Contains(t, rec.Body.String(), fmt.Sprintf(`"code":%d`, models.ErrCodeBucketLimitExceeded))
+	db.AssertExists(t, "tasks", map[string]interface{}{"id": 28, "done": false}, false)
+	db.AssertExists(t, "task_buckets", map[string]interface{}{"task_id": 28, "project_view_id": 4, "bucket_id": 2}, false)
+}
