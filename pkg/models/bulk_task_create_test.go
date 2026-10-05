@@ -21,6 +21,7 @@ import (
 	"reflect"
 	"strconv"
 	"testing"
+	"time"
 
 	"code.vikunja.io/api/pkg/db"
 	"code.vikunja.io/api/pkg/events"
@@ -102,6 +103,36 @@ func TestBulkTaskCreation_Create(t *testing.T) {
 		events.DispatchPending(context.Background(), s)
 		events.AssertDispatched(t, &TaskCreatedEvent{})
 		events.AssertDispatched(t, &TasksBatchCreatedEvent{})
+	})
+
+	t.Run("done repeating task completes one iteration, plain done task stays done (#119)", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		due := time.Now().Add(48 * time.Hour).Truncate(time.Second)
+		btc := &BulkTaskCreation{
+			ProjectID: 1,
+			Tasks: []*Task{
+				{Title: "bulk repeating done", RepeatAfter: 3600, DueDate: due, Done: true},
+				{Title: "bulk plain done", Done: true},
+			},
+		}
+		require.NoError(t, btc.Create(s, usr))
+		require.NoError(t, s.Commit())
+
+		repeating, _ := storedTaskWithReminders(t, btc.Tasks[0].ID)
+		assert.False(t, repeating.Done)
+		assert.Equal(t, due.Add(time.Hour).Unix(), repeating.DueDate.Unix())
+		db.AssertExists(t, "tasks", map[string]interface{}{
+			"id":   btc.Tasks[1].ID,
+			"done": true,
+		}, false)
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":         btc.Tasks[1].ID,
+			"project_view_id": 4,
+			"bucket_id":       3,
+		}, false)
 	})
 
 	t.Run("batch lands on top of a view with existing positions", func(t *testing.T) {

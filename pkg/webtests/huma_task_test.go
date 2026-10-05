@@ -284,6 +284,24 @@ func TestHumaTask_CreateInDoneBucket(t *testing.T) {
 			"bucket_id": 3,
 		}, false)
 	})
+	t.Run("repeating task created done completes one iteration (#119)", func(t *testing.T) {
+		create := setup(t)
+		rec := create(fmt.Sprintf(`{"title":"repeat created done","repeat_after":3600,"due_date":%q,"done":true}`, due.Format(time.RFC3339)))
+		require.Equal(t, http.StatusCreated, rec.Code, "body: %s", rec.Body.String())
+
+		task := &models.Task{}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), task))
+		assert.False(t, task.Done)
+		assert.Equal(t, due.Add(time.Hour).Unix(), task.DueDate.Unix())
+		s := db.NewSession()
+		defer s.Close()
+		stored := &models.Task{}
+		has, err := s.ID(task.ID).Get(stored)
+		require.NoError(t, err)
+		require.True(t, has)
+		assert.False(t, stored.Done)
+		assert.Equal(t, due.Add(time.Hour).Unix(), stored.DueDate.Unix())
+	})
 	t.Run("bucket of another project is rejected", func(t *testing.T) {
 		create := setup(t)
 		rec := create(`{"title":"foreign bucket","repeat_after":3600,"bucket_id":4}`)

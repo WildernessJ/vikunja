@@ -165,17 +165,18 @@ func syncTaskIntoOtherDoneBuckets(s *xorm.Session, view *ProjectView, task *Task
 	return nil
 }
 
-// repeatingTaskPassesThroughDoneBucket reports whether marking this repeating
-// task done only transits the requested done bucket before the done-state
-// handling reroutes it to the view's default bucket. In that case the task never
-// occupies a done slot, so the done bucket's limit must not block completion —
-// the real destination's limit is still enforced afterwards via
-// resolveDestinationBucket. It returns false when default == done (the reroute
-// lands the task right back in the done bucket, so the limit must still apply);
-// createProjectView/Update forbid that config, this keeps legacy rows safe.
-func repeatingTaskPassesThroughDoneBucket(view *ProjectView, task *Task, requestedBucketID int64) bool {
-	return task.isRepeating() &&
-		requestedBucketID == view.DoneBucketID &&
+// repeatingTaskPassesThroughDoneBucket reports whether a repeating task that
+// completed an iteration (completeOneIteration) only transits the requested done
+// bucket: it reopened, so the done-state handling reroutes it to the view's
+// default bucket. In that case the task never occupies a done slot, so the done
+// bucket's limit must not block completion — the real destination's limit is
+// still enforced afterwards via resolveDestinationBucket. It returns false when
+// the rule has no next occurrence (the task stays done in the done bucket, #120)
+// and when default == done (the reroute lands the task right back in the done
+// bucket, so the limit must still apply); createProjectView/Update forbid that
+// config, this keeps legacy rows safe.
+func repeatingTaskPassesThroughDoneBucket(view *ProjectView, task *Task, completed bool) bool {
+	return completed &&
 		!task.Done &&
 		view.DefaultBucketID != 0 &&
 		view.DefaultBucketID != view.DoneBucketID
@@ -192,6 +193,8 @@ func rerouteDoneRepeatingTask(s *xorm.Session, view *ProjectView, fallback int64
 }
 
 // updateTaskBucket is internally used to actually do the update.
+//
+//nolint:gocyclo
 func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 	oldTaskBucket := &TaskBucket{}
 	_, err = s.
@@ -230,9 +233,17 @@ func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 		return err
 	}
 
+	// A repeating task moved into the done bucket completes one iteration. This
+	// runs before the limit check because the result decides whether the task
+	// occupies a done slot. It writes nothing, so a failed limit check leaves no trace.
+	completed := view.DoneBucketID != 0 && view.DoneBucketID == b.BucketID && !task.Done && task.isRepeating()
+	if completed {
+		completeOneIteration(task)
+	}
+
 	// Check the bucket limit
 	// Only check the bucket limit if the task is being moved between buckets, allow reordering the task within a bucket
-	if b.BucketID != 0 && b.BucketID != oldTaskBucket.BucketID && !repeatingTaskPassesThroughDoneBucket(view, task, b.BucketID) {
+	if b.BucketID != 0 && b.BucketID != oldTaskBucket.BucketID && !repeatingTaskPassesThroughDoneBucket(view, task, completed) {
 		taskCount, err := checkBucketLimit(s, a, task, bucket, view, 0)
 		if err != nil {
 			return err
@@ -246,20 +257,19 @@ func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 	// Only change the done state if the task's done value actually changes
 	var doneChanged bool
 	if view.DoneBucketID != 0 {
-		if view.DoneBucketID == b.BucketID && !task.Done {
+		if view.DoneBucketID == b.BucketID && (completed || !task.Done) {
 			doneChanged = true
-			// Captured before updateDone resets a repeating task's Done back to
-			// false; drives TaskDoneChangedEvent dispatched in Update.
+			// Set even when the completed iteration reopened the task;
+			// drives TaskDoneChangedEvent dispatched in Update.
 			b.doneChanged = true
 			b.doneAfter = true
-			task.Done = true
-			if task.isRepeating() {
-				oldTask := *task
-				oldTask.Done = false
-				updateDone(&oldTask, task)
-				// A repeating task doesn't stay in the done bucket; route
-				// it back to the view's default bucket so the user sees
-				// the next iteration waiting in the "To-Do" column.
+			if !completed {
+				task.Done = true
+			} else if !task.Done {
+				// A reopened repeating task doesn't stay in the done bucket;
+				// route it back to the view's default bucket so the user sees
+				// the next iteration waiting in the "To-Do" column. A task
+				// whose rule has no next occurrence stays done, in the done bucket.
 				b.BucketID, err = rerouteDoneRepeatingTask(s, view, oldTaskBucket.BucketID)
 				if err != nil {
 					return err
@@ -287,13 +297,7 @@ func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 			task.DoneAt = time.Time{}
 		}
 		_, err = s.Where("id = ?", task.ID).
-			Cols(
-				"done",
-				"due_date",
-				"start_date",
-				"end_date",
-				"done_at",
-			).
+			Cols(repeatingIterationCols...).
 			Update(task)
 		if err != nil {
 			return

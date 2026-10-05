@@ -477,6 +477,99 @@ func TestTask_Create(t *testing.T) {
 			})
 		}
 	})
+	t.Run("repeating task created done completes one iteration (#119)", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		due := time.Now().Add(48 * time.Hour).Truncate(time.Second)
+		task := &Task{
+			Title:       "repeating created done",
+			ProjectID:   1,
+			RepeatAfter: 3600,
+			DueDate:     due,
+			Done:        true,
+		}
+		require.NoError(t, task.Create(s, usr))
+		require.NoError(t, s.Commit())
+
+		assert.False(t, task.Done)
+		stored, _ := storedTaskWithReminders(t, task.ID)
+		assert.False(t, stored.Done)
+		assert.Equal(t, due.Add(time.Hour).Unix(), stored.DueDate.Unix())
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":         task.ID,
+			"project_view_id": 4,
+			"bucket_id":       1,
+		}, false)
+	})
+	t.Run("repeating task created done in the done bucket advances once (#119, #110)", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		due := time.Now().Add(48 * time.Hour).Truncate(time.Second)
+		task := &Task{
+			Title:       "repeating created done in done",
+			ProjectID:   1,
+			RepeatAfter: 3600,
+			DueDate:     due,
+			Done:        true,
+			BucketID:    3,
+		}
+		require.NoError(t, task.Create(s, usr))
+		require.NoError(t, s.Commit())
+
+		stored, _ := storedTaskWithReminders(t, task.ID)
+		assert.False(t, stored.Done)
+		// One interval, not two.
+		assert.Equal(t, due.Add(time.Hour).Unix(), stored.DueDate.Unix())
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":         task.ID,
+			"project_view_id": 4,
+			"bucket_id":       1,
+		}, false)
+	})
+	t.Run("repeating task created done with no next occurrence stays done (#119)", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		due := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+		task := &Task{
+			Title:       "ended rrule created done",
+			ProjectID:   1,
+			RepeatMode:  TaskRepeatModeRRule,
+			RepeatRRule: "FREQ=DAILY;UNTIL=20200102T000000Z",
+			DueDate:     due,
+			Done:        true,
+		}
+		require.NoError(t, task.Create(s, usr))
+		require.NoError(t, s.Commit())
+
+		stored, _ := storedTaskWithReminders(t, task.ID)
+		assert.True(t, stored.Done)
+		assert.Equal(t, due.Unix(), stored.DueDate.Unix())
+		db.AssertExists(t, "task_buckets", map[string]interface{}{
+			"task_id":         task.ID,
+			"project_view_id": 4,
+			"bucket_id":       3,
+		}, false)
+	})
+	t.Run("imported done repeating task stays done", func(t *testing.T) {
+		db.LoadAndAssertFixtures(t)
+		s := db.NewSession()
+		defer s.Close()
+
+		due := time.Now().Add(48 * time.Hour).Truncate(time.Second)
+		task := &Task{Title: "imported done repeating", RepeatAfter: 3600, DueDate: due, Done: true}
+		require.NoError(t, CreateTasksForImport(s, 1, []*Task{task}, usr))
+		require.NoError(t, s.Commit())
+
+		stored, _ := storedTaskWithReminders(t, task.ID)
+		assert.True(t, stored.Done)
+		assert.Equal(t, due.Unix(), stored.DueDate.Unix())
+	})
 }
 
 func TestTask_Update(t *testing.T) {
@@ -2572,4 +2665,108 @@ func TestGetTaskByIDSimpleMemo(t *testing.T) {
 	afterWrite, err := GetTaskByIDSimple(s, 1)
 	require.NoError(t, err)
 	assert.Equal(t, behindTheBackTitle, afterWrite.Title)
+}
+
+// storedTaskWithReminders reads a task row and its reminders, ordered by time, in a fresh session.
+func storedTaskWithReminders(t *testing.T, id int64) (*Task, []*TaskReminder) {
+	s := db.NewSession()
+	defer s.Close()
+	stored := &Task{}
+	has, err := s.ID(id).Get(stored)
+	require.NoError(t, err)
+	require.True(t, has)
+	reminders := []*TaskReminder{}
+	require.NoError(t, s.Where("task_id = ?", id).OrderBy("reminder").Find(&reminders))
+	return stored, reminders
+}
+
+// TestTask_Create_CompletesOneIteration checks that both create triggers (#110 done bucket,
+// #119 done: true) store what Task.Update with done: true stores, for each repeat mode.
+func TestTask_Create_CompletesOneIteration(t *testing.T) {
+	usr := &user.User{ID: 1}
+	// In the service zone: addOneMonthToDate keeps the wall clock of a date sent in another zone (Execution Log).
+	due := time.Now().In(config.GetTimeZone()).Add(48 * time.Hour).Truncate(time.Second)
+
+	modes := []struct {
+		name string
+		task func() *Task
+	}{
+		{"repeat_after with an absolute and a relative reminder", func() *Task {
+			return &Task{RepeatAfter: 3600, DueDate: due, StartDate: due, EndDate: due.Add(time.Hour), Deadline: due,
+				Reminders: []*TaskReminder{
+					{Reminder: due.Add(-2 * time.Hour)},
+					{RelativeTo: ReminderRelationDueDate, RelativePeriod: -3600},
+				}}
+		}},
+		{"month", func() *Task {
+			return &Task{RepeatMode: TaskRepeatModeMonth, DueDate: due, StartDate: due, Deadline: due,
+				Reminders: []*TaskReminder{{Reminder: due.Add(-2 * time.Hour)}}}
+		}},
+		{"from current date", func() *Task {
+			return &Task{RepeatMode: TaskRepeatModeFromCurrentDate, RepeatAfter: 3600, DueDate: due, StartDate: due,
+				Reminders: []*TaskReminder{{Reminder: due.Add(-2 * time.Hour)}}}
+		}},
+		{"live rrule", func() *Task {
+			return &Task{RepeatMode: TaskRepeatModeRRule, RepeatRRule: "FREQ=DAILY", DueDate: due, Deadline: due}
+		}},
+	}
+
+	triggers := []struct {
+		name  string
+		apply func(*Task)
+	}{
+		{"created in the done bucket", func(task *Task) { task.BucketID = 3 }},
+		{"created with done: true", func(task *Task) { task.Done = true }},
+	}
+
+	for _, trigger := range triggers {
+		for _, mode := range modes {
+			t.Run(trigger.name+": "+mode.name, func(t *testing.T) {
+				db.LoadAndAssertFixtures(t)
+
+				// Reference: create open, then mark done through Task.Update.
+				s := db.NewSession()
+				ref := mode.task()
+				ref.Title = "reference"
+				ref.ProjectID = 1
+				require.NoError(t, ref.Create(s, usr))
+				loaded := &Task{ID: ref.ID}
+				require.NoError(t, loaded.ReadOne(s, usr))
+				loaded.Done = true
+				require.NoError(t, loaded.Update(s, usr))
+				require.NoError(t, s.Commit())
+				s.Close()
+
+				s = db.NewSession()
+				task := mode.task()
+				task.Title = "subject"
+				task.ProjectID = 1
+				trigger.apply(task)
+				require.NoError(t, task.Create(s, usr))
+				require.NoError(t, s.Commit())
+				s.Close()
+
+				want, wantReminders := storedTaskWithReminders(t, ref.ID)
+				got, gotReminders := storedTaskWithReminders(t, task.ID)
+
+				require.False(t, want.Done, "reference must reopen")
+				require.NotEqual(t, due.Unix(), want.DueDate.Unix(), "reference must advance")
+				assert.False(t, got.Done)
+				// From-current-date reads time.Now, so allow the gap between the two writes.
+				assert.WithinDuration(t, want.DueDate, got.DueDate, 5*time.Second)
+				assert.WithinDuration(t, want.StartDate, got.StartDate, 5*time.Second)
+				assert.WithinDuration(t, want.EndDate, got.EndDate, 5*time.Second)
+				assert.WithinDuration(t, want.Deadline, got.Deadline, 5*time.Second)
+				require.Len(t, gotReminders, len(wantReminders))
+				for i := range wantReminders {
+					assert.WithinDuration(t, wantReminders[i].Reminder, gotReminders[i].Reminder, 5*time.Second, "reminder %d", i)
+				}
+				db.AssertExists(t, "task_buckets", map[string]interface{}{
+					"task_id":         task.ID,
+					"project_view_id": 4,
+					"bucket_id":       1,
+				}, false)
+			})
+		}
+	}
 }
