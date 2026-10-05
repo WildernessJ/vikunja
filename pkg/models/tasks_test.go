@@ -2685,7 +2685,6 @@ func storedTaskWithReminders(t *testing.T, id int64) (*Task, []*TaskReminder) {
 // #119 done: true) store what Task.Update with done: true stores, for each repeat mode.
 func TestTask_Create_CompletesOneIteration(t *testing.T) {
 	usr := &user.User{ID: 1}
-	// In the service zone: addOneMonthToDate keeps the wall clock of a date sent in another zone (Execution Log).
 	due := time.Now().In(config.GetTimeZone()).Add(48 * time.Hour).Truncate(time.Second)
 
 	modes := []struct {

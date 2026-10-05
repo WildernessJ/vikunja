@@ -238,4 +238,57 @@ committed; the browser checks pass; the Execution Log records each red failure.
 
 ## Execution Log
 
-_Empty; the build phase appends._
+### Build — 2026-10-04 (Opus, driver session)
+
+Commits: `1332618a7` (code and tests), `51e75c993` (yaegi regeneration, unchanged output: the
+`CreateTaskForCalDAV` line removed), then this log commit (with a stale test comment removed).
+
+**Gate (on `51e75c993`):** `mage test:feature` 0, `mage test:web` 0, `mage lint` 0 issues
+(without the `//nolint:gocyclo` on `updateTaskBucket`), `mage check:all` 0. The browser verify
+(Verification step 4) is not done in this phase; it belongs to the review.
+
+**Red-first evidence.** I copied the new test files onto `07c688abb` in a temporary worktree and
+ran them there. The CalDAV test and the webtest ran red in this worktree before the fix.
+
+- Test 1: view 4 row `bucket_id: 3` missing (the task was in bucket 1).
+- Test 2: `expected: 412, actual: 200`.
+- Test 3: **pin, not red.** Jason chose to keep it as a pin and continue (2026-10-04). On the old
+  code the project-move block sends the task to done bucket 4, but `updateTaskBucket` reads the
+  open DB task, completes one iteration (#120) and reroutes it to the default bucket 40. The
+  Design's claim that this sibling case lands in the done bucket today is wrong. After the fix
+  the block routes on the final `t.Done`, so the test stays green by the new path.
+- Test 4: `expected: 1897437600, actual: 1897423200` (14400 s, the zone offset).
+- Test 5: done after the first PUT, due date not advanced. After the second PUT also still done
+  (the old create stored it done, so the update had no transition).
+- Test 6: `done_at` zero. The plain-task half is a pin.
+- Test 7: `"" does not contain "changed elsewhere"` (the move wrote back the memoized copy).
+  The test uses `db.NewAutocommitSession()` for the moving session: a read in a shared-cache
+  SQLite transaction would hold a table lock and block the second session's write.
+- Tests 8, 9, 13, 14: pins, green before and after.
+- Tests 10, 11, 12, 15: pins, green on the old code. No defect found.
+
+**Deviations and decisions the reviewer should check first:**
+
+1. **Routing state captured after the field copy-back.** The Design said to reuse
+   `doneChanged`/`doneAfter`. Those are captured before the `fields` copy-back, so on a partial
+   update without `done` they compare the zero value with the stored state. The routing uses
+   new locals `doneToggled`/`markedDone`, captured where the old routing blocks were (after the
+   copy-back, before `updateDone`), plus `projectMoved`. `doneChanged`/`doneAfter` are unchanged.
+   **Pre-existing, not fixed:** `TaskDoneChangedEvent` fires on that wrong `doneChanged`, so a
+   bulk update with a field list that omits `done` on a done task dispatches a done-changed
+   event with `Done: false`. Recommend a separate issue.
+2. **Test 15 setup.** Fixture bucket 2 has `limit: 3` and is full. A create asked for bucket 2
+   checks bucket 2's limit, also when the task then lands in the done bucket. This matches the
+   rule the Design states and the plain-task path. The test clears bucket 2's limit; the
+   assertions are as written.
+3. **Locked read drops `subscription` from the move response.** `ReadOne` added the requesting
+   user's subscription; `GetTaskSimple` + `addMoreInfoToTasks` does not. The field doc says it
+   is present only when reading a single task, and `ProjectKanban.vue` does not read it.
+   `addMoreInfoToTasks` runs with no view and no expand, as in `ReadOne`.
+4. **Extraction.** `applyDoneBucketMove(s, view, b, task, oldBucketID, completed) (updateBucket bool, err error)`
+   in `kanban_task_bucket.go`. The body is the old block; only `done_at` changed (it follows
+   `b.doneAfter`).
+5. **Position after a project move.** The project-move block now runs with `t` after `*t = ot`,
+   so `calculateNewPositionForTask` reads the stored index, not the request's.
+6. **Removed comment.** `TestTask_Create_CompletesOneIteration` said `addOneMonthToDate` keeps
+   the wall clock of a date sent in another zone. #123 fixed that, so the comment is removed.
