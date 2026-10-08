@@ -999,11 +999,11 @@ func setNewTaskIndexes(s *xorm.Session, projectID int64, tasks []*Task) error {
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /projects/{id}/tasks [put]
 func (t *Task) Create(s *xorm.Session, a web.Auth) (err error) {
-	return createTask(s, t, a, true, true, true)
+	return createTask(s, t, a, true, true)
 }
 
-func createTask(s *xorm.Session, t *Task, a web.Auth, updateAssignees, setBucket, completeDoneRepeating bool) (err error) {
-	return unwrapBulkCreateError(createTasks(s, t.ProjectID, []*Task{t}, a, updateAssignees, setBucket, false, completeDoneRepeating))
+func createTask(s *xorm.Session, t *Task, a web.Auth, updateAssignees, setBucket bool) (err error) {
+	return unwrapBulkCreateError(createTasks(s, t.ProjectID, []*Task{t}, a, updateAssignees, setBucket, false, true))
 }
 
 // CreateTasksForImport preserves preset indexes across the whole imported batch.
