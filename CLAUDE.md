@@ -22,8 +22,9 @@ here.
 
 ## Build and test
 
-- **Suite:** `mage test:feature` + `cd frontend && pnpm typecheck`. `mage test:web` is
-  `pkg/webtests` only. Use mage: plain `go test` fails to compile without `frontend/dist`
+- **Suite:** `mage test:feature` + `mage test:web` + `mage test:caldav` + `cd frontend && pnpm
+  typecheck`. `mage test:web` is `pkg/webtests` only. `mage test:feature` passes `-short`, and
+  `pkg/caldavtests` skips under `-short`, so only `mage test:caldav` runs the CalDAV tests. Use mage: plain `go test` fails to compile without `frontend/dist`
   (`frontend/embed.go` embeds it), which mage creates as a placeholder. See
   `.agents/docs/testing.md`.
 - **Live-verify** UI and API changes in the browser. A green suite alone is not done.
