@@ -559,7 +559,7 @@ function onBreadcrumbClick(event: MouseEvent, projectId: number, navigate: (even
 	navigate(event)
 }
 
-onBeforeRouteLeave(async (to) => {
+onBeforeRouteLeave((to) => {
 	if (taskNotFound.value) {
 		return
 	}
@@ -605,7 +605,7 @@ const isModal = computed(() => Boolean(props.backdropView))
 
 const heading = ref<HTMLElement | null>(null)
 
-async function scrollToHeading() {
+function scrollToHeading() {
 	scrollIntoView(unrefElement(heading))
 }
 
@@ -705,7 +705,9 @@ const debouncedMutationHandler = useDebounceFn(async () => {
 
 useMutationObserver(
 	taskViewContainer,
-	debouncedMutationHandler,
+	() => {
+		debouncedMutationHandler().catch(e => error(e))
+	},
 	{subtree: true, childList: true},
 )
 
@@ -788,7 +790,9 @@ async function saveTask(
 useTaskDetailShortcuts({
 	task: () => task.value,
 	taskTitle: () => taskTitle.value,
-	onSave: saveTask,
+	onSave: () => {
+		saveTask().catch(e => error(e))
+	},
 })
 
 const showDeleteModal = ref(false)
@@ -811,7 +815,9 @@ async function toggleTaskDone() {
 
 	await saveTask(
 		newTask,
-		toggleTaskDone,
+		() => {
+			toggleTaskDone().catch(e => error(e))
+		},
 	)
 }
 

@@ -259,7 +259,7 @@ function clearLabelFilter() {
 	emit('clearLabelFilter')
 }
 
-async function loadPendingTasks(from: Date|string, to: Date|string, filterId: number | null | undefined) {
+function loadPendingTasks(from: Date|string, to: Date|string, filterId: number | null | undefined) {
 	// FIXME: HACK! This should never happen.
 	// Since this route is authentication only, users would get an error message if they access the page unauthenticated.
 	// Since this component is mounted as the home page before unauthenticated users get redirected

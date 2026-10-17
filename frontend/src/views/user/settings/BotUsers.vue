@@ -122,7 +122,7 @@ async function deleteBot() {
 function onTokenCreated(bot: IUser, token: IApiToken) {
 	newTokensByBot.value[bot.id] = token.token
 	showTokenForm.value[bot.id] = false
-	loadTokens(bot.id)
+	return loadTokens(bot.id)
 }
 
 async function deleteToken(bot: IUser, token: IApiToken) {

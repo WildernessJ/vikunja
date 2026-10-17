@@ -89,8 +89,9 @@ function redirectToSpecifiedProvider() {
 		const wantedProvider = auth.openidConnect.providers?.find(p => p.key === redirectToProviderValue)
 		if (wantedProvider) {
 			redirectToProvider(wantedProvider)
+			return
 		}
-		console.warn(`Could not find provider to redirect to.\nWanted: ${wantedProvider}\nAvailable: ${auth.openidConnect.providers?.map(p => p.key)}`)
+		console.warn(`Could not find provider to redirect to.\nWanted: ${redirectToProviderValue}\nAvailable: ${auth.openidConnect.providers?.map(p => p.key).join(',')}`)
 	}
 }
 
@@ -303,11 +304,10 @@ export const useAuthStore = defineStore('auth', () => {
 				return register(credentials, 'en', viaInvite)
 			}
 
-			if (problem.detail) {
-				throw {...problem, message: problem.detail}
-			}
-			if (problem.message) {
-				throw problem
+			const message = problem.detail || problem.message
+			if (message && !(problem instanceof Error)) {
+				// Register.vue reads code, errors and invalid_fields off the rejection.
+				throw Object.assign(new Error(message), problem, {message})
 			}
 
 			throw e
@@ -453,7 +453,7 @@ export const useAuthStore = defineStore('auth', () => {
 					}
 				}
 			} catch (_) {
-				logout()
+				logout().catch(e => error(e))
 			}
 
 			if (isAuthenticated && jwtUserType !== AUTH_TYPES.LINK_SHARE) {

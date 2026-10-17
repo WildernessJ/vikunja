@@ -369,7 +369,7 @@ const {isOverDropZone} = useDropZone(document, {
 			return
 		}
 
-		uploadFilesToTask(files)
+		uploadFilesToTask(files).catch(e => error(e))
 	},
 })
 
@@ -602,7 +602,7 @@ async function viewOrDownload(attachment: IAttachment) {
 const copy = useCopyToClipboard()
 
 function copyUrl(attachment: IAttachment) {
-	copy(generateAttachmentUrl(props.task.id!, attachment.id!))
+	return copy(generateAttachmentUrl(props.task.id!, attachment.id!))
 }
 
 async function setCoverImage(attachment: IAttachment | null) {

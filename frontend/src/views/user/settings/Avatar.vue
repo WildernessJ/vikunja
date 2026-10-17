@@ -85,7 +85,7 @@ import 'vue-advanced-cropper/dist/style.css'
 import AvatarService from '@/services/avatar'
 import AvatarModel from '@/models/avatar'
 import {useTitle} from '@/composables/useTitle'
-import {success} from '@/message'
+import {error, success} from '@/message'
 import {useAuthStore} from '@/stores/auth'
 import Message from '@/components/misc/Message.vue'
 import type {IUser} from '@/modelTypes/IUser'
@@ -123,7 +123,7 @@ async function avatarStatus() {
 	avatarProvider.value = currentProvider
 }
 
-avatarStatus()
+avatarStatus().catch(e => error(e))
 
 
 async function updateAvatarStatus() {

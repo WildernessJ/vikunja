@@ -4,6 +4,7 @@ import {useEventListener} from '@vueuse/core'
 
 import {useAuthStore} from '@/stores/auth'
 import {MILLISECONDS_A_SECOND} from '@/constants/date'
+import {error} from '@/message'
 
 // Refresh the token 60 seconds before it expires to avoid API calls hitting 401.
 const REFRESH_BUFFER_SECONDS = 60
@@ -37,7 +38,7 @@ export function useRenewTokenOnFocus() {
 		const refreshIn = Math.max(expiresIn - REFRESH_BUFFER_SECONDS, 0)
 
 		refreshTimer.value = setTimeout(() => {
-			authStore.renewToken()
+			authStore.renewToken().catch(e => error(e))
 		}, refreshIn * MILLISECONDS_A_SECOND)
 	}
 
@@ -56,11 +57,11 @@ export function useRenewTokenOnFocus() {
 
 	// Try renewing the token every time vikunja is loaded initially
 	// (When opening the browser the focus event is not fired)
-	authStore.renewToken()
+	authStore.renewToken().catch(e => error(e))
 
 	// Check if the token is still valid if the window gets focus again to maybe renew it.
 	// This handles the case where the laptop was suspended and the timer didn't fire.
-	useEventListener('focus', async () => {
+	async function renewOnFocus() {
 		if (!authenticated.value) {
 			return
 		}
@@ -85,7 +86,11 @@ export function useRenewTokenOnFocus() {
 
 		// If the token expires within the buffer window, refresh now.
 		if (expiresIn < REFRESH_BUFFER_SECONDS) {
-			authStore.renewToken()
+			await authStore.renewToken()
 		}
+	}
+
+	useEventListener('focus', () => {
+		renewOnFocus().catch(e => error(e))
 	})
 }

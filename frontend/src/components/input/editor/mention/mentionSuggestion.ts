@@ -42,18 +42,18 @@ export default function mentionSuggestionSetup(projectId: number) {
 
 			// Return a promise that resolves after debounce delay
 			return new Promise((resolve) => {
-				debounceTimer = setTimeout(async () => {
-					try {
-						// Use server-side search - the backend will handle searching by username and display name
-						const users = await searchUsersForProject(projectId, query)
-
-						// Limit results to avoid overwhelming the UI
-						const limit = query ? 10 : 5
-						resolve(users.slice(0, limit))
-					} catch (error) {
-						console.error('Failed to fetch users for mentions:', error)
-						resolve([])
-					}
+				debounceTimer = setTimeout(() => {
+					// Use server-side search - the backend will handle searching by username and display name
+					searchUsersForProject(projectId, query)
+						.then(users => {
+							// Limit results to avoid overwhelming the UI
+							const limit = query ? 10 : 5
+							resolve(users.slice(0, limit))
+						})
+						.catch((error: unknown) => {
+							console.error('Failed to fetch users for mentions:', error)
+							resolve([])
+						})
 				}, 300) // 300ms debounce delay
 			})
 		},

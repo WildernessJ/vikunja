@@ -139,7 +139,7 @@ function focusTrigger() {
 
 watch(open, (isOpen) => {
 	if (isOpen) {
-		updatePosition()
+		return updatePosition()
 	}
 })
 

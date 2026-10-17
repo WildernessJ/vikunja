@@ -94,7 +94,7 @@ async function invalidateCachedTask(client: QueryClient, taskId: number | undefi
 
 export function serverCacheEventMutationOptions() {
 	return contextMutationOptions({
-		mutationFn: async (event: ServerCacheEvent) => event,
+		mutationFn: (event: ServerCacheEvent) => Promise.resolve(event),
 		onSettled: (event, client) => {
 			if ('entry' in event) {
 				// The payload carries only the new task, so a reassignment would leave the old one's count stale.

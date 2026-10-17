@@ -46,7 +46,7 @@ function showCreateTaskOrCreate() {
 			nextTick(() => newTaskTitleField.value.focus())
 		}, 100)
 	} else {
-		createTask()
+		return createTask()
 	}
 }
 

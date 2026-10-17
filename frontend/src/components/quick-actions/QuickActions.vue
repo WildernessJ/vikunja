@@ -509,7 +509,7 @@ function searchTasks() {
 		filter,
 	}
 
-	taskSearchTimeout.value = setTimeout(async () => {
+	taskSearchTimeout.value = setTimeout(() => {
 		taskSearchParams.value = params
 	}, 150)
 }
@@ -610,13 +610,13 @@ let openTaskAfterCreate = false
 
 function onEnter(event: KeyboardEvent) {
 	openTaskAfterCreate = event.ctrlKey || event.metaKey
-	doCmd()
+	return doCmd()
 }
 
 async function doCmd() {
 	if (results.value.length === 1 && results.value[0].items.length === 1) {
 		const result = results.value[0]
-		doAction(result.type, result.items[0])
+		await doAction(result.type, result.items[0])
 		openTaskAfterCreate = false
 		return
 	}

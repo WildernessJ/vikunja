@@ -95,6 +95,7 @@ import {useDateOnly} from '@/composables/useDateOnly'
 import {getDisplayName} from '@/models/user'
 import {isEditorContentEmpty} from '@/helpers/editorContentEmpty'
 import {getTopLayerContainer} from '@/helpers/getTopLayerContainer'
+import {error} from '@/message'
 
 import Labels from '@/components/tasks/partials/Labels.vue'
 import ChecklistSummary from '@/components/tasks/partials/ChecklistSummary.vue'
@@ -172,15 +173,16 @@ function scheduleShow() {
 		clearTimeout(hoverTimeout)
 	}
 
-	hoverTimeout = setTimeout(async () => {
+	hoverTimeout = setTimeout(() => {
 		hoverTimeout = null
 		teleportTarget.value = getTopLayerContainer(triggerRef.value)
 		showTooltip.value = true
 		document.addEventListener('keydown', handleKeydown)
 		describedElement?.setAttribute('aria-describedby', tooltipId)
 
-		await nextTick()
-		await updatePosition()
+		nextTick()
+			.then(updatePosition)
+			.catch(e => error(e))
 	}, HOVER_DELAY)
 }
 

@@ -197,12 +197,12 @@ function loadMore() {
 
 function setActorFilter(value: string) {
 	actorFilter.value = value
-	loadFeed(true)
+	return loadFeed(true)
 }
 
 function setVerbFilter(value: string) {
 	verbFilter.value = value
-	loadFeed(true)
+	return loadFeed(true)
 }
 
 watch(

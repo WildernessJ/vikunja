@@ -247,7 +247,7 @@ if (typeof window !== 'undefined') {
 }
 const dragHandle = computed(() => isTouchDevice.value ? '.handle' : undefined)
 
-const addTaskRef = ref<typeof AddTask | null>(null)
+const addTaskRef = ref<InstanceType<typeof AddTask> | null>(null)
 
 function focusNewTaskInput() {
 	addTaskRef.value?.focusTaskInput()

@@ -4,7 +4,7 @@ import {useI18n} from 'vue-i18n'
 
 import {useTitle} from '@/composables/useTitle'
 import {useAuthStore} from '@/stores/auth'
-import {success} from '@/message'
+import {error, success} from '@/message'
 import {formatDateSince} from '@/helpers/time/formatDate'
 import SessionService from '@/services/session'
 import type {ISession} from '@/modelTypes/ISession'
@@ -21,7 +21,7 @@ const sessionToDelete = ref<ISession | null>(null)
 
 service.getAll().then((result: ISession[]) => {
 	sessions.value = result
-})
+}).catch(e => error(e))
 
 function confirmDelete(session: ISession) {
 	sessionToDelete.value = session

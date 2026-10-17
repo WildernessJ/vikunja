@@ -204,7 +204,7 @@
 </template>
 
 <script setup lang="ts">
-import {computed, nextTick, ref, shallowReactive, watch} from 'vue'
+import {computed, nextTick, ref, shallowReactive, watch, type ComponentPublicInstance} from 'vue'
 import {useI18n} from 'vue-i18n'
 
 import Message from '@/components/misc/Message.vue'
@@ -242,7 +242,7 @@ const uploadInput = ref<HTMLInputElement | null>(null)
 const selectedFile = ref<File | null>(null)
 const detectionResult = ref<DetectionResult | null>(null)
 const previewResult = ref<PreviewResult | null>(null)
-const resultMessage = ref<InstanceType<typeof Message> | null>(null)
+const resultMessage = ref<ComponentPublicInstance | null>(null)
 
 // the triggering button unmounts when the step switches, so move focus to the result message
 watch(step, async (newStep) => {

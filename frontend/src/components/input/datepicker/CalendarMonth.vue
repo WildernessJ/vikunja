@@ -286,15 +286,14 @@ function onKeydown(event: KeyboardEvent) {
 	}
 	if (event.key in steps) {
 		event.preventDefault()
-		focusDay(addDays(focusedDate.value, steps[event.key]))
-		return
+		return focusDay(addDays(focusedDate.value, steps[event.key]))
 	}
 	if (event.key === 'PageUp' || event.key === 'PageDown') {
 		event.preventDefault()
 		const year = focusedDate.value.getFullYear()
 		const month = focusedDate.value.getMonth() + (event.key === 'PageUp' ? -1 : 1)
 		const lastDay = new Date(year, month + 1, 0).getDate()
-		focusDay(new Date(year, month, Math.min(focusedDate.value.getDate(), lastDay)))
+		return focusDay(new Date(year, month, Math.min(focusedDate.value.getDate(), lastDay)))
 	}
 }
 </script>

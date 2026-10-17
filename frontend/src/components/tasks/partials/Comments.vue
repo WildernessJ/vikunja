@@ -297,7 +297,8 @@ const actions = computed(() => {
 		return {}
 	}
 	return Object.fromEntries(comments.value.map((comment) => {
-		const list: {action: () => void, title: string}[] = [{
+		// TipTap binds these as @click handlers, so Vue reports a rejected promise.
+		const list: {action: () => void | Promise<void>, title: string}[] = [{
 			action: () => startReplyTo(comment),
 			title: t('task.comment.reply'),
 		}]
@@ -376,13 +377,16 @@ function attachmentUpload(files: File[] | FileList): Promise<string[]> {
 			files: [file],
 		})
 		const [uploaded] = result.success ?? []
-		// forwarded verbatim: the editor's toast translates the error code, which a rewrapped message would lose
-		if (uploaded?.id === undefined) throw result.errors?.[0] ?? new Error('Attachment upload returned no file')
+		if (uploaded?.id === undefined) {
+			const failure = result.errors?.[0]
+			// keeps `code` on the Error: the editor's toast translates it, which a bare message would lose
+			throw Object.assign(new Error(failure?.message ?? 'Attachment upload returned no file'), {code: failure?.code})
+		}
 		return generateAttachmentUrl(props.taskId, uploaded.id)
 	}))
 }
 
-async function changePage(page: number) {
+function changePage(page: number) {
 	commentsRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' })
 	currentPage.value = page
 }
@@ -481,7 +485,10 @@ function flushPendingEdit(taskId: number) {
 
 function editCommentWithDelay() {
 	cancelPendingEdit()
-	changeTimeout.value = setTimeout(() => editComment(props.taskId), 5000)
+	changeTimeout.value = setTimeout(() => {
+		// Cannot reject: editComment catches the mutation failure, which the mutation already reports.
+		void editComment(props.taskId)
+	}, 5000)
 }
 
 async function editComment(taskId: number) {

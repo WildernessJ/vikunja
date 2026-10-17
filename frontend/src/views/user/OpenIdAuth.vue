@@ -122,7 +122,7 @@ async function authenticateWithCode() {
 			totpPasscode: pendingPasscode,
 		})
 
-		redirectIfSaved()
+		await redirectIfSaved()
 	} catch (e) {
 		const err = e as {response?: {data?: {code?: number}}}
 		if (err?.response?.data?.code === 1017) {
@@ -133,7 +133,7 @@ async function authenticateWithCode() {
 	}
 }
 
-async function submitTotpAndRestart() {
+function submitTotpAndRestart() {
 	if (!totpPasscode.value) {
 		return
 	}

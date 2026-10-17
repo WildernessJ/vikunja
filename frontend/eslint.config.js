@@ -162,5 +162,12 @@ export default defineConfigWithVueTs(
 
 
 	},
-
+	{
+		// typescript-eslint types .vue imports as any, so InstanceType<typeof
+		// Component> | null is reported as redundant. vue-tsc checks these types.
+		files: ['**/*.vue'],
+		rules: {
+			'@typescript-eslint/no-redundant-type-constituents': 'off',
+		},
+	},
 )

@@ -1,4 +1,4 @@
-export function parseDateOrString(rawValue: string | undefined | null, fallback: unknown): (unknown | string | Date) {
+export function parseDateOrString<T>(rawValue: string | undefined | null, fallback: T): T | string | Date {
 	if (rawValue === null || typeof rawValue === 'undefined') {
 		return fallback
 	}

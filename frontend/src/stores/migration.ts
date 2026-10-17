@@ -92,7 +92,12 @@ export const useMigrationStore = defineStore('migration', () => {
 			return
 		}
 
-		timeout = setTimeout(poll, POLL_INTERVAL)
+		timeout = setTimeout(schedulePoll, POLL_INTERVAL)
+	}
+
+	// poll() catches every failure itself, so it never rejects.
+	function schedulePoll() {
+		void poll()
 	}
 
 	function start(statusSource: MigrationStatusSource) {
@@ -103,7 +108,7 @@ export const useMigrationStore = defineStore('migration', () => {
 		errorMessage.value = ''
 		failures = 0
 		deadline = Date.now() + POLL_DEADLINE
-		timeout = setTimeout(poll, POLL_INTERVAL)
+		timeout = setTimeout(schedulePoll, POLL_INTERVAL)
 	}
 
 	return {

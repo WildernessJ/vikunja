@@ -130,7 +130,9 @@ watch(autocomplete.isOpen, async (isOpen) => {
 	if (!titleInput.value || !autocompleteWrapper.value) {
 		return
 	}
-	stopAutoUpdate = autoUpdate(titleInput.value, autocompleteWrapper.value, updateAutocompletePosition)
+	stopAutoUpdate = autoUpdate(titleInput.value, autocompleteWrapper.value, () => {
+		updateAutocompletePosition().catch(e => error(e))
+	})
 })
 
 onBeforeUnmount(() => {

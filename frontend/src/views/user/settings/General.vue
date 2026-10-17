@@ -659,6 +659,7 @@ function useAvailableTimezones(settingsRef: Ref<IUserSettings>) {
 			
 			availableTimezones.value = []
 		})
+		.catch(e => error(e))
 	
 	// Search function that filters available timezones
 	function search(query: string) {

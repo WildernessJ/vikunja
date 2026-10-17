@@ -11,7 +11,7 @@ import WebhookManager from '@/components/misc/WebhookManager.vue'
 
 import {useBaseStore} from '@/stores/base'
 import WebhookService from '@/services/webhook'
-import {success} from '@/message'
+import {error, success} from '@/message'
 import {ensureProject, type ProjectResponse} from '@/client/queries/projects'
 
 defineOptions({name: 'ProjectSettingWebhooks'})
@@ -34,7 +34,11 @@ const projectId = computed(() => route.params.projectId !== undefined
 	: undefined,
 )
 
-watchEffect(() => projectId.value !== undefined && loadProject(projectId.value))
+watchEffect(() => {
+	if (projectId.value !== undefined) {
+		loadProject(projectId.value).catch(e => error(e))
+	}
+})
 
 const webhooks = ref<IWebhook[]>([])
 const webhookService = new WebhookService()

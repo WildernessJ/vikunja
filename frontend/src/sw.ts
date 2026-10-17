@@ -68,7 +68,7 @@ self.addEventListener('message', (e: ExtendableMessageEvent) => {
 
 	switch (e.data) {
 		case 'skipWaiting':
-			self.skipWaiting()
+			e.waitUntil(self.skipWaiting())
 			break
 		default:
 			// NOOP

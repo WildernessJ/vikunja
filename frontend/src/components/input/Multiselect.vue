@@ -466,14 +466,16 @@ function setSelectedObject(object: T | null | undefined) {
 		return
 	}
 
-	query.value = props.label !== '' ? object[props.label] as string : String(object)
+	// T is always an object, so without a label there is no meaningful text to show.
+	query.value = props.label !== '' ? object[props.label] as string : ''
 }
 
-const results = ref<(Element | ComponentPublicInstance)[]>([])
+// Unmounted results leave an undefined slot instead of shifting the indices of the rest.
+const results = ref<(Element | ComponentPublicInstance | undefined)[]>([])
 
 function setResult(el: Element | ComponentPublicInstance | null, index: number) {
 	if (el === null) {
-		delete results.value[index]
+		results.value[index] = undefined
 	} else {
 		results.value[index] = el
 	}

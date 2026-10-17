@@ -740,7 +740,7 @@ function handleRecurringTaskCompletion() {
 		
 	if (filterContainsDateFields) {
 		// Reload the kanban board to refresh tasks that now match/don't match the filter
-		board.refetch()
+		return board.refetch()
 	}
 }
 
@@ -797,7 +797,9 @@ async function setBucketLimit(bucketId: number, now: boolean = false) {
 		return saveBucketLimit(bucketId, limit)
 	}
 
-	setBucketLimitCancel.value = setTimeout(saveBucketLimit, 2500, bucketId, limit)
+	setBucketLimitCancel.value = setTimeout(() => {
+		saveBucketLimit(bucketId, limit).catch(() => { /* Mutation reports the error. */ })
+	}, 2500)
 }
 
 function shouldAcceptDrop(bucket: BucketResponse) {

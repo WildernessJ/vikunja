@@ -408,13 +408,13 @@ async function load() {
 
 function goToPage(page: number) {
 	currentPage.value = page
-	load()
+	void load() // load() catches and reports its own errors
 }
 
 const onSearch = useDebounceFn(() => {
 	// Reset to page 1 so a narrower search doesn't strand the UI on an empty page.
 	currentPage.value = 1
-	load()
+	void load() // load() catches and reports its own errors
 }, 300)
 
 function openDetails(u: IAdminUser) {

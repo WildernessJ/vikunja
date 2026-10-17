@@ -113,7 +113,7 @@ import {useI18n} from 'vue-i18n'
 import {CALDAV_DOCS} from '@/urls'
 import {useTitle} from '@/composables/useTitle'
 import {useCopyToClipboard} from '@/composables/useCopyToClipboard'
-import {success} from '@/message'
+import {error, success} from '@/message'
 import BaseButton from '@/components/base/BaseButton.vue'
 import Message from '@/components/misc/Message.vue'
 import FormField from '@/components/input/FormField.vue'
@@ -133,7 +133,7 @@ const tokens = ref<ICaldavToken[]>([])
 
 service.getAll().then((result: ICaldavToken[]) => {
 	tokens.value = result
-})
+}).catch(e => error(e))
 
 // The create response includes the raw token value once, which ICaldavToken doesn't model.
 type CreatedCaldavToken = ICaldavToken & {token: string}

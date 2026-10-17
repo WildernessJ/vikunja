@@ -1,5 +1,6 @@
 import {ref, computed, onMounted, onUnmounted, watch} from 'vue'
 import {useAuthStore} from '@/stores/auth'
+import {error} from '@/message'
 import {normalizeHiddenNavItems} from '@/components/home/navigationItems'
 import {normalizeOverviewProjectIds} from '@/helpers/overviewTaskFilter'
 
@@ -122,7 +123,7 @@ export function useSidebarResize() {
 		}
 
 		// Save width to user settings
-		saveWidth()
+		saveWidth().catch(e => error(e))
 	}
 
 	async function saveWidth() {

@@ -189,9 +189,9 @@ onUnmounted(() => {
 })
 
 function startPollingFallback() {
-	pollInterval = setInterval(async () => {
+	pollInterval = setInterval(() => {
 		if (!wsConnected.value && document.visibilityState === 'visible') {
-			await loadNotifications()
+			loadNotifications().catch(e => console.warn('Failed to poll notifications:', e))
 		}
 	}, POLL_INTERVAL)
 }

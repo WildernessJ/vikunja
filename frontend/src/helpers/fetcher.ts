@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type {AxiosRequestConfig, AxiosRequestHeaders} from 'axios'
+import type {AxiosError, AxiosRequestConfig, AxiosRequestHeaders} from 'axios'
 import {getToken, getTokenType, refreshToken} from '@/helpers/auth'
 import {AUTH_TYPES} from '@/modelTypes/IUser'
 
@@ -92,11 +92,11 @@ export function AuthenticatedHTTPFactory() {
 	})
 
 	// Response interceptor: on expired JWT 401, attempt a refresh and retry once.
-	instance.interceptors.response.use(undefined, async (error) => {
-		const originalRequest: AxiosRequestConfig & { _retried?: boolean } = error.config
+	instance.interceptors.response.use(undefined, async (error: AxiosError<{code?: number}>) => {
+		const originalRequest: (AxiosRequestConfig & { _retried?: boolean }) | undefined = error.config
 
 		// Only intercept 401s, and don't retry a request that already retried.
-		if (error.response?.status !== 401 || originalRequest._retried) {
+		if (error.response?.status !== 401 || !originalRequest || originalRequest._retried) {
 			return Promise.reject(error)
 		}
 

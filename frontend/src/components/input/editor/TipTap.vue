@@ -506,7 +506,7 @@ function triggerImageInput(event: Event) {
 		return
 	}
 
-	addImage(event)
+	return addImage(event)
 }
 
 async function addImage(event: Event) {
@@ -537,7 +537,7 @@ async function addImage(event: Event) {
 
 function setLink(event: MouseEvent) {
 	const target = event.target as HTMLElement
-	setLinkInEditor(target.getBoundingClientRect(), editor.value)
+	return setLinkInEditor(target.getBoundingClientRect(), editor.value)
 }
 
 // Compose the plugin's default predicate: keep its focus and empty-text-block
@@ -578,7 +578,8 @@ async function promptImageAlt(src: string) {
 		return
 	}
 
-	let pos: number | null = null
+	// Widened explicitly: TS narrows a plain `null` initializer and ignores the callback's assignment.
+	let pos = null as number | null
 	instance.state.doc.descendants((node, p) => {
 		if (node.type.name === 'image' && (node.attrs.src === src || node.attrs['data-src'] === src)) {
 			pos = p
