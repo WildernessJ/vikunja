@@ -249,7 +249,7 @@ export default Extension.create<FilterAutocompleteOptions>({
 				}
 
 				if (fieldType === 'projects' && !this.options.projectId) {
-					return projectList.searchProject(autocompleteContext.search) as SuggestionItem[]
+					return projectList.searchProject(autocompleteContext.search)
 				}
 			} catch (error) {
 				console.error('Error fetching suggestions:', error)

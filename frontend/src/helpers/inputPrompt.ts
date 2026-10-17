@@ -120,7 +120,7 @@ export default function inputPrompt(pos: ClientRect, placeholder: string, oldVal
 		// The prompt is a sub-modal of the enclosing task <dialog>. Native modal
 		// dialogs close themselves on Escape ("cancel"); swallow that while the
 		// prompt is open so Escape only dismisses the prompt, not the task dialog.
-		const dialog = container.closest('dialog') as HTMLDialogElement | null
+		const dialog = container.closest('dialog')
 		const handleDialogCancel = (event: Event) => event.preventDefault()
 		dialog?.addEventListener('cancel', handleDialogCancel)
 

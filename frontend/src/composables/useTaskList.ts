@@ -46,7 +46,7 @@ function parseSortQuery(raw: string, fallback: SortBy): SortBy {
 		if (order !== 'asc' && order !== 'desc') continue
 		result[field] = order
 	}
-	return Object.keys(result).length > 0 ? result as SortBy : {...fallback}
+	return Object.keys(result).length > 0 ? result : {...fallback}
 }
 
 function serializeSortBy(sortBy: SortBy, defaultSort: SortBy): string | undefined {
@@ -74,7 +74,7 @@ export function defaultSortToSortBy(sortByArr: string[], orderByArr: string[]): 
 		if (order !== 'asc' && order !== 'desc') return
 		result[field] = order
 	})
-	return Object.keys(result).length > 0 ? result as SortBy : undefined
+	return Object.keys(result).length > 0 ? result : undefined
 }
 
 export function sortByToDefaultArrays(sortBy: SortBy): {sortBy: string[], orderBy: string[]} {
@@ -117,7 +117,7 @@ function formatSortOrder(sortBy: SortBy, params: TaskFilterParams): TaskFilterPa
 	if (hasIdFilter) {
 		sortKeys.push('id')
 	}
-	params.sort_by = sortKeys as TaskFilterParams['sort_by']
+	params.sort_by = sortKeys
 	params.order_by = sortKeys.map(s => sortBy[s]) as TaskFilterParams['order_by']
 
 	return params

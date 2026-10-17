@@ -542,7 +542,7 @@ const audioPlayers = new Map<IAttachment['id'], AudioPreviewInstance>()
 
 function setAudioPlayerRef(attachment: IAttachment, el: Element | ComponentPublicInstance | null) {
 	if (el === null) {
-		audioPlayers.delete(attachment.id!)
+		audioPlayers.delete(attachment.id)
 		return
 	}
 
@@ -560,8 +560,8 @@ async function download(attachment: IAttachment) {
 }
 
 async function viewOrDownload(attachment: IAttachment) {
-	if (canPreviewAudio(attachment) && audioPlayers.has(attachment.id!)) {
-		await audioPlayers.get(attachment.id!)!.play()
+	if (canPreviewAudio(attachment) && audioPlayers.has(attachment.id)) {
+		await audioPlayers.get(attachment.id)!.play()
 		return
 	}
 

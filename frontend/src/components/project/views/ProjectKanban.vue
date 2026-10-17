@@ -503,7 +503,7 @@ function onHandleTouchMove(e: TouchEvent) {
 
 	const currentY = e.touches[0].clientY
 	const deltaY = touchStartY.value - currentY
-	const scrollContainer = (e.target as HTMLElement).closest('.tasks') as HTMLElement | null
+	const scrollContainer = (e.target as HTMLElement).closest('.tasks')
 	if (scrollContainer) {
 		scrollContainer.scrollTop += deltaY
 		touchStartY.value = currentY
@@ -572,8 +572,8 @@ function handleTaskContainerScroll(id: number, el: HTMLElement) {
 		project: projectId.value,
 		view: props.viewId,
 		params: boardParams.value,
-		bucket: id!,
-		page: (board.data.value?.pages[id!] ?? 1) + 1,
+		bucket: id,
+		page: (board.data.value?.pages[id] ?? 1) + 1,
 	})
 }
 

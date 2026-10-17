@@ -158,7 +158,7 @@ export function transformFilterStringForApi(
 				const reconstructedMatch = `${fieldName} ${operator} ${replaced}`
 
 				replacements.push({
-					start: match.index!,
+					start: match.index,
 					length: matched.length,
 					replacement: reconstructedMatch,
 				})
@@ -254,7 +254,7 @@ export function transformFilterStringFromApi(
 				const reconstructedMatch = `${fieldName} ${operator} ${replaced}`
 
 				replacements.push({
-					start: match.index!,
+					start: match.index,
 					length: matched.length,
 					replacement: reconstructedMatch,
 				})

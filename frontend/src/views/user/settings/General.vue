@@ -704,6 +704,7 @@ const {
 
 // `authProvider` is set by the backend for OIDC users but isn't part of the shared IUser type.
 type UserWithAuthProvider = IUser & {authProvider?: string}
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- false positive: the cast adds authProvider, which IUser lacks
 const externalAuthProvider = computed(() => (authStore.info as UserWithAuthProvider | null)?.authProvider)
 
 const isExternalUser = computed(() => authStore.info?.isLocalUser === false)

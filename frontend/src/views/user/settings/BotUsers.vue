@@ -49,7 +49,7 @@ async function loadBots() {
 }
 
 async function loadTokens(botId: number) {
-	tokensByBot.value[botId] = await tokenService.getAll({} as IApiToken, {owner_id: botId}) as IApiToken[]
+	tokensByBot.value[botId] = await tokenService.getAll({} as IApiToken, {owner_id: botId})
 }
 
 async function createBot() {

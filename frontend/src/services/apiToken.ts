@@ -21,7 +21,7 @@ export default class ApiTokenService extends AbstractService<IApiToken> {
 	}
 	
 	modelFactory(data: Partial<IApiToken>): IApiToken {
-		return new ApiTokenModel(data) as unknown as IApiToken
+		return new ApiTokenModel(data)
 	}
 	
 	async getAvailableRoutes() {

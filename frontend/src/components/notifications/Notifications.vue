@@ -161,7 +161,7 @@ onMounted(async () => {
 	// Subscribe to real-time notifications
 	unsubscribeWs = subscribe('notification.created', (msg) => {
 		if (msg.event === 'notification.created' && msg.data) {
-			const notification = new NotificationModel(msg.data as Partial<INotification>)
+			const notification = new NotificationModel(msg.data)
 			// Avoid duplicates if the same notification was already loaded via REST
 			const exists = allNotifications.value.some(n => n.id === notification.id)
 			if (!exists) {

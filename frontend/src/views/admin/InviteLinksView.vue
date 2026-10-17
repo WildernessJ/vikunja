@@ -236,7 +236,7 @@ const loadingTeams = ref(false)
 const minimumExpiry = ref('')
 let initialTeams: InviteLinkTeam[] = []
 let teamCount = 0
-const form = reactive({name: '', maxUses: '' as string | number, expiresAt: '', skipEmailConfirm: false})
+const form = reactive({name: '', maxUses: '', expiresAt: '', skipEmailConfirm: false})
 
 async function loadLinks(nextPage = page.value) {
 	page.value = nextPage

@@ -98,6 +98,7 @@ const authStore = useAuthStore()
 
 // `authProvider` is set by the backend for OIDC users but isn't part of the shared IUser type.
 type UserWithAuthProvider = IUser & {authProvider?: string}
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- false positive: the cast adds authProvider, which IUser lacks
 const externalAuthProvider = computed(() => (authStore.info as UserWithAuthProvider | null)?.authProvider)
 
 const AVATAR_PROVIDERS = computed(() => ({
@@ -173,7 +174,7 @@ function cropAvatar() {
 		if (e.target === null) {
 			return
 		}
-		avatarToCrop.value = (e.target as FileReader).result
+		avatarToCrop.value = (e.target).result
 		isCropAvatar.value = true
 		// Note: loading stays true until Cropper's @ready event fires
 		// This ensures the canvas is ready before allowing upload

@@ -231,7 +231,7 @@ export function bulkCreateTasksMutationOptions() {
 							body: {tasks: batch.map(({task}) => taskWriteBody(task))},
 						})
 						if (data.tasks?.length !== batch.length) throw translatedError('task.bulkCreateUnexpectedResponse')
-						data.tasks!.forEach((task, index) => { tasks[batch[index].index] = task })
+						data.tasks.forEach((task, index) => { tasks[batch[index].index] = task })
 					} catch (cause) {
 						error ??= cause
 						break

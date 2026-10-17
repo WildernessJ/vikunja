@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 
 import {getFullBaseUrl} from './helpers/getFullBaseUrl'
-import {handleBadgePush, type BadgingNavigator} from './helpers/badgePush'
+import {handleBadgePush} from './helpers/badgePush'
 
 declare let self: ServiceWorkerGlobalScope & typeof globalThis
 declare const __WORKBOX_VERSION__: string
@@ -81,7 +81,7 @@ self.addEventListener('push', (event: PushEvent) => {
 	event.waitUntil(handleBadgePush(
 		event,
 		self.registration,
-		self.navigator as WorkerNavigator & BadgingNavigator,
+		self.navigator,
 		fullBaseUrl,
 	))
 })

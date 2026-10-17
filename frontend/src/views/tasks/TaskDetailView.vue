@@ -335,7 +335,6 @@ import {parseDateOrNull} from '@/helpers/parseDateOrNull'
 import type {Label, Task as ITask, User} from '@/client/generated'
 import type {ProjectResponse} from '@/client/queries/projects'
 
-import {type Priority} from '@/constants/priorities'
 import {PERMISSIONS} from '@/constants/permissions'
 import {PRO_FEATURE} from '@/constants/proFeatures'
 import {SHORTCUTS} from '@/constants/shortcuts'
@@ -854,7 +853,7 @@ async function duplicateCurrentTask() {
 async function setPriority(priority: number, title?: string) {
 	const newTask: ITask = {
 		...task.value,
-		priority: priority as Priority,
+		priority: priority,
 		...(title === undefined ? {} : {title}),
 	}
 

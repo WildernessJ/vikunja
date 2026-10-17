@@ -169,7 +169,7 @@ export function usePushNotifications() {
 	const subscribed = ref(false)
 	const loading = ref(false)
 	const permission = ref<PushPermission>(
-		isSupported ? Notification.permission as PushPermission : 'default',
+		isSupported ? Notification.permission : 'default',
 	)
 
 	let publicKey = ''
@@ -210,7 +210,7 @@ export function usePushNotifications() {
 	async function subscribe() {
 		loading.value = true
 		try {
-			permission.value = await Notification.requestPermission() as PushPermission
+			permission.value = await Notification.requestPermission()
 			if (permission.value !== 'granted') {
 				return
 			}

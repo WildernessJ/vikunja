@@ -45,7 +45,7 @@ function applyPushedBadge(nav: BadgingNavigator, count: number): Promise<void> {
 function parsePayload(event: BadgePushEvent): BadgePushPayload {
 	try {
 		const parsed = event.data?.json()
-		return typeof parsed === 'object' && parsed !== null ? parsed as BadgePushPayload : {}
+		return typeof parsed === 'object' && parsed !== null ? parsed : {}
 	} catch {
 		return {}
 	}
