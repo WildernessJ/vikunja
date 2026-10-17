@@ -17,7 +17,38 @@ permissions:
   packages: write
 
 jobs:
+  # Static analysis gate: the image is built only when both lint jobs pass.
+  # The pre-push hook (.githooks/pre-push) runs the same checks locally.
+  lint-go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Prepare frontend files
+        run: |
+          mkdir -p frontend/dist
+          touch frontend/dist/index.html
+      - uses: ./.github/actions/golangci-lint
+
+  lint-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup-frontend
+      - name: ESLint
+        working-directory: frontend
+        run: pnpm lint
+      - name: Stylelint
+        working-directory: frontend
+        run: pnpm lint:styles
+      - name: Typecheck
+        working-directory: frontend
+        run: pnpm typecheck
+      - name: Knip
+        working-directory: frontend
+        run: pnpm knip
+
   build:
+    needs: [lint-go, lint-frontend]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
