@@ -309,16 +309,15 @@ watch(() => props.open, (isOpen) => {
 	showDatePicker.value = false
 	if (isOpen) {
 		showDeleteModal.value = false
-		updatePosition()
 		window.addEventListener('keydown', handleKeydown)
-	} else {
-		window.removeEventListener('keydown', handleKeydown)
+		return updatePosition()
 	}
+	window.removeEventListener('keydown', handleKeydown)
 }, {immediate: true})
 
 watch(() => props.position, () => {
 	if (props.open) {
-		updatePosition()
+		return updatePosition()
 	}
 })
 
@@ -357,7 +356,7 @@ function dueDateForInterval(intervalKey: string): Date {
 }
 
 function selectDueDateInterval(intervalKey: string) {
-	selectDueDate(dueDateForInterval(intervalKey))
+	return selectDueDate(dueDateForInterval(intervalKey))
 }
 
 async function selectDueDate(date: Date | null) {

@@ -55,6 +55,6 @@ function download() {
 		return
 	}
 
-	dataExportService.download(password.value)
+	return dataExportService.download(password.value)
 }
 </script>

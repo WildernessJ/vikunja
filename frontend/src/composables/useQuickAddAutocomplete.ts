@@ -16,9 +16,10 @@ import {useProjects} from '@/composables/useProjects'
 import {searchProjectUsers} from '@/client/queries/userSearch'
 import {getDisplayName} from '@/models/user'
 import {getHexColor} from '@/helpers/task'
+import {error} from '@/message'
 import type {UserWithId} from '@/models/user'
 
-export type AutocompleteKind = 'project' | 'label' | 'assignee'
+type AutocompleteKind = 'project' | 'label' | 'assignee'
 
 export interface AutocompleteItem {
 	kind: AutocompleteKind,
@@ -115,7 +116,7 @@ export function useQuickAddAutocomplete(options: {
 		const projectId = assigneeProjectId.value
 		items.value = []
 		if (projectId !== null) {
-			debouncedFetchAssignees(token.query, projectId, requestId.value)
+			debouncedFetchAssignees(token.query, projectId, requestId.value).catch(e => error(e))
 		}
 	}, {immediate: true})
 

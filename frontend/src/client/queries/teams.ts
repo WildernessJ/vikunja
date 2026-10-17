@@ -44,7 +44,7 @@ async function invalidateTeams(client: QueryClient, id?: number) {
 	])
 }
 
-export function createTeamMutationOptions() {
+function createTeamMutationOptions() {
 	return contextMutationOptions({
 		mutationFn: async (team: TeamWritable) => (await teamsCreate({body: team})).data,
 		onSettled: (_input, client) => invalidateTeams(client),

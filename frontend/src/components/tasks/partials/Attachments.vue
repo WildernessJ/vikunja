@@ -369,7 +369,7 @@ const {isOverDropZone} = useDropZone(document, {
 			return
 		}
 
-		uploadFilesToTask(files)
+		uploadFilesToTask(files).catch(e => error(e))
 	},
 })
 
@@ -542,7 +542,7 @@ const audioPlayers = new Map<IAttachment['id'], AudioPreviewInstance>()
 
 function setAudioPlayerRef(attachment: IAttachment, el: Element | ComponentPublicInstance | null) {
 	if (el === null) {
-		audioPlayers.delete(attachment.id!)
+		audioPlayers.delete(attachment.id)
 		return
 	}
 
@@ -560,8 +560,8 @@ async function download(attachment: IAttachment) {
 }
 
 async function viewOrDownload(attachment: IAttachment) {
-	if (canPreviewAudio(attachment) && audioPlayers.has(attachment.id!)) {
-		await audioPlayers.get(attachment.id!)!.play()
+	if (canPreviewAudio(attachment) && audioPlayers.has(attachment.id)) {
+		await audioPlayers.get(attachment.id)!.play()
 		return
 	}
 
@@ -602,7 +602,7 @@ async function viewOrDownload(attachment: IAttachment) {
 const copy = useCopyToClipboard()
 
 function copyUrl(attachment: IAttachment) {
-	copy(generateAttachmentUrl(props.task.id!, attachment.id!))
+	return copy(generateAttachmentUrl(props.task.id!, attachment.id!))
 }
 
 async function setCoverImage(attachment: IAttachment | null) {

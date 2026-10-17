@@ -41,9 +41,7 @@ async function handleDelete(webhookId: number) {
 	await loadWebhooks()
 }
 
-onMounted(() => {
-	loadWebhooks()
-})
+onMounted(loadWebhooks)
 </script>
 
 <template>

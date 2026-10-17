@@ -94,13 +94,13 @@ function deferDays(days: number) {
 	const deferred = normalise(dueDate.value) ?? new Date()
 	deferred.setDate(deferred.getDate() + days)
 	dueDate.value = deferred
-	updateDueDate()
+	return updateDueDate()
 }
 
 const debouncedUpdateDueDate = useDebounceFn(updateDueDate, 500)
 
 function onPickerUpdate() {
-	debouncedUpdateDueDate()
+	return debouncedUpdateDueDate()
 }
 
 onBeforeUnmount(() => debouncedUpdateDueDate.flush())

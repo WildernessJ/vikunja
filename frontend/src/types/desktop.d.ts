@@ -4,7 +4,7 @@ export interface OAuthTokens {
 	expires_in: number
 }
 
-export interface VikunjaDesktop {
+interface VikunjaDesktop {
 	isDesktop: boolean
 	startOAuthLogin: (apiUrl: string) => Promise<void>
 	onOAuthTokens: (callback: (tokens: OAuthTokens) => void) => void

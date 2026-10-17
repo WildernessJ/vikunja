@@ -89,7 +89,7 @@ import TotpService from '@/services/totp'
 import TotpModel from '@/models/totp'
 import FormField from '@/components/input/FormField.vue'
 
-import {success} from '@/message'
+import {error, success} from '@/message'
 
 import {useTitle} from '@/composables/useTitle'
 import {useConfigStore} from '@/stores/config'
@@ -113,7 +113,7 @@ const authStore = useAuthStore()
 const totpEnabled = computed(() => configStore.totpEnabled)
 const isLocalUser = computed(() => authStore.info?.isLocalUser)
 
-totpStatus()
+totpStatus().catch(e => error(e))
 
 async function totpStatus() {
 	if (!totpEnabled.value || !isLocalUser.value) {
@@ -123,7 +123,7 @@ async function totpStatus() {
 		totp.value = await totpService.get({} as ITotp)
 		// Enabled responses omit the secret, so only request a QR code during enrollment.
 		if (!totp.value.enabled) {
-			totpSetQrCode()
+			await totpSetQrCode()
 		}
 	} catch(e: unknown) {
 		// Error code 1016 means totp is not enabled, we don't need an error in that case.
@@ -144,7 +144,7 @@ async function totpSetQrCode() {
 
 async function totpEnroll() {
 	totp.value = await totpService.enroll()
-	totpSetQrCode()
+	await totpSetQrCode()
 }
 
 async function totpConfirm() {

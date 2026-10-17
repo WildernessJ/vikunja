@@ -456,7 +456,7 @@ function sort(property: keyof SortBy, event?: MouseEvent) {
 	}
 
 	if (!ctrlPressed) {
-		sortBy.value = {} as SortBy
+		sortBy.value = {}
 	}
 
 	if (newOrder) {

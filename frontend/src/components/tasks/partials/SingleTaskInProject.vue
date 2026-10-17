@@ -257,7 +257,7 @@ import {formatDisplayDate, formatISO, formatDateLong} from '@/helpers/time/forma
 import {parseDateOrNull} from '@/helpers/parseDateOrNull'
 import {useDateOnly} from '@/composables/useDateOnly'
 import {getDueDateUrgency} from '@/helpers/time/dueDateUrgency'
-import {success} from '@/message'
+import {error, success} from '@/message'
 
 import {useProjects} from '@/composables/useProjects'
 import {useCurrentProject} from '@/composables/useCurrentProject'
@@ -445,14 +445,17 @@ async function markAsDone(checked: boolean, wasReverted: boolean = false) {
 	}
 
 	if (checked) {
-		setTimeout(finish, 300) // Delay only the follow-up to show the animation when marking a task as done
+		// Delay only the follow-up to show the animation when marking a task as done
+		setTimeout(() => {
+			finish().catch(e => error(e))
+		}, 300)
 	} else {
 		await finish() // Don't delay it when un-marking it as it doesn't have an animation the other way around
 	}
 }
 
 function undoDone(checked: boolean) {
-	markAsDone(!checked, true)
+	markAsDone(!checked, true).catch(e => error(e))
 }
 
 async function toggleFavorite() {

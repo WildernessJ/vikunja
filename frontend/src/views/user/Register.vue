@@ -169,7 +169,9 @@ async function loadInvite() {
 	}
 }
 onBeforeMount(loadInvite)
-const unsubscribeInvite = onInviteLinkChange(loadInvite)
+const unsubscribeInvite = onInviteLinkChange(() => {
+	void loadInvite() // loadInvite() catches its own errors into inviteState
+})
 onUnmounted(() => {
 	inviteCheck++
 	unsubscribeInvite()
@@ -263,14 +265,14 @@ const passwordError = computed(() => {
 
 function handleUsernameKeyup() {
 	if (validateUsernameAfterFirst.value) {
-		validateUsername()
+		void validateUsername() // debounced sync body, cannot reject
 	}
 	delete serverValidationErrors.value.username
 }
 
 function handleEmailKeyup() {
 	if (validateEmailAfterFirst.value) {
-		validateEmail()
+		void validateEmail() // debounced sync body, cannot reject
 	}
 	delete serverValidationErrors.value.email
 }
@@ -296,7 +298,7 @@ async function submit() {
 		} else {
 			await authStore.register(toRaw(credentials))
 		}
-		redirectIfSaved()
+		await redirectIfSaved()
 	} catch (e: unknown) {
 		if (isInvite.value && e instanceof Object && 'code' in e && e.code === 2005) {
 			inviteState.value = {status: 'invalid'}

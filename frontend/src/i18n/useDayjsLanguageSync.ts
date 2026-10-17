@@ -37,7 +37,7 @@ export const DAYJS_LOCALE_MAPPING = {
 	'el-gr': 'el',
 } as Record<string, ISOLanguage>
 
-export const DAYJS_LANGUAGE_IMPORTS = {
+const DAYJS_LANGUAGE_IMPORTS = {
 	'de-de': () => import('dayjs/locale/de'),
 	'de-swiss': () => import('dayjs/locale/de-ch'),
 	'ru-ru': () => import('dayjs/locale/ru'),

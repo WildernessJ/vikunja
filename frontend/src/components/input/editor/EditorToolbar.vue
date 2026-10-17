@@ -489,7 +489,7 @@ onBeforeUnmount(() => {
 })
 
 function setLink(event: MouseEvent) {
-	setLinkInEditor((event.target as HTMLElement).getBoundingClientRect(), props.editor)
+	return setLinkInEditor((event.target as HTMLElement).getBoundingClientRect(), props.editor)
 }
 </script>
 

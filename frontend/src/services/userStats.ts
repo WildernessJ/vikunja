@@ -3,8 +3,8 @@ import type {IUserStats} from '@/modelTypes/IUserStats'
 
 // The API clamps to 1..52; keep the client in the same range so a selector can
 // never send a value the endpoint would reject with a 422.
-export const MIN_STATS_WEEKS = 1
-export const MAX_STATS_WEEKS = 52
+const MIN_STATS_WEEKS = 1
+const MAX_STATS_WEEKS = 52
 
 interface UserStatsDayResponse {
 	date: string

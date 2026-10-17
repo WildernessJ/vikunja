@@ -121,7 +121,7 @@ const options = computed(() => {
 
 function selectedToSortBy(): SortBy {
 	const [field, order] = selected.value.split(':') as [string, 'asc' | 'desc']
-	const sort: SortBy = {} as SortBy
+	const sort: SortBy = {}
 	;(sort as Record<string, 'asc' | 'desc'>)[field] = order
 	return sort
 }

@@ -8,10 +8,11 @@ export function playPopSound() {
 	if (!playSoundWhenDone)
 		return
 
+	const logFailure = (e: unknown) => console.error('Could not play pop sound:', e)
 	try {
-		const popSound = new Audio(popSoundFile)
-		popSound.play()
+		// play() rejects asynchronously (e.g. autoplay policy), which the try/catch alone misses.
+		new Audio(popSoundFile).play().catch(logFailure)
 	} catch (e) {
-		console.error('Could not play pop sound:', e)
+		logFailure(e)
 	}
 }

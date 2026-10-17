@@ -16,8 +16,7 @@ const baseStore = useBaseStore()
 
 onMounted(() => {
 	baseStore.setQuickActionsActive(true)
-	ensureLabels()
-	ensureProjects()
+	return Promise.all([ensureLabels(), ensureProjects()])
 })
 
 // When QuickActions closes (Escape, task created, etc.), tell Electron to hide the window

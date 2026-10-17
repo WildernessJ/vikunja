@@ -130,6 +130,9 @@ export const useBaseStore = defineStore('base', () => {
 	appReady.then(async () => {
 		await router.isReady()
 		ready.value = true
+	}).catch((e: unknown) => {
+		// A failed initial navigation would otherwise leave the loading screen up forever.
+		error.value = String(e instanceof Error ? e.message : e)
 	})
 
 	return {

@@ -158,7 +158,7 @@ const descriptionStorageKey = computed(() => `task-description-${props.modelValu
 
 const isEmpty = computed(() => isEditorContentEmpty(description.value))
 
-async function saveWithDelay() {
+function saveWithDelay() {
 	if (description.value === props.modelValue.description) {
 		hasChanges.value = false
 		if (changeTimeout.value !== null) {
@@ -172,8 +172,9 @@ async function saveWithDelay() {
 		clearTimeout(changeTimeout.value)
 	}
 
-	changeTimeout.value = setTimeout(async () => {
-		await save()
+	changeTimeout.value = setTimeout(() => {
+		// save() only rethrows the mutation's own (already reported) failure and keeps hasChanges for a retry.
+		save().catch(() => { /* Mutation reports the error. */ })
 	}, 5000)
 }
 
@@ -240,8 +241,11 @@ function uploadCallback(files: File[] | FileList): Promise<string[]> {
 			files: [file],
 		})
 		const [uploaded] = result.success ?? []
-		// forwarded verbatim: the editor's toast translates the error code, which a rewrapped message would lose
-		if (uploaded?.id === undefined) throw result.errors?.[0] ?? new Error('Attachment upload returned no file')
+		if (uploaded?.id === undefined) {
+			const failure = result.errors?.[0]
+			// keeps `code` on the Error: the editor's toast translates it, which a bare message would lose
+			throw Object.assign(new Error(failure?.message ?? 'Attachment upload returned no file'), {code: failure?.code})
+		}
 		return generateAttachmentUrl(taskId, uploaded.id)
 	}))
 }

@@ -27,6 +27,7 @@ function findProjectIdAtPosition(mouseX: number, mouseY: number): number | null 
 		const withProjectId =
 			el.dataset?.projectId != null
 				? el
+				// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- false positive: closest() returns Element, which has no dataset
 				: el.closest('[data-project-id]') as HTMLElement | null
 
 		const projectId = withProjectId?.dataset.projectId
@@ -95,7 +96,7 @@ export function useTaskDragToProject() {
 		try {
 			await updateTask.mutateAsync({
 				...dragged,
-				id: dragged.id!,
+				id: dragged.id,
 				project_id: targetProjectId,
 			})
 

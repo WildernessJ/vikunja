@@ -24,17 +24,4 @@ interface FontAwesomeIconProps {
 	inverse?: boolean
 }
 
-interface FontAwesomeLayersProps {
-	fixedWidth?: boolean
-}
-
-interface FontAwesomeLayersTextProps {
-	value: string | number
-	transform?: object | string
-	counter?: boolean
-	position?: 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right'
-}
-
 export type FontAwesomeIcon = DefineComponent<FontAwesomeIconProps>
-export type FontAwesomeLayers = DefineComponent<FontAwesomeLayersProps>
-export type FontAwesomeLayersText = DefineComponent<FontAwesomeLayersTextProps>

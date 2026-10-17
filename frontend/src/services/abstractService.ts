@@ -29,7 +29,7 @@ function convertObject(o: unknown) {
 	return o
 }
 
-function prepareParams(params: Record<string, unknown | unknown[]>) {
+function prepareParams(params: Record<string, unknown>) {
 	if (typeof params !== 'object' || params === null) {
 		return params
 	}

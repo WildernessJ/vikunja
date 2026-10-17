@@ -68,11 +68,9 @@ setLanguage(browserLanguage).then(() => {
 	const app = createApp(App)
 
 	if (window.SENTRY_ENABLED) {
-		try {
-			import('./sentry').then(sentry => sentry.default(app, router))
-		} catch (e) {
-			console.error('Could not enable Sentry tracking', e)
-		}
+		import('./sentry')
+			.then(sentry => sentry.default(app, router))
+			.catch(e => console.error('Could not enable Sentry tracking', e))
 	}
 
 	app.use(Notifications)
@@ -100,13 +98,13 @@ setLanguage(browserLanguage).then(() => {
 	if (import.meta.env.DEV) {
 		app.config.warnHandler = (msg) => {
 			error(msg)
-			throw msg
+			throw new Error(msg)
 		}
 
 		// https://stackoverflow.com/a/52076738/15522256
 		window.addEventListener('error', (err) => {
 			error(err)
-			throw err
+			throw new Error(err.message, {cause: err.error})
 		})
 
 
@@ -114,7 +112,7 @@ setLanguage(browserLanguage).then(() => {
 			// event.promise contains the promise object
 			// event.reason contains the reason for the rejection
 			error(err)
-			throw err
+			throw new Error('Unhandled promise rejection', {cause: err.reason})
 		})
 	}
 
@@ -128,4 +126,4 @@ setLanguage(browserLanguage).then(() => {
 	app.use(i18n)
 
 	app.mount('#app')
-})
+}).catch(e => console.error('Could not start Vikunja', e))

@@ -18,11 +18,12 @@ import {
 import {useLabels} from '@/composables/useLabels'
 import {useProjects} from '@/composables/useProjects'
 import {searchProjectUsers, searchUsers} from '@/client/queries/userSearch'
+import {error} from '@/message'
 import type {User as IUser} from '@/client/generated'
 import type { Label } from '@/client/generated'
 import type {ProjectResponse} from '@/client/queries/projects'
 
-export interface FilterAutocompleteOptions {
+interface FilterAutocompleteOptions {
 	projectId?: number
 }
 
@@ -45,7 +46,7 @@ interface SuggestionItem {
 	name?: string
 }
 
-export type AutocompleteField = 'labels' | 'users' | 'projects'
+type AutocompleteField = 'labels' | 'users' | 'projects'
 
 /**
  * Calculates the replacement range for autocomplete selection.
@@ -226,30 +227,35 @@ export default Extension.create<FilterAutocompleteOptions>({
 						clearTimeout(debounceTimer)
 					}
 
-					return new Promise((resolve) => {
-						debounceTimer = setTimeout(async () => {
+					const loadUserSuggestions = async (): Promise<SuggestionItem[]> => {
+						try {
 							let userSuggestions: SuggestionItem[]
-							try {
-								if (this.options.projectId) {
-									userSuggestions = await searchProjectUsers(this.options.projectId, autocompleteContext.search) as SuggestionItem[]
-								} else {
-									userSuggestions = await searchUsers(autocompleteContext.search) as SuggestionItem[]
-								}
-								// Show suggestions even with empty search, but limit if we have many
-								if (autocompleteContext.search === '' && userSuggestions.length > 10) {
-									userSuggestions = userSuggestions.slice(0, 10)
-								}
-							} catch (error) {
-								console.error('Error fetching user suggestions:', error)
-								userSuggestions = []
+							if (this.options.projectId) {
+								userSuggestions = await searchProjectUsers(this.options.projectId, autocompleteContext.search) as SuggestionItem[]
+							} else {
+								userSuggestions = await searchUsers(autocompleteContext.search) as SuggestionItem[]
 							}
-							resolve(userSuggestions)
+							// Show suggestions even with empty search, but limit if we have many
+							if (autocompleteContext.search === '' && userSuggestions.length > 10) {
+								userSuggestions = userSuggestions.slice(0, 10)
+							}
+							return userSuggestions
+						} catch (error) {
+							console.error('Error fetching user suggestions:', error)
+							return []
+						}
+					}
+
+					return new Promise((resolve) => {
+						debounceTimer = setTimeout(() => {
+							// Cannot reject: loadUserSuggestions catches every failure and resolves to [].
+							void loadUserSuggestions().then(resolve)
 						}, 300)
 					})
 				}
 
 				if (fieldType === 'projects' && !this.options.projectId) {
-					return projectList.searchProject(autocompleteContext.search) as SuggestionItem[]
+					return projectList.searchProject(autocompleteContext.search)
 				}
 			} catch (error) {
 				console.error('Error fetching suggestions:', error)
@@ -453,7 +459,9 @@ export default Extension.create<FilterAutocompleteOptions>({
 				const parentDialog = view.dom.closest('dialog')
 				;(parentDialog || document.body).appendChild(popupElement)
 
-				cleanupFloating = autoUpdate(virtualReference, popupElement, updatePosition)
+				cleanupFloating = autoUpdate(virtualReference, popupElement, () => {
+					updatePosition().catch(e => error(e))
+				})
 			}
 
 			// Update virtual reference to start of the current search token
@@ -487,7 +495,9 @@ export default Extension.create<FilterAutocompleteOptions>({
 								!view.state.doc.eq(prevState.doc) ||
 								!view.state.selection.eq(prevState.selection)
 							) {
-								setTimeout(() => updateAutocomplete(view), 0)
+								setTimeout(() => {
+									updateAutocomplete(view).catch(e => error(e))
+								}, 0)
 							}
 						},
 						destroy() {

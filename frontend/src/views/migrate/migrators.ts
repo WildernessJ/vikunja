@@ -31,17 +31,17 @@ export const MIGRATORS = {
 	todoist: {
 		id: 'todoist',
 		name: 'Todoist',
-		icon: todoistIcon as string,
+		icon: todoistIcon,
 	},
 	trello: {
 		id: 'trello',
 		name: 'Trello',
-		icon: trelloIcon as string,
+		icon: trelloIcon,
 	},
 	'microsoft-todo': {
 		id: 'microsoft-todo',
 		name: 'Microsoft Todo',
-		icon: microsoftTodoIcon as string,
+		icon: microsoftTodoIcon,
 	},
 	'vikunja-file': {
 		id: 'vikunja-file',
@@ -52,7 +52,7 @@ export const MIGRATORS = {
 	ticktick: {
 		id: 'ticktick',
 		name: 'TickTick',
-		icon: tickTickIcon as string,
+		icon: tickTickIcon,
 		isFileMigrator: true,
 	},
 	wekan: {
@@ -64,7 +64,7 @@ export const MIGRATORS = {
 	csv: {
 		id: 'csv',
 		name: 'CSV',
-		icon: csvIcon as string,
+		icon: csvIcon,
 		isFileMigrator: true,
 		isCSVMigrator: true,
 	},

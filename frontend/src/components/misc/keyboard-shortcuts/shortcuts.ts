@@ -5,7 +5,7 @@ import {shortcutBindingToDisplay} from '@/helpers/shortcut'
 
 const ctrl = PRIMARY_MODIFIER_KEY
 
-export interface Shortcut {
+interface Shortcut {
 	title: string
 	keys: string[]
 	combination?: 'then'

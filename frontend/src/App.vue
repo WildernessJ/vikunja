@@ -72,7 +72,7 @@ import {useQuickAddMode} from '@/composables/useQuickAddMode'
 import {useAppBadge} from '@/composables/useAppBadge'
 
 const importAccountDeleteService = () => import('@/services/accountDelete')
-import {success} from '@/message'
+import {error, success} from '@/message'
 
 const authStore = useAuthStore()
 const baseStore = useBaseStore()
@@ -118,10 +118,10 @@ watch(accountDeletionConfirm, async (accountDeletionConfirm) => {
 	const accountDeletionService = new AccountDeleteService()
 	await accountDeletionService.confirm(accountDeletionConfirm)
 	success({message: t('user.deletion.confirmSuccess')})
-	authStore.refreshUserInfo()
+	await authStore.refreshUserInfo()
 }, { immediate: true })
 
-setLanguage(authStore.settings.language ?? DEFAULT_LANGUAGE)
+setLanguage(authStore.settings.language ?? DEFAULT_LANGUAGE).catch(e => error(e))
 useColorScheme()
 useAppearance()
 useTimeTrackingFavicon()

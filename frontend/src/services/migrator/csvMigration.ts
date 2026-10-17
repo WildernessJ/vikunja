@@ -1,7 +1,7 @@
 import AbstractService from '../abstractService'
 import {getMigrationStatus} from './abstractMigration'
 
-export interface ColumnMapping {
+interface ColumnMapping {
 	column_index: number
 	column_name: string
 	attribute: TaskAttribute
@@ -52,7 +52,7 @@ export interface ImportConfig {
 	mapping: ColumnMapping[]
 }
 
-export interface PreviewTask {
+interface PreviewTask {
 	title: string
 	description: string
 	due_date?: string

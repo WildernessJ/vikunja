@@ -52,6 +52,7 @@ history lives in `../context/RUN_LOG.md`. Upstream's own decisions don't need AD
 | [ADR-0017](ADR-0017-stop-upstream-syncs.md) | Stop upstream syncs; port security fixes one at a time | Accepted | 2026-09-30 | supersedes ADR-0006, ADR-0016 |
 | [ADR-0018](ADR-0018-list-only-default-views.md) | New projects and saved filters get a List view only | Accepted | 2026-10-01 | — |
 | [ADR-0019](ADR-0019-regenerate-swagger-and-yaegi-on-the-fork.md) | The fork regenerates its swagger docs and yaegi symbols | Accepted | 2026-10-02 | — |
+| [ADR-0020](ADR-0020-static-analysis-gate.md) | Static analysis runs in a pre-push hook and gates the image build | Accepted | 2026-10-17 | — |
 
 ## How to add a new ADR
 

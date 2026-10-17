@@ -28,6 +28,11 @@ here.
   target. Use mage: plain `go test` fails to compile without `frontend/dist`
   (`frontend/embed.go` embeds it), which mage creates as a placeholder. See
   `.agents/docs/testing.md`.
+- **Static analysis:** `.githooks/pre-push` runs `mage lint`, `pnpm lint`, `pnpm lint:styles`,
+  `pnpm typecheck` and `pnpm knip`. Enable it once per clone with
+  `git config core.hooksPath .githooks`. The same checks gate the `fork-image` build, and the
+  Dockerfile runs govulncheck (ADR-0020). Fix a finding; do not add a disable comment unless
+  the finding is a demonstrated false positive, and give the reason in the comment.
 - **Live-verify** UI and API changes in the browser. A green suite alone is not done.
 - **Worktrees:** `mage dev:prepare-worktree <name> ""` creates the worktree in `../`, not
   `.worktrees/`.

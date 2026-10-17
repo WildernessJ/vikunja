@@ -8,7 +8,7 @@ import {loadEmojis, filterEmojis, type EmojiEntry} from './emojiData'
 import {getPopupContainer} from '../popupContainer'
 import {createSuggestionPopup, type SuggestionPopup} from '../suggestionPopup'
 
-export const EmojiSuggestionPluginKey = new PluginKey('emojiSuggestion')
+const EmojiSuggestionPluginKey = new PluginKey('emojiSuggestion')
 
 const SHORTCODE_RE = /^[a-zA-Z0-9_]*$/
 

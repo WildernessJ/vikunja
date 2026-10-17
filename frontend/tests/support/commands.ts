@@ -58,13 +58,3 @@ export async function pasteHtmlFromClipboard(page: Page, locator: Locator, html:
 	await locator.focus()
 	await page.keyboard.press(process.platform === 'darwin' ? 'Meta+V' : 'Control+V')
 }
-
-/**
- * Performs a drag and drop operation
- * Note: Playwright has native dragTo() support, so this is just a wrapper for consistency
- * @param source - The source locator to drag from
- * @param target - The target locator to drop onto
- */
-export async function dragAndDrop(source: Locator, target: Locator) {
-	await source.dragTo(target)
-}

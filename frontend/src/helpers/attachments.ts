@@ -32,16 +32,9 @@ export async function fetchAttachmentUrl(attachment: AttachmentIdentity, size?: 
 		return URL.createObjectURL(blob)
 	}
 
-	return new Promise<string>((resolve, reject) => {
+	const dataUrl = await new Promise<string>((resolve, reject) => {
 		const reader = new FileReader()
 		reader.onload = () => {
-			// the identity can change while the read runs, so the pre-read fence has to be repeated
-			try {
-				assertClientRequestContext(context)
-			} catch (fenced) {
-				reject(fenced)
-				return
-			}
 			if (typeof reader.result === 'string') {
 				resolve(reader.result)
 				return
@@ -51,6 +44,9 @@ export async function fetchAttachmentUrl(attachment: AttachmentIdentity, size?: 
 		reader.onerror = () => reject(reader.error ?? new Error('Attachment could not be read as a data url'))
 		reader.readAsDataURL(blob)
 	})
+	// the identity can change while the read runs, so the pre-read fence has to be repeated
+	assertClientRequestContext(context)
+	return dataUrl
 }
 
 // The svg defence hands out inert data: urls, which own nothing.

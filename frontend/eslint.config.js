@@ -1,6 +1,6 @@
 import pluginVue from 'eslint-plugin-vue'
 import js from '@eslint/js'
-import vueTsEslintConfig from '@vue/eslint-config-typescript'
+import { defineConfigWithVueTs, vueTsConfigs } from '@vue/eslint-config-typescript'
 import pluginDepend from 'eslint-plugin-depend'
 import { fileURLToPath } from 'node:url'
 import { dirname } from 'node:path'
@@ -8,10 +8,10 @@ import iconButtonAccessibleName from './eslint-rules/icon-button-accessible-name
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-export default [
+export default defineConfigWithVueTs(
 	js.configs.recommended,
-	...pluginVue.configs['flat/recommended'],
-	...vueTsEslintConfig(),
+	pluginVue.configs['flat/recommended'],
+	vueTsConfigs.recommendedTypeChecked,
 	pluginDepend.configs['flat/recommended'],
 	{
 		ignores: [
@@ -128,6 +128,16 @@ export default [
 				message: 'Use for...of with Object.keys/entries, or .forEach, instead of for...in. See https://github.com/go-vikunja/vikunja/issues/513',
 			}],
 
+			// Vue Router returns a navigation failure as the resolved value and logs
+			// an uncaught guard error itself (VUE_ROUTER_R0010); the app registers no
+			// router.onError. nextTick rejects only when its callback throws.
+			'@typescript-eslint/no-floating-promises': ['error', {
+				allowForKnownSafeCalls: [
+					{from: 'package', package: 'vue-router', name: ['push', 'replace']},
+					{from: 'package', package: 'vue', name: 'nextTick'},
+				],
+			}],
+
 			'@typescript-eslint/no-unused-vars': [
 				'error',
 				{
@@ -153,5 +163,12 @@ export default [
 
 
 	},
-
-]
+	{
+		// typescript-eslint types .vue imports as any, so InstanceType<typeof
+		// Component> | null is reported as redundant. vue-tsc checks these types.
+		files: ['**/*.vue'],
+		rules: {
+			'@typescript-eslint/no-redundant-type-constituents': 'off',
+		},
+	},
+)

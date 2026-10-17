@@ -375,7 +375,9 @@ watch(autocomplete.isOpen, async (isOpen) => {
 	if (!newTaskInput.value || !autocompleteWrapper.value) {
 		return
 	}
-	stopAutoUpdate = autoUpdate(newTaskInput.value, autocompleteWrapper.value, updateAutocompletePosition)
+	stopAutoUpdate = autoUpdate(newTaskInput.value, autocompleteWrapper.value, () => {
+		updateAutocompletePosition().catch(e => error(e))
+	})
 })
 
 onBeforeUnmount(() => {
@@ -668,7 +670,7 @@ function handleEnter(e: KeyboardEvent) {
 	}
 
 	e.preventDefault()
-	addTask()
+	return addTask()
 }
 
 function onTextareaKeydown(e: KeyboardEvent) {
@@ -686,7 +688,7 @@ function onTextareaKeydown(e: KeyboardEvent) {
 	// synthesized by @vue/test-utils' trigger(), which only sets a real `code`.
 	// NumpadEnter is included so the numeric keypad still submits.
 	if (e.code === 'Enter' || e.code === 'NumpadEnter') {
-		handleEnter(e)
+		return handleEnter(e)
 	} else if (e.code === 'Escape') {
 		blurTaskInput()
 	}

@@ -53,7 +53,7 @@ const project = computed(() => projectList.projects[Number(route.params.projectI
 const projectIdsToDelete = ref<number[]>([])
 
 watchEffect(
-	async () => {
+	() => {
 		if (!route.params.projectId) {
 			return
 		}

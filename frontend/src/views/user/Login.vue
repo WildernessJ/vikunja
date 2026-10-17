@@ -235,7 +235,7 @@ async function submit() {
 
 	if (credentials.username === '' || credentials.password === '') {
 		// Trigger the validation error messages
-		validateUsernameField()
+		void validateUsernameField() // debounced sync body, cannot reject
 		validatePasswordInitially.value = true
 		return
 	}
@@ -250,7 +250,7 @@ async function submit() {
 		await authStore.login(credentials as Parameters<typeof authStore.login>[0])
 		authStore.setNeedsTotpPasscode(false)
 
-		redirectIfSaved()
+		await redirectIfSaved()
 	} catch (e) {
 		if ((e as LoginError).response?.data.code === 1017 && !credentials.totpPasscode) {
 			return

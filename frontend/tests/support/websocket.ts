@@ -13,7 +13,7 @@ export interface WsMessage {
 /**
  * Returns the WebSocket URL derived from the API base URL.
  */
-export function getWsUrl(): string {
+function getWsUrl(): string {
 	return API_URL.replace(/\/+$/, '').replace(/^http/, 'ws') + '/ws'
 }
 

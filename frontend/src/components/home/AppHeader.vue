@@ -171,7 +171,7 @@ const menuActive = computed(() => baseStore.menuActive)
 const route = useRoute()
 const { t } = useI18n()
 const pageTitle = computed(() => {
-	const title = route.meta.title as string | undefined
+	const title = route.meta.title
 	return title ? t(title) : ''
 })
 

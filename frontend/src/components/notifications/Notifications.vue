@@ -161,7 +161,7 @@ onMounted(async () => {
 	// Subscribe to real-time notifications
 	unsubscribeWs = subscribe('notification.created', (msg) => {
 		if (msg.event === 'notification.created' && msg.data) {
-			const notification = new NotificationModel(msg.data as Partial<INotification>)
+			const notification = new NotificationModel(msg.data)
 			// Avoid duplicates if the same notification was already loaded via REST
 			const exists = allNotifications.value.some(n => n.id === notification.id)
 			if (!exists) {
@@ -189,9 +189,9 @@ onUnmounted(() => {
 })
 
 function startPollingFallback() {
-	pollInterval = setInterval(async () => {
+	pollInterval = setInterval(() => {
 		if (!wsConnected.value && document.visibilityState === 'visible') {
-			await loadNotifications()
+			loadNotifications().catch(e => console.warn('Failed to poll notifications:', e))
 		}
 	}, POLL_INTERVAL)
 }

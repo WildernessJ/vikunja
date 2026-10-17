@@ -10,6 +10,7 @@ interface UseTaskDetailShortcutsOptions {
 	onSave: () => void
 }
 
+// Never rejects: clipboard failures are logged here.
 async function copySavely(value: string) {
 
 	try {
@@ -38,7 +39,7 @@ export function useTaskDetailShortcuts({
 	}
 
 	// See https://github.com/github/hotkey/discussions/85#discussioncomment-5214660
-	async function handleTaskHotkey(event: KeyboardEvent) {
+	function handleTaskHotkey(event: KeyboardEvent) {
 		const shortcutString = eventToShortcutString(event)
 		if (!shortcutString) return
 
@@ -59,7 +60,7 @@ export function useTaskDetailShortcuts({
 		}
 
 		if (shortcutString === 'Control+Period') {
-			await copySavely(window.location.href)
+			void copySavely(window.location.href)
 			return
 		}
 
@@ -68,9 +69,8 @@ export function useTaskDetailShortcuts({
 			if (dotKeyPressedTimeout !== null) {
 				clearTimeout(dotKeyPressedTimeout)
 			}
-			dotKeyPressedTimeout = setTimeout(async () => {
-				await copySavely(dotKeyCopyValue.value)
-				resetDotKeyPressed()
+			dotKeyPressedTimeout = setTimeout(() => {
+				void copySavely(dotKeyCopyValue.value).then(resetDotKeyPressed)
 			}, 300)
 
 			switch (dotKeyPressedTimes.value) {

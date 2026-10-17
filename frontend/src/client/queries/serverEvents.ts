@@ -3,7 +3,6 @@ import {
 	type QueryClient,
 	type QueryKey,
 } from '@tanstack/vue-query'
-import type {TimeEntry} from '@/client/generated'
 import {contextMutationOptions} from './contextMutation'
 import {
 	cachedTaskIdOf,
@@ -61,7 +60,7 @@ export function parseServerCacheEvent(
 		if (data.task_id !== undefined && data.task_id !== null && typeof data.task_id !== 'number') return null
 		return {
 			kind: event,
-			entry: normalizeTimeEntry(data as TimeEntry),
+			entry: normalizeTimeEntry(data),
 		}
 	}
 	if (event === 'notification.created' && data.name === 'task.comment' && isRecord(data.notification)) {
@@ -95,7 +94,7 @@ async function invalidateCachedTask(client: QueryClient, taskId: number | undefi
 
 export function serverCacheEventMutationOptions() {
 	return contextMutationOptions({
-		mutationFn: async (event: ServerCacheEvent) => event,
+		mutationFn: (event: ServerCacheEvent) => Promise.resolve(event),
 		onSettled: (event, client) => {
 			if ('entry' in event) {
 				// The payload carries only the new task, so a reassignment would leave the old one's count stale.

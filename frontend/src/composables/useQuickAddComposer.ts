@@ -44,7 +44,7 @@ export function useQuickAddComposer(title: Ref<string>, mode: Ref<PrefixMode>) {
 	)
 	const effectiveLabels = computed<Label[]>(
 		() => overrides.labels ?? (parsed.value.labels.length > 0
-			? parsed.value.labels.map(name => ({title: name} as Label))
+			? parsed.value.labels.map(name => ({title: name}))
 			: EMPTY_LABEL_LIST),
 	)
 	const effectiveProject = computed<ProjectResponse | null>(

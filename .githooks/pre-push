@@ -1,0 +1,14 @@
+#!/bin/sh
+# Static analysis gate. Runs before every push; CI runs the same checks and
+# blocks the fork-image build when they fail (see .github/workflows/fork-image.yml).
+# Enable once per clone: git config core.hooksPath .githooks
+# The hook checks the working tree, not the pushed commits.
+set -e
+cd "$(git rev-parse --show-toplevel)"
+
+mage lint
+cd frontend
+pnpm lint
+pnpm lint:styles
+pnpm typecheck
+pnpm knip

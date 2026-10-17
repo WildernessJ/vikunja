@@ -45,6 +45,7 @@ import Card from '@/components/misc/Card.vue'
 import Message from '@/components/misc/Message.vue'
 import FormField from '@/components/input/FormField.vue'
 import {LINK_SHARE_HASH_PREFIX} from '@/constants/linkShareHash'
+import {error} from '@/message'
 
 import {useBaseStore} from '@/stores/base'
 import {useAuthStore} from '@/stores/auth'
@@ -78,7 +79,7 @@ function useAuth() {
 	const authLinkShare = computed(() => authStore.authLinkShare)
 
 	function redirectToProject(projectId: number) {
-		const hash = LINK_SHARE_HASH_PREFIX + route.params.share
+		const hash = LINK_SHARE_HASH_PREFIX + (route.params.share as string)
 
 		const viewId =
 			new URLSearchParams(window.location.search).get('view') || null
@@ -174,7 +175,7 @@ function useAuth() {
 		}
 	}
 
-	authenticate()
+	authenticate().catch(e => error(e))
 
 	return {
 		loading,

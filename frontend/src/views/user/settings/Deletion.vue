@@ -132,7 +132,7 @@ async function cancelDeletion() {
 
 	await accountDeleteService.cancel(password.value)
 	success({message: t('user.deletion.scheduledCancelSuccess')})
-	authStore.refreshUserInfo()
+	await authStore.refreshUserInfo()
 	password.value = ''
 }
 </script>

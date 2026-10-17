@@ -130,7 +130,7 @@ export default {
 </script>
 
 <script setup lang="ts">
-import {computed, nextTick, ref, shallowReactive, watch} from 'vue'
+import {computed, nextTick, ref, shallowReactive, watch, type ComponentPublicInstance} from 'vue'
 import {useI18n} from 'vue-i18n'
 
 import Logo from '@/assets/logo.svg?component'
@@ -146,7 +146,7 @@ import {parseDateOrNull} from '@/helpers/parseDateOrNull'
 import {MIGRATORS, type Migrator} from './migrators'
 import {useTitle} from '@/composables/useTitle'
 import {useMigrationStore} from '@/stores/migration'
-import {getErrorText} from '@/message'
+import {error, getErrorText} from '@/message'
 
 const props = defineProps<{
 	service: string,
@@ -155,6 +155,7 @@ const props = defineProps<{
 
 const PROGRESS_DOTS_COUNT = 8
 
+// eslint-disable-next-line @typescript-eslint/unbound-method -- vue-i18n's composer `te` is a closure, it never reads `this`
 const {t, te} = useI18n({useScope: 'global'})
 
 const progressDotsCount = ref(PROGRESS_DOTS_COUNT)
@@ -225,10 +226,10 @@ async function initMigration() {
 	await migrate()
 }
 
-initMigration()
+initMigration().catch(e => error(e))
 
 const uploadInput = ref<HTMLInputElement | null>(null)
-const resultMessage = ref<InstanceType<typeof Message> | null>(null)
+const resultMessage = ref<ComponentPublicInstance | null>(null)
 
 // the triggering button unmounts when the result message appears, so move focus there
 watch(migrationRunning, async (running) => {

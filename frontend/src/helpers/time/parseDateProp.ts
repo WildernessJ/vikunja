@@ -1,4 +1,3 @@
-import type {DateISO} from '@/types/DateISO'
 import type {DateKebab} from '@/types/DateKebab'
 
 export function parseDateProp(kebabDate: DateKebab | undefined): string | undefined {
@@ -22,7 +21,7 @@ export function parseDateProp(kebabDate: DateKebab | undefined): string | undefi
 		if (!dateValuesAreValid) {
 			throw new Error('Invalid date values')
 		}
-		return new Date(year, month - 1, date).toISOString() as DateISO
+		return new Date(year, month - 1, date).toISOString()
 	} catch(_) {
 		// ignore nonsense route queries
 		return

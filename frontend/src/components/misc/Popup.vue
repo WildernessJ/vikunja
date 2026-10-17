@@ -50,6 +50,7 @@ import {autoUpdate, computePosition, flip, offset, shift, size, type Placement} 
 
 import Modal from '@/components/misc/Modal.vue'
 import {useIsMobile} from '@/composables/useIsMobile'
+import {error} from '@/message'
 
 const props = withDefaults(defineProps<{
 	open?: boolean
@@ -201,7 +202,9 @@ watch([openValue, asSheet, () => props.anchor, popup], ([open, sheet, anchor]) =
 		floatingStyle.value = {}
 		return
 	}
-	stopAutoUpdate = autoUpdate(anchor, popup.value, updatePosition)
+	stopAutoUpdate = autoUpdate(anchor, popup.value, () => {
+		updatePosition().catch(e => error(e))
+	})
 }, {flush: 'post'})
 
 onScopeDispose(() => {

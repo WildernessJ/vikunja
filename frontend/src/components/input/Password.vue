@@ -69,7 +69,12 @@ const validate = useDebounceFn(() => {
 	isValid.value = valid === true ? true : t(valid)
 }, 100)
 
-watchEffect(() => props.validateInitially && validate())
+watchEffect(() => {
+	if (props.validateInitially) {
+		// Cannot reject: validate() is synchronous and debounced without rejectOnCancel.
+		void validate()
+	}
+})
 
 function togglePasswordFieldType() {
 	passwordFieldType.value = passwordFieldType.value === 'password'

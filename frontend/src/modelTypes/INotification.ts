@@ -16,41 +16,41 @@ export const NOTIFICATION_NAMES = {
 	'TASK_MENTIONED': 'task.mentioned',
 } as const
 
-export interface Notification {
+interface Notification {
 	doer: IUser
 }
 
-export interface NotificationTaskComment extends Notification {
+interface NotificationTaskComment extends Notification {
 	task: ITask
 	comment: ITaskComment
 }
 
-export interface NotificationTask extends Notification {
+interface NotificationTask extends Notification {
 	task: ITask
 }
 
-export interface NotificationAssigned extends Notification {
+interface NotificationAssigned extends Notification {
 	task: ITask
 	assignee: IUser
 }
 
-export type NotificationProject = Pick<Project, 'id' | 'title'>
+type NotificationProject = Pick<Project, 'id' | 'title'>
 
-export interface NotificationTaskCreated extends Notification {
+interface NotificationTaskCreated extends Notification {
 	task: ITask
 	project: NotificationProject
 }
 
-export interface NotificationProjectCreated extends Notification {
+interface NotificationProjectCreated extends Notification {
 	project: NotificationProject
 }
 
-export interface NotificationTaskReminder extends Notification {
+interface NotificationTaskReminder extends Notification {
 	task: ITask
 	project: NotificationProject
 }
 
-export interface NotificationMemberAdded extends Notification {
+interface NotificationMemberAdded extends Notification {
 	member: IUser
 	team: ITeam
 }

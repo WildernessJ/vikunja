@@ -1,3 +1,4 @@
+/** @public Members are read through RELATION_KINDS (Object.values), not by name. */
 export enum RELATION_KIND {
 	'SUBTASK' = 'subtask',
 	'PARENTTASK' = 'parenttask',

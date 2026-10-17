@@ -1,4 +1,4 @@
-export type ProjectViewSettings = Record<number, number>
+type ProjectViewSettings = Record<number, number>
 
 const SETTINGS_KEY_PROJECT_VIEW = 'projectView'
 

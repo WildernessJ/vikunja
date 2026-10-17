@@ -32,7 +32,7 @@ export const formatDate = (date: Date | string | null | undefined, f: string) =>
 		return ''
 	}
 
-	const locale = DAYJS_LOCALE_MAPPING[i18n.global.locale.value.toLowerCase() as keyof typeof DAYJS_LOCALE_MAPPING] ?? 'en'
+	const locale = DAYJS_LOCALE_MAPPING[i18n.global.locale.value.toLowerCase()] ?? 'en'
 
 	return dayjs(parsed).locale(locale).format(f)
 }
@@ -51,7 +51,7 @@ export const formatDateSince = (date: Date | string | null | undefined) => {
 		return ''
 	}
 
-	const locale = DAYJS_LOCALE_MAPPING[i18n.global.locale.value.toLowerCase() as keyof typeof DAYJS_LOCALE_MAPPING] ?? 'en'
+	const locale = DAYJS_LOCALE_MAPPING[i18n.global.locale.value.toLowerCase()] ?? 'en'
 
 	// Computing the relative string against the shared, ticking `now` (instead of fromNow's
 	// internal Date.now()) makes every reactive caller re-render on the 60s tick, so open views
@@ -69,7 +69,7 @@ export function formatISO(date: Date | string | null | undefined) {
  * Because `Intl.DateTimeFormat` is expensive to instatiate we try to reuse it as often as possible,
  * by creating a shared composable.
  */
-export const useDateTimeFormatter = createSharedComposable((options?: MaybeRefOrGetter<Intl.DateTimeFormatOptions>) => {
+const useDateTimeFormatter = createSharedComposable((options?: MaybeRefOrGetter<Intl.DateTimeFormatOptions>) => {
 	return computed(() => new Intl.DateTimeFormat(i18n.global.locale.value, toValue(options)))
 })
 
@@ -89,7 +89,7 @@ export const formatDateSinceDay = (date: Date | string | null | undefined) => {
 		return ''
 	}
 
-	const locale = DAYJS_LOCALE_MAPPING[i18n.global.locale.value.toLowerCase() as keyof typeof DAYJS_LOCALE_MAPPING] ?? 'en'
+	const locale = DAYJS_LOCALE_MAPPING[i18n.global.locale.value.toLowerCase()] ?? 'en'
 
 	const {now} = useGlobalNow()
 	const day = dayjs(parsed).startOf('day')

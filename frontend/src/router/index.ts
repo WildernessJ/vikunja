@@ -251,7 +251,7 @@ const router = createRouter({
 			path: '/tasks/:id',
 			name: 'task.detail',
 			component: () => import('@/views/tasks/TaskDetailView.vue'),
-			props: route => ({ taskId: Number(route.params.id as string) }),
+			props: route => ({ taskId: Number(route.params.id) }),
 		},
 		{
 			path: '/tasks/by/upcoming',
@@ -306,13 +306,13 @@ const router = createRouter({
 			path: '/projects/:parentProjectId/new',
 			name: 'project.createFromParent',
 			component: () => import('@/views/project/NewProject.vue'),
-			props: route => ({ parentProjectId: Number(route.params.parentProjectId as string) }),
+			props: route => ({ parentProjectId: Number(route.params.parentProjectId) }),
 		},
 		{
 			path: '/projects/:projectId(\\d+)/settings/edit',
 			name: 'project.settings.edit',
 			component: () => import('@/views/project/settings/ProjectSettingsEdit.vue'),
-			props: route => ({ projectId: Number(route.params.projectId as string) }),
+			props: route => ({ projectId: Number(route.params.projectId) }),
 		},
 		{
 			path: '/projects/:projectId/settings/background',
@@ -353,32 +353,32 @@ const router = createRouter({
 			path: '/projects/:projectId/settings/views',
 			name: 'project.settings.views',
 			component: () =>  import('@/views/project/settings/ProjectSettingsViews.vue'),
-			props: route => ({ projectId: Number(route.params.projectId as string) }),
+			props: route => ({ projectId: Number(route.params.projectId) }),
 		},
 		{
 			// Saved-filter pseudo-projects use IDs <= -2; -1 is the Favorites pseudo-project.
 			path: '/projects/:projectId(-[2-9]\\d*|-1\\d+)/settings/edit',
 			name: 'filter.settings.edit',
 			component: () => import('@/views/filters/FilterEdit.vue'),
-			props: route => ({ projectId: Number(route.params.projectId as string) }),
+			props: route => ({ projectId: Number(route.params.projectId) }),
 		},
 		{
 			path: '/projects/:projectId(-[2-9]\\d*|-1\\d+)/settings/delete',
 			name: 'filter.settings.delete',
 			component: () => import('@/views/filters/FilterDelete.vue'),
-			props: route => ({ projectId: Number(route.params.projectId as string) }),
+			props: route => ({ projectId: Number(route.params.projectId) }),
 		},
 		{
 			path: '/projects/:projectId/info',
 			name: 'project.info',
 			component: () => import('@/views/project/ProjectInfo.vue')			,
-			props: route => ({ projectId: Number(route.params.projectId as string) }),
+			props: route => ({ projectId: Number(route.params.projectId) }),
 		},
 		{
 			path: '/projects/:projectId',
 			name: 'project.index',
 			redirect(to) {
-				const viewId = getProjectViewId(Number(to.params.projectId as string))
+				const viewId = getProjectViewId(Number(to.params.projectId))
 
 				if (viewId) {
 					console.debug('Replaced list view with', viewId)

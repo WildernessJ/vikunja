@@ -3,7 +3,7 @@ import {objectToCamelCase} from '@/helpers/case'
 
 import type {IActivity} from '@/modelTypes/IActivity'
 
-export function parseActivity(raw: Record<string, unknown>): IActivity {
+function parseActivity(raw: Record<string, unknown>): IActivity {
 	const a = objectToCamelCase(raw)
 	return {
 		id: a.id,

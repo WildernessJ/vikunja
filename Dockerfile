@@ -23,6 +23,10 @@ WORKDIR /go/src/code.vikunja.io/api
 COPY . ./
 COPY --from=frontendbuilder /build/dist ./frontend/dist
 
+# Fail the build when the API reaches a known vulnerability. This runs with the
+# same Go toolchain that builds the release binary.
+RUN go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
 ARG TARGETOS TARGETARCH TARGETVARIANT RELEASE_VERSION
 ENV RELEASE_VERSION=$RELEASE_VERSION
 

@@ -91,14 +91,13 @@ const storedServerUrl = localStorage.getItem('API_URL')
 const hasStoredServer = storedServerUrl !== null
 const showCustomServerInput = ref(false)
 
-listenForDesktopOAuthTokens(async (tokens) => {
+listenForDesktopOAuthTokens((tokens) => {
 	waitingForAuth.value = false
-	try {
-		await authStore.handleDesktopOAuthTokens(tokens)
-		redirectIfSaved()
-	} catch (e) {
-		errorMessage.value = getErrorText(e)
-	}
+	authStore.handleDesktopOAuthTokens(tokens)
+		.then(() => redirectIfSaved())
+		.catch(e => {
+			errorMessage.value = getErrorText(e)
+		})
 })
 
 listenForDesktopOAuthError((error) => {

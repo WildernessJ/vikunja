@@ -335,7 +335,6 @@ import {parseDateOrNull} from '@/helpers/parseDateOrNull'
 import type {Label, Task as ITask, User} from '@/client/generated'
 import type {ProjectResponse} from '@/client/queries/projects'
 
-import {type Priority} from '@/constants/priorities'
 import {PERMISSIONS} from '@/constants/permissions'
 import {PRO_FEATURE} from '@/constants/proFeatures'
 import {SHORTCUTS} from '@/constants/shortcuts'
@@ -560,7 +559,7 @@ function onBreadcrumbClick(event: MouseEvent, projectId: number, navigate: (even
 	navigate(event)
 }
 
-onBeforeRouteLeave(async (to) => {
+onBeforeRouteLeave((to) => {
 	if (taskNotFound.value) {
 		return
 	}
@@ -606,7 +605,7 @@ const isModal = computed(() => Boolean(props.backdropView))
 
 const heading = ref<HTMLElement | null>(null)
 
-async function scrollToHeading() {
+function scrollToHeading() {
 	scrollIntoView(unrefElement(heading))
 }
 
@@ -706,7 +705,9 @@ const debouncedMutationHandler = useDebounceFn(async () => {
 
 useMutationObserver(
 	taskViewContainer,
-	debouncedMutationHandler,
+	() => {
+		debouncedMutationHandler().catch(e => error(e))
+	},
 	{subtree: true, childList: true},
 )
 
@@ -789,7 +790,9 @@ async function saveTask(
 useTaskDetailShortcuts({
 	task: () => task.value,
 	taskTitle: () => taskTitle.value,
-	onSave: saveTask,
+	onSave: () => {
+		saveTask().catch(e => error(e))
+	},
 })
 
 const showDeleteModal = ref(false)
@@ -812,7 +815,9 @@ async function toggleTaskDone() {
 
 	await saveTask(
 		newTask,
-		toggleTaskDone,
+		() => {
+			toggleTaskDone().catch(e => error(e))
+		},
 	)
 }
 
@@ -854,7 +859,7 @@ async function duplicateCurrentTask() {
 async function setPriority(priority: number, title?: string) {
 	const newTask: ITask = {
 		...task.value,
-		priority: priority as Priority,
+		priority: priority,
 		...(title === undefined ? {} : {title}),
 	}
 
