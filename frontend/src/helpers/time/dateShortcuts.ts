@@ -1,7 +1,7 @@
 import {calculateDayInterval} from '@/helpers/time/calculateDayInterval'
 import {addDays, isSameDay, startOfDay} from '@/helpers/time/dateMath'
 
-export const DATE_SHORTCUT_KEYS = [
+const DATE_SHORTCUT_KEYS = [
 	'today',
 	'tomorrow',
 	'nextMonday',

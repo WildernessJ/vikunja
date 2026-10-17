@@ -191,10 +191,6 @@ export function ensureProject(id: number): Promise<ProjectResponse> {
 	return queryClient.ensureQueryData(projectQuery(id))
 }
 
-export function refreshProject(id: number): Promise<ProjectResponse> {
-	return queryClient.fetchQuery({...projectQuery(id), staleTime: 0})
-}
-
 export function getCachedProject(id: number, client: QueryClient = queryClient): ProjectResponse | undefined {
 	const list = client.getQueryData<ProjectListResult>(projectKeys.list())
 

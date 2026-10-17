@@ -23,7 +23,7 @@ import type {User as IUser} from '@/client/generated'
 import type { Label } from '@/client/generated'
 import type {ProjectResponse} from '@/client/queries/projects'
 
-export interface FilterAutocompleteOptions {
+interface FilterAutocompleteOptions {
 	projectId?: number
 }
 
@@ -46,7 +46,7 @@ interface SuggestionItem {
 	name?: string
 }
 
-export type AutocompleteField = 'labels' | 'users' | 'projects'
+type AutocompleteField = 'labels' | 'users' | 'projects'
 
 /**
  * Calculates the replacement range for autocomplete selection.

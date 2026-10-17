@@ -256,7 +256,7 @@ export function duplicateTaskMutationOptions() {
 	})
 }
 
-export function favoriteTaskMutationOptions() {
+function favoriteTaskMutationOptions() {
 	return contextMutationOptions({
 		mutationFn: async (task: Task & Required<Pick<Task, 'id'>>) => (await patchTasksRead({
 			path: {task: task.id},
@@ -277,7 +277,7 @@ export function favoriteTaskMutationOptions() {
 	})
 }
 
-export function markTaskReadMutationOptions() {
+function markTaskReadMutationOptions() {
 	return contextMutationOptions({
 		mutationFn: async (id: number) => { await tasksMarkRead({path: {task: id}}) },
 		onSuccess: (_data, id, client) => mapTaskEverywhere(client, id, task => ({...task, is_unread: false})),
@@ -297,7 +297,7 @@ export function addTaskAssigneeMutationOptions() {
 		onSettled: ({taskId}, client) => invalidateTaskMembership(client, taskId),
 	})
 }
-export function removeTaskAssigneeMutationOptions() {
+function removeTaskAssigneeMutationOptions() {
 	return contextMutationOptions({
 		mutationFn: async ({taskId, user}: AssigneeInput) => {
 			await taskAssigneesDelete({path: {task: taskId, user: user.id}})
@@ -311,7 +311,7 @@ export function removeTaskAssigneeMutationOptions() {
 }
 
 type LabelInput = {taskId: number, label: Label & Required<Pick<Label, 'id'>>}
-export function addTaskLabelMutationOptions() {
+function addTaskLabelMutationOptions() {
 	return contextMutationOptions({
 		mutationFn: async ({taskId, label}: LabelInput) =>
 			(await taskLabelsCreate({path: {task: taskId}, body: {label_id: label.id}})).data,
@@ -322,7 +322,7 @@ export function addTaskLabelMutationOptions() {
 		onSettled: ({taskId}, client) => invalidateTaskMembership(client, taskId),
 	})
 }
-export function removeTaskLabelMutationOptions() {
+function removeTaskLabelMutationOptions() {
 	return contextMutationOptions({
 		mutationFn: async ({taskId, label}: LabelInput) => {
 			await taskLabelsDelete({path: {task: taskId, label: label.id}})
@@ -335,7 +335,7 @@ export function removeTaskLabelMutationOptions() {
 	})
 }
 
-export function createTaskRelationMutationOptions() {
+function createTaskRelationMutationOptions() {
 	return contextMutationOptions({
 		mutationFn: async ({taskId, ...body}: TaskRelationWritable & {taskId: number}) =>
 			(await tasksRelationsCreate({path: {task: taskId}, body})).data,
@@ -345,7 +345,7 @@ export function createTaskRelationMutationOptions() {
 		},
 	})
 }
-export function deleteTaskRelationMutationOptions() {
+function deleteTaskRelationMutationOptions() {
 	return contextMutationOptions({
 		mutationFn: async (path: TasksRelationsDeleteData['path']) => {
 			await tasksRelationsDelete({path})

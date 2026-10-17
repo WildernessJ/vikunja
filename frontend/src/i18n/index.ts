@@ -55,7 +55,7 @@ export type ISOLanguage = string
 
 const RTL_LANGUAGES = ['ar-SA', 'he-IL', 'fa-IR'] as const
 
-export function isRTLLanguage(locale: SupportedLocale): boolean {
+function isRTLLanguage(locale: SupportedLocale): boolean {
 	return RTL_LANGUAGES.includes(locale as typeof RTL_LANGUAGES[number])
 }
 

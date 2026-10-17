@@ -44,7 +44,7 @@ export const commentKeys = {
 		: undefined,
 }
 
-export function normalizeComment(comment: TaskComment): CommentResponse {
+function normalizeComment(comment: TaskComment): CommentResponse {
 	return {
 		...comment,
 		id: comment.id ?? 0,

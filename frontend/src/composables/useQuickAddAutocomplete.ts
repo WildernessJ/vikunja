@@ -19,7 +19,7 @@ import {getHexColor} from '@/helpers/task'
 import {error} from '@/message'
 import type {UserWithId} from '@/models/user'
 
-export type AutocompleteKind = 'project' | 'label' | 'assignee'
+type AutocompleteKind = 'project' | 'label' | 'assignee'
 
 export interface AutocompleteItem {
 	kind: AutocompleteKind,

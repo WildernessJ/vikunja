@@ -54,13 +54,3 @@ export async function createFakeUser() {
 	const [u] = await UserFactory.create(1)
 	return u
 }
-
-/**
- * Helper function to set up authentication for a test suite
- * Returns the created user for use in tests
- */
-export function createFakeUserAndLogin() {
-	// This returns undefined and instead relies on Playwright's beforeEach hooks
-	// The actual user will be available through the test context
-	return undefined
-}

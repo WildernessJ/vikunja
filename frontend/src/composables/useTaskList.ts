@@ -15,7 +15,7 @@ import {error} from '@/message'
 import {useAuthStore} from '@/stores/auth'
 import {useViewFiltersStore} from '@/stores/viewFilters'
 
-export type Order = 'asc' | 'desc' | 'none'
+type Order = 'asc' | 'desc' | 'none'
 
 export interface SortBy {
 	id?: Order

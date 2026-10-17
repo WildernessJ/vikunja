@@ -1,6 +1,6 @@
 import type {Prefixes} from './types'
 
-export type TokenType = 'label' | 'project' | 'assignee'
+type TokenType = 'label' | 'project' | 'assignee'
 
 export interface TokenAtCaret {
 	type: TokenType,

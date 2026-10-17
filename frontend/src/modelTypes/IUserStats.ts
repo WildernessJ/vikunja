@@ -1,9 +1,9 @@
-export interface IUserStatsDay {
+interface IUserStatsDay {
 	date: string
 	count: number
 }
 
-export interface IUserProjectStats {
+interface IUserProjectStats {
 	projectId: number
 	open: number
 	completedInWindow: number

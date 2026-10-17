@@ -45,12 +45,12 @@ export function taskRemindersFromSettings(
 	return (reminders ?? []).map(reminder => ({relative_period: reminder.relativePeriod}))
 }
 
-export interface IExtraSettingsLink {
+interface IExtraSettingsLink {
 	text: string
 	url: string
 }
 
-export interface IExtraSettingsLinks {
+interface IExtraSettingsLinks {
 	[key: string]: IExtraSettingsLink
 }
 

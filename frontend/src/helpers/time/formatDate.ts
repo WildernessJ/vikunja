@@ -69,7 +69,7 @@ export function formatISO(date: Date | string | null | undefined) {
  * Because `Intl.DateTimeFormat` is expensive to instatiate we try to reuse it as often as possible,
  * by creating a shared composable.
  */
-export const useDateTimeFormatter = createSharedComposable((options?: MaybeRefOrGetter<Intl.DateTimeFormatOptions>) => {
+const useDateTimeFormatter = createSharedComposable((options?: MaybeRefOrGetter<Intl.DateTimeFormatOptions>) => {
 	return computed(() => new Intl.DateTimeFormat(i18n.global.locale.value, toValue(options)))
 })
 

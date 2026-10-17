@@ -37,7 +37,7 @@ export type ReactionInput = ReactionTarget & {
 const DETAIL_KEY_EXPANSION = 3
 
 // Chips render in key order, so a toggled emoji keeps its slot instead of moving to the end.
-export function changeReaction(current: ReactionUsers = {}, input: ReactionInput) {
+function changeReaction(current: ReactionUsers = {}, input: ReactionInput) {
 	const entries = Object.entries(current).map(([value, users]): [string, User[]] => [value, users ?? []])
 	const existing = entries.find(([value]) => value === input.value)
 	const remaining = (existing?.[1] ?? []).filter(user => user.id !== input.user.id)

@@ -8,7 +8,7 @@ import {useAuthStore} from '@/stores/auth'
 
 export const projectCountsKey = ['projectCounts'] as const
 
-export function projectCountsQuery() {
+function projectCountsQuery() {
 	return queryOptions({
 		queryKey: projectCountsKey,
 		queryFn: getProjectCounts,

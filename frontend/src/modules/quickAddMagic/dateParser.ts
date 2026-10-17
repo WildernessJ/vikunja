@@ -240,7 +240,7 @@ export const getDateFromText = (text: string, now: Date = new Date()) => {
 	}
 }
 
-export const getDateFromTextIn = (text: string, now: Date = new Date()) => {
+const getDateFromTextIn = (text: string, now: Date = new Date()) => {
 	const regex = /(in [0-9]+ (hours?|days?|weeks?|months?))/ig
 	const results = regex.exec(text)
 	if (results === null) {
