@@ -1,5 +1,5 @@
 ---
-status: Accepted
+status: Enacted
 date: 2026-10-17
 deciders: Jason
 phase: —
