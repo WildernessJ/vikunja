@@ -19,7 +19,7 @@ Types: `fix`, `feat`, `chore`, `docs`.
 
 ## Changes
 
-`2026-10-17` — **fix** — the Docker image builds the API with Go 1.27.2. The pinned xgo image shipped Go 1.27.1, and govulncheck found 12 standard-library vulnerabilities that the API code reaches with Go 1.27.1, for example two `html/template` bugs on the mail render path. Go 1.27.2 fixes all 12. The mise Go pin is also 1.27.2. ([2ea9c56cb](https://github.com/WildernessJ/vikunja/commit/2ea9c56cb))
+`2026-10-17` — **fix** — 12 vulnerabilities that the API code reaches, found by govulncheck. The pinned xgo image shipped Go 1.27.1. The Docker image now builds the API with Go 1.27.2, which fixes 7 of them, for example two `html/template` bugs on the mail render path; the mise Go pin is also 1.27.2. The other 5 are HTTP/2 bugs in `net/http` (server crash, memory exhaustion, excessive CPU); `golang.org/x/net` v0.60.0 fixes them. ([2ea9c56cb](https://github.com/WildernessJ/vikunja/commit/2ea9c56cb), [6ef2745e7](https://github.com/WildernessJ/vikunja/commit/6ef2745e7))
 
 `2026-10-05` — **fix** — a Kanban drag takes the task row lock before it reads the task's current bucket, and reads that bucket with a locking read. Before, two concurrent drags of one task on MySQL or Postgres could decide the done state from a stale bucket and leave a done task in a bucket that is not the done bucket. No repro test: SQLite, the test database, has no row locks. ([b168d878b](https://github.com/WildernessJ/vikunja/commit/b168d878b))
 
