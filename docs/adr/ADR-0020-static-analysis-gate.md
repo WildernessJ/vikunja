@@ -1,5 +1,5 @@
 ---
-status: Enacted
+status: Accepted
 date: 2026-10-17
 deciders: Jason
 phase: —
@@ -44,14 +44,18 @@ Two mechanisms run the checks:
 
 ## Consequences
 
-- **Positive:** a lint, type, dead-code or reachable-vulnerability error cannot reach a deployed
-  image. Problems show before the push when the hook is enabled.
+- **Positive:** a lint, type or dead-code error cannot reach a deployed image. A reachable
+  vulnerability that is known when the image is built cannot reach it either. Problems show
+  before the push when the hook is enabled.
 - **Negative / trade-offs:**
   - A push waits for about a minute.
   - The hook checks the working tree, not the pushed commits, and `git push --no-verify` skips
     it. The hook is a convention, not enforced. CI is the enforced gate.
   - A new advisory with no fix available blocks every image build until the code stops reaching
     the vulnerable function or the check is changed.
+  - govulncheck runs only when its Docker layer is rebuilt. With the GitHub Actions layer cache,
+    a rebuild of unchanged source reuses the layer, so an advisory published after the last
+    source change is not checked until the next change.
   - typescript-eslint types `.vue` imports as `any`, so typed rules do not see component types.
     `no-redundant-type-constituents` is off for `.vue` files for this reason.
 

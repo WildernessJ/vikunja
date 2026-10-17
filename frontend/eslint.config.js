@@ -128,8 +128,9 @@ export default defineConfigWithVueTs(
 				message: 'Use for...of with Object.keys/entries, or .forEach, instead of for...in. See https://github.com/go-vikunja/vikunja/issues/513',
 			}],
 
-			// Vue Router reports a failed navigation through its resolved value and
-			// router.onError, and nextTick rejects only when its callback throws.
+			// Vue Router returns a navigation failure as the resolved value and logs
+			// an uncaught guard error itself (VUE_ROUTER_R0010); the app registers no
+			// router.onError. nextTick rejects only when its callback throws.
 			'@typescript-eslint/no-floating-promises': ['error', {
 				allowForKnownSafeCalls: [
 					{from: 'package', package: 'vue-router', name: ['push', 'replace']},

@@ -1,6 +1,38 @@
-import {describe, it, expect} from 'vitest'
+import {describe, it, expect, vi, beforeEach} from 'vitest'
 
-import {getErrorText} from './index'
+const notify = vi.hoisted(() => vi.fn())
+vi.mock('@kyvg/vue3-notification', () => ({notify}))
+
+import {error, getErrorText} from './index'
+
+describe('error', () => {
+	beforeEach(() => notify.mockClear())
+
+	it('reports one error object only once', () => {
+		// A mutation reports its error in onError, and the caller's catch can
+		// report the same rejection again.
+		const cause = new Error('Network Error')
+		error(cause)
+		error(cause)
+
+		expect(notify).toHaveBeenCalledTimes(1)
+	})
+
+	it('does not report a request-context abort', () => {
+		error(new DOMException('Client request context changed', 'AbortError'))
+
+		expect(notify).not.toHaveBeenCalled()
+	})
+
+	it('reports different errors with the same text separately', () => {
+		error(new Error('Network Error'))
+		error(new Error('Network Error'))
+		error('plain string')
+		error('plain string')
+
+		expect(notify).toHaveBeenCalledTimes(4)
+	})
+})
 
 describe('getErrorText', () => {
 	it('interpolates i18n_params into the translated error message', () => {

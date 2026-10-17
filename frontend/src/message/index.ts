@@ -1,5 +1,6 @@
 import {i18n} from '@/i18n'
 import {notify} from '@kyvg/vue3-notification'
+import {isRequestContextAbort} from '@/client/requestContext'
 
 // vue-i18n's `t` is typed against the full message schema, whose overload
 // resolution is excessively deep (TS2589) — especially with dynamic keys.
@@ -71,7 +72,23 @@ export interface Action {
 	callback: () => void,
 }
 
+// Error objects already shown. A mutation reports its error in onError, and the
+// same rejection can reach a caller's catch or Vue's errorHandler as well.
+// Request-context aborts are internal and never shown.
+const reportedErrors = new WeakSet<object>()
+
 export function error(e: unknown, actions: Action[] = []) {
+	if (isRequestContextAbort(e)) {
+		return
+	}
+
+	if (typeof e === 'object' && e !== null) {
+		if (reportedErrors.has(e)) {
+			return
+		}
+		reportedErrors.add(e)
+	}
+
 	notify({
 		type: 'error',
 		title: translate('error.error'),
